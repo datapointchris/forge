@@ -242,13 +242,14 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 		r := runner.ExecuteInRepo(repo, opts)
 		results = append(results, r)
 		repoResults[r.Name] = r.Status
-		if !diesDryRun {
-			runner.PrintResult(r)
-		}
 	}
 
 	if diesDryRun {
 		runner.PrintDryRunFooter()
+	}
+
+	if !diesDryRun {
+		printGroupedResults(results)
 	}
 
 	runner.PrintSummary(results)
@@ -421,4 +422,47 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	return nil
+}
+
+func printGroupedResults(results []runner.Result) {
+	var oks, skips []runner.Result
+	for _, r := range results {
+		switch {
+		case r.Status == "OK":
+			oks = append(oks, r)
+		case strings.HasPrefix(r.Status, "SKIP"):
+			skips = append(skips, r)
+		}
+	}
+
+	yellow := color.New(color.FgHiYellow)
+	green := color.New(color.FgHiGreen)
+	dim := color.New(color.Faint)
+
+	if len(skips) > 0 {
+		yellow.Printf("\n  %s  %d repos skipped\n", runner.IconWarn, len(skips))
+	}
+
+	detailed := false
+	for _, r := range oks {
+		if strings.Contains(strings.TrimRight(r.Output, "\n"), "\n") {
+			detailed = true
+			break
+		}
+	}
+
+	for _, r := range oks {
+		if detailed {
+			fmt.Println()
+			green.Printf("  %s  %s\n", runner.IconOK, r.Name)
+			output := strings.TrimRight(r.Output, "\n")
+			if output != "" {
+				for _, line := range strings.Split(output, "\n") {
+					dim.Printf("      %s\n", line)
+				}
+			}
+		} else {
+			runner.PrintResult(r)
+		}
+	}
 }

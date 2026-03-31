@@ -20,10 +20,10 @@ const lineWidth = 80
 
 // Nerd font icons (2-char display width)
 const (
-	iconOK   = "\uf00c" // ✔
-	iconWarn = "\uf071" // ⚠
-	iconFail = "\uf00d" // ✘
-	iconRun  = "\uf013" // ⚙
+	IconOK   = "\uf00c" // ✔
+	IconWarn = "\uf071" // ⚠
+	IconFail = "\uf00d" // ✘
+	IconRun  = "\uf013" // ⚙
 )
 
 // Reusable color printers.
@@ -70,7 +70,7 @@ func FilterRepos(repos []config.Repo, names []string) []config.Repo {
 
 func ExecuteInRepo(repo config.Repo, opts Opts) Result {
 	if opts.DryRun {
-		cCyan.Printf("  %s  %s\n", iconRun, repo.Name)
+		cCyan.Printf("  %s  %s\n", IconRun, repo.Name)
 		return Result{Name: repo.Name, Status: "OK"}
 	}
 
@@ -134,7 +134,7 @@ func PrintResult(r Result) {
 		if line := lastLine(r.Output); line != "" {
 			msg = line
 		}
-		fmt.Println(statusLine(iconOK, r.Name, msg, cGreen))
+		fmt.Println(statusLine(IconOK, r.Name, msg, cGreen))
 	case strings.HasPrefix(r.Status, "SKIP"):
 		reason := "skipped"
 		if line := lastLine(r.Output); line != "" {
@@ -142,13 +142,13 @@ func PrintResult(r Result) {
 		} else if i := strings.Index(r.Status, "("); i >= 0 {
 			reason = r.Status[i+1 : len(r.Status)-1]
 		}
-		fmt.Println(statusLine(iconWarn, r.Name, reason, cYellow))
+		fmt.Println(statusLine(IconWarn, r.Name, reason, cYellow))
 	case strings.HasPrefix(r.Status, "FAIL"):
 		msg := r.Status
 		if line := lastLine(r.Output); line != "" {
 			msg = line
 		}
-		fmt.Println(statusLine(iconFail, r.Name, msg, cRed))
+		fmt.Println(statusLine(IconFail, r.Name, msg, cRed))
 	}
 }
 
@@ -178,13 +178,13 @@ func PrintSummary(results []Result) {
 	fmt.Println()
 	var parts []string
 	if ok > 0 {
-		parts = append(parts, cGreen.Sprintf("%s %d ok", iconOK, ok))
+		parts = append(parts, cGreen.Sprintf("%s %d ok", IconOK, ok))
 	}
 	if skip > 0 {
-		parts = append(parts, cYellow.Sprintf("%s %d skip", iconWarn, skip))
+		parts = append(parts, cYellow.Sprintf("%s %d skip", IconWarn, skip))
 	}
 	if fail > 0 {
-		parts = append(parts, cRed.Sprintf("%s %d fail", iconFail, fail))
+		parts = append(parts, cRed.Sprintf("%s %d fail", IconFail, fail))
 	}
 	sep := cDim.Sprintf("│")
 	fmt.Printf("  %s\n", strings.Join(parts, fmt.Sprintf("  %s  ", sep)))
@@ -203,11 +203,11 @@ func PrintFailures(results []Result) {
 
 	line := strings.Repeat("─", lineWidth)
 	cRed.Printf("\n%s\n", line)
-	cBoldRed.Printf("%sFailures (%d):\n", iconFail, len(failures))
+	cBoldRed.Printf("%sFailures (%d):\n", IconFail, len(failures))
 	cRed.Printf("%s\n", line)
 
 	for _, r := range failures {
-		fmt.Printf("\n%s — %s\n", cRed.Sprintf("%s  %s", iconFail, r.Name), r.Status)
+		fmt.Printf("\n%s — %s\n", cRed.Sprintf("%s  %s", IconFail, r.Name), r.Status)
 		if r.Output != "" {
 			// Indent failure output for readability
 			for _, line := range strings.Split(strings.TrimRight(r.Output, "\n"), "\n") {
