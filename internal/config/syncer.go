@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -44,6 +45,10 @@ func LoadSyncerConfig(path string) (*SyncerConfig, error) {
 			return nil, fmt.Errorf("expanding path for repo %s: %w", cfg.Repos[i].Name, err)
 		}
 	}
+
+	slices.SortFunc(cfg.Repos, func(a, b Repo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	return &cfg, nil
 }
