@@ -1,0 +1,43 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosimple
+    - gocritic
+    - gofumpt
+    - nakedret
+    - misspell
+    - unconvert
+    - wastedassign
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+      - shadow
+  gocritic:
+    enabled-tags:
+      - diagnostic
+    disabled-checks: []
+  gofumpt:
+    extra-rules: false
+  nakedret:
+    max-func-lines: 20
+  misspell:
+    locale: US

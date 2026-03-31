@@ -1,2 +1,19 @@
+# Binaries
+/idp
+*.exe
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Planning (local only)
 .planning/
-.discussion/
