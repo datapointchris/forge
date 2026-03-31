@@ -16,4 +16,4 @@ vendor/
 Thumbs.db
 
 # Planning (local only)
-.planning/
+.planning
