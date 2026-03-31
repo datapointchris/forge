@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/internal/config"
@@ -169,23 +170,27 @@ func runDiesList(cmd *cobra.Command, args []string) error {
 	}
 	sort.Strings(cats)
 
+	boldMagenta := color.New(color.FgHiMagenta, color.Bold)
+	magenta := color.New(color.FgHiMagenta)
+	cyan := color.New(color.FgHiCyan)
+	dim := color.New(color.Faint)
+
 	for _, cat := range cats {
-		fmt.Printf("\n%s\n", cat)
-		fmt.Println(strings.Repeat("─", len(cat)))
+		boldMagenta.Printf("\n%s\n", cat)
+		magenta.Printf("%s\n", strings.Repeat("─", len(cat)))
 		for _, name := range grouped[cat] {
 			die := reg.Dies[name]
 			base := filepath.Base(name)
 
 			desc := die.Description
 			if desc == "" {
-				desc = "(no description)"
+				desc = dim.Sprint("(no description)")
 			}
 
+			fmt.Printf("  %s %s\n", cyan.Sprintf("%-40s", base), desc)
+
 			if s, ok := summaries[name]; ok {
-				fmt.Printf("  %-40s %s\n", base, desc)
-				fmt.Printf("  %-40s runs: %d | last: %s\n", "", s.RunCount, s.LastRun.Format("2006-01-02 15:04"))
-			} else {
-				fmt.Printf("  %-40s %s\n", base, desc)
+				fmt.Printf("  %-40s %s\n", "", dim.Sprintf("runs: %d │ last: %s", s.RunCount, s.LastRun.Format("2006-01-02 15:04")))
 			}
 		}
 	}
@@ -222,8 +227,13 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := runner.Opts{
-		ScriptFile: absScript,
-		DryRun:     diesDryRun,
+		ScriptFile:    absScript,
+		DryRun:        diesDryRun,
+		CaptureOutput: true,
+	}
+
+	if diesDryRun {
+		runner.PrintDryRunHeader()
 	}
 
 	repoResults := make(map[string]string)
@@ -237,7 +247,12 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if diesDryRun {
+		runner.PrintDryRunFooter()
+	}
+
 	runner.PrintSummary(results)
+	runner.PrintFailures(results)
 
 	if !diesDryRun {
 		var ok, skip, fail int
@@ -290,20 +305,26 @@ func runDiesShow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("die not found: %s", diePath)
 	}
 
-	fmt.Printf("\n%s\n", diePath)
-	fmt.Println(strings.Repeat("─", len(diePath)))
+	boldCyan := color.New(color.FgHiCyan, color.Bold)
+	cyan := color.New(color.FgHiCyan)
+	yellow := color.New(color.FgHiYellow)
+	dim := color.New(color.Faint)
+	green := color.New(color.FgHiGreen)
+	red := color.New(color.FgHiRed)
+
+	boldCyan.Printf("\n%s\n", diePath)
+	cyan.Printf("%s\n", strings.Repeat("─", len(diePath)))
 
 	if die.Description != "" {
-		fmt.Printf("  Description: %s\n", die.Description)
+		fmt.Printf("  %s %s\n", yellow.Sprint("Description:"), die.Description)
 	}
 	if len(die.Tags) > 0 {
-		fmt.Printf("  Tags:        %s\n", strings.Join(die.Tags, ", "))
+		fmt.Printf("  %s        %s\n", yellow.Sprint("Tags:"), strings.Join(die.Tags, ", "))
 	}
 	if !die.Registered {
-		fmt.Printf("  Status:      unregistered (add to registry.yml for metadata)\n")
+		fmt.Printf("  %s      %s\n", yellow.Sprint("Status:"), dim.Sprint("unregistered (add to registry.yml for metadata)"))
 	}
 
-	// Show last run if stats exist
 	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
 	if err == nil {
 		records, err := dies.LoadStats(statsPath)
@@ -311,9 +332,13 @@ func runDiesShow(cmd *cobra.Command, args []string) error {
 			filtered := dies.StatsForDie(records, diePath)
 			if len(filtered) > 0 {
 				last := filtered[len(filtered)-1]
-				fmt.Printf("  Last run:    %s (%d ok, %d skip, %d fail)\n",
+				fmt.Printf("  %s    %s (%s, %s, %s)\n",
+					yellow.Sprint("Last run:"),
 					last.Timestamp.Format("2006-01-02 15:04"),
-					last.OK, last.Skip, last.Fail)
+					green.Sprintf("%d ok", last.OK),
+					yellow.Sprintf("%d skip", last.Skip),
+					red.Sprintf("%d fail", last.Fail))
+				fmt.Printf("  %s  %d\n", yellow.Sprint("Total runs:"), len(filtered))
 			}
 		}
 	}
@@ -334,13 +359,16 @@ func runDiesSearch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("\nResults for %q:\n\n", args[0])
+	bold := color.New(color.Bold)
+	cyan := color.New(color.FgHiCyan)
+
+	fmt.Printf("\nResults for %s:\n\n", bold.Sprintf("%q", args[0]))
 	for _, name := range matches {
 		die := reg.Dies[name]
 		if die.Description != "" {
-			fmt.Printf("  %-45s %s\n", name, die.Description)
+			fmt.Printf("  %s %s\n", cyan.Sprintf("%-45s", name), die.Description)
 		} else {
-			fmt.Printf("  %s\n", name)
+			cyan.Printf("  %s\n", name)
 		}
 	}
 	fmt.Println()
@@ -372,14 +400,23 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Printf("\n%-50s %-20s %4s %4s %4s\n", "Die", "Timestamp", "OK", "Skip", "Fail")
-	fmt.Println(strings.Repeat("─", 90))
+	bold := color.New(color.Bold)
+	cyan := color.New(color.FgHiCyan)
+	dim := color.New(color.Faint)
+	green := color.New(color.FgHiGreen)
+	yellow := color.New(color.FgHiYellow)
+	red := color.New(color.FgHiRed)
+
+	bold.Printf("\n%-50s %-20s %4s %4s %4s\n", "Die", "Timestamp", "OK", "Skip", "Fail")
+	dim.Printf("%s\n", strings.Repeat("─", 90))
 
 	for _, r := range records {
-		fmt.Printf("%-50s %-20s %4d %4d %4d\n",
-			r.Die,
-			r.Timestamp.Format("2006-01-02 15:04"),
-			r.OK, r.Skip, r.Fail)
+		fmt.Printf("%s %s %s %s %s\n",
+			cyan.Sprintf("%-50s", r.Die),
+			dim.Sprintf("%-20s", r.Timestamp.Format("2006-01-02 15:04")),
+			green.Sprintf("%4d", r.OK),
+			yellow.Sprintf("%4d", r.Skip),
+			red.Sprintf("%4d", r.Fail))
 	}
 	fmt.Println()
 

@@ -2,3 +2,6 @@ dies:
   maintenance/add-planning-to-gitignore.sh:
     description: "Add .planning/ to .gitignore if not already present, then commit the change. Skips repos where .planning/ is already ignored."
     tags: [gitignore, planning, setup]
+  onetime/remove-empty-discussion.sh:
+    description: "Remove .discussion/ directory if empty, error with contents listing if not. No git changes."
+    tags: [cleanup, discussion]

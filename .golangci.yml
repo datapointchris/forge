@@ -26,6 +26,10 @@ linters-settings:
   errcheck:
     check-type-assertions: false
     check-blank: false
+    exclude-functions:
+      - (*github.com/fatih/color.Color).Printf
+      - (*github.com/fatih/color.Color).Print
+      - (*github.com/fatih/color.Color).Println
   govet:
     enable-all: true
     disable:
