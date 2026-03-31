@@ -6,15 +6,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/idp/internal/config"
+	"github.com/datapointchris/forge/internal/config"
 )
 
 var cfgPath string
 
 var rootCmd = &cobra.Command{
-	Use:   "idp",
+	Use:   "forge",
 	Short: "Run commands across all your git repos",
-	Long:  "idp reads your syncer config and executes commands across all (or a subset of) repos.",
+	Long:  "forge reads your syncer config and executes commands across all (or a subset of) repos.",
 }
 
 func Execute() {

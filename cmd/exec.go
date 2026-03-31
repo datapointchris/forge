@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/idp/internal/config"
+	"github.com/datapointchris/forge/internal/config"
 )
 
 type result struct {
@@ -28,10 +28,10 @@ var execCmd = &cobra.Command{
 	Long: `Execute a command in each repo tracked by syncer.
 
 Inline mode:
-  idp exec -- git status --short
+  forge exec -- git status --short
 
 Script mode:
-  idp exec -f ./my-script.sh`,
+  forge exec -f ./dies/maintenance/my-script.sh`,
 	RunE: runExec,
 }
 
