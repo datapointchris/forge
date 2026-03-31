@@ -1,6 +1,6 @@
 #!/bin/bash
 # Add .planning/ to .gitignore if not already present, then commit.
-# Intended to run via: idp exec -f ./add-planning-to-gitignore.sh
+# Intended to run via: forge exec -f ./add-planning-to-gitignore.sh
 
 pattern=".planning/"
 
