@@ -1,4 +1,7 @@
 dies:
+  checks/pre-commit-config.sh:
+    description: "Check that a .pre-commit-config.yaml (or .yml) exists in the repo."
+    tags: [checks, pre-commit, linting]
   maintenance/add-planning-to-gitignore.sh:
     description: "Add .planning/ to .gitignore if not already present, then commit the change. Skips repos where .planning/ is already ignored."
     tags: [gitignore, planning, setup]
