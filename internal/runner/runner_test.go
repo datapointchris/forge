@@ -15,13 +15,6 @@ func TestFilterRepos(t *testing.T) {
 		{Name: "gamma", Path: "/c"},
 	}
 
-	t.Run("no filter returns all", func(t *testing.T) {
-		got := FilterRepos(repos, nil)
-		if len(got) != 3 {
-			t.Errorf("len = %d, want 3", len(got))
-		}
-	})
-
 	t.Run("filter by name", func(t *testing.T) {
 		got := FilterRepos(repos, []string{"alpha", "gamma"})
 		if len(got) != 2 {

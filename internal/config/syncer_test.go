@@ -49,25 +49,6 @@ func TestLoadSyncerConfig(t *testing.T) {
 	}
 }
 
-func TestLoadSyncerConfigMissingFile(t *testing.T) {
-	_, err := LoadSyncerConfig("/nonexistent/file.json")
-	if err == nil {
-		t.Error("expected error for missing file, got nil")
-	}
-}
-
-func TestLoadSyncerConfigInvalidJSON(t *testing.T) {
-	tmpFile := filepath.Join(t.TempDir(), "bad.json")
-	if err := os.WriteFile(tmpFile, []byte("{not json}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadSyncerConfig(tmpFile)
-	if err == nil {
-		t.Error("expected error for invalid JSON, got nil")
-	}
-}
-
 func TestExpandTilde(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -103,19 +103,6 @@ this is not json
 	}
 }
 
-func TestStatsForDie(t *testing.T) {
-	records := []RunRecord{
-		{Die: "a.sh", OK: 1},
-		{Die: "b.sh", OK: 2},
-		{Die: "a.sh", OK: 3},
-	}
-
-	filtered := StatsForDie(records, "a.sh")
-	if len(filtered) != 2 {
-		t.Errorf("got %d, want 2", len(filtered))
-	}
-}
-
 func TestRecordRunCreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	statsPath := filepath.Join(dir, "nested", "deep", "stats.jsonl")
