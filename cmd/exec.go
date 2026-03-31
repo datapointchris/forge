@@ -3,23 +3,19 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/internal/config"
+	"github.com/datapointchris/forge/internal/runner"
 )
 
-type result struct {
-	Name   string
-	Status string // "OK", "SKIP (reason)", "FAIL (exit N)"
-}
-
 var (
-	filterNames []string
-	dryRun      bool
-	scriptFile  string
+	execFilterNames []string
+	execDryRun      bool
+	scriptFile      string
 )
 
 var execCmd = &cobra.Command{
@@ -36,8 +32,8 @@ Script mode:
 }
 
 func init() {
-	execCmd.Flags().StringSliceVarP(&filterNames, "filter", "F", nil, "comma-separated repo names to include")
-	execCmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "show which repos would be affected without executing")
+	execCmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
+	execCmd.Flags().BoolVarP(&execDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
 	execCmd.Flags().StringVarP(&scriptFile, "file", "f", "", "path to script file to execute in each repo")
 	rootCmd.AddCommand(execCmd)
 }
@@ -58,6 +54,10 @@ func runExec(cmd *cobra.Command, args []string) error {
 		if info.IsDir() {
 			return fmt.Errorf("script file %s is a directory", scriptFile)
 		}
+		scriptFile, err = filepath.Abs(scriptFile)
+		if err != nil {
+			return fmt.Errorf("resolving script path: %w", err)
+		}
 	}
 
 	cfg, err := config.LoadSyncerConfig(cfgPath)
@@ -65,93 +65,26 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	repos := filterRepos(cfg.Repos, filterNames)
+	repos := runner.FilterRepos(cfg.Repos, execFilterNames)
 	if len(repos) == 0 {
-		return fmt.Errorf("no repos matched filter: %s", strings.Join(filterNames, ", "))
+		return fmt.Errorf("no repos matched filter: %s", strings.Join(execFilterNames, ", "))
 	}
 
-	var results []result
+	opts := runner.Opts{
+		ScriptFile: scriptFile,
+		InlineArgs: args,
+		DryRun:     execDryRun,
+	}
+
+	var results []runner.Result
 	for _, repo := range repos {
-		r := executeInRepo(repo, args)
+		r := runner.ExecuteInRepo(repo, opts)
 		results = append(results, r)
-		printResult(r)
+		if !execDryRun {
+			runner.PrintResult(r)
+		}
 	}
 
-	printSummary(results)
+	runner.PrintSummary(results)
 	return nil
-}
-
-func filterRepos(repos []config.Repo, names []string) []config.Repo {
-	if len(names) == 0 {
-		return repos
-	}
-
-	nameSet := make(map[string]bool, len(names))
-	for _, n := range names {
-		nameSet[strings.TrimSpace(n)] = true
-	}
-
-	var filtered []config.Repo
-	for _, r := range repos {
-		if nameSet[r.Name] {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
-}
-
-func executeInRepo(repo config.Repo, inlineArgs []string) result {
-	if dryRun {
-		fmt.Printf("[DRY RUN] Would execute in: %s\n", repo.Path)
-		return result{Name: repo.Name, Status: "OK"}
-	}
-
-	info, err := os.Stat(repo.Path)
-	if err != nil || !info.IsDir() {
-		return result{Name: repo.Name, Status: "SKIP (not found)"}
-	}
-
-	gitDir := repo.Path + "/.git"
-	if _, err := os.Stat(gitDir); err != nil {
-		return result{Name: repo.Name, Status: "SKIP (not a git repo)"}
-	}
-
-	var c *exec.Cmd
-	if scriptFile != "" {
-		c = exec.Command("bash", scriptFile)
-	} else {
-		c = exec.Command(inlineArgs[0], inlineArgs[1:]...)
-	}
-	c.Dir = repo.Path
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-
-	if err := c.Run(); err != nil {
-		exitCode := c.ProcessState.ExitCode()
-		return result{Name: repo.Name, Status: fmt.Sprintf("FAIL (exit %d)", exitCode)}
-	}
-
-	return result{Name: repo.Name, Status: "OK"}
-}
-
-func printResult(r result) {
-	if dryRun {
-		return
-	}
-	fmt.Printf("  %-30s %s\n", "["+r.Name+"]", r.Status)
-}
-
-func printSummary(results []result) {
-	var ok, skip, fail int
-	for _, r := range results {
-		switch {
-		case r.Status == "OK":
-			ok++
-		case strings.HasPrefix(r.Status, "SKIP"):
-			skip++
-		case strings.HasPrefix(r.Status, "FAIL"):
-			fail++
-		}
-	}
-	fmt.Printf("\nSummary: %d ok, %d skip, %d fail\n", ok, skip, fail)
 }

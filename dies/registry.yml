@@ -1,0 +1,4 @@
+dies:
+  maintenance/add-planning-to-gitignore.sh:
+    description: "Add .planning/ to .gitignore if not already present, then commit the change. Skips repos where .planning/ is already ignored."
+    tags: [gitignore, planning, setup]
