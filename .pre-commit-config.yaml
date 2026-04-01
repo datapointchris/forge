@@ -1,7 +1,8 @@
 fail_fast: true
 default_stages: [pre-commit]
 repos:
-  # Conventional commits
+
+# generated:conventional-commits - Conventional commits
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.3.0
     hooks:
@@ -9,7 +10,16 @@ repos:
         stages: [commit-msg]
         args: [--strict]
 
-  # File format and basic checks
+# > custom:before:file-checks - Capture hook outputs
+  - repo: local
+    hooks:
+      - id: devstats-capture
+        name: devstats capture
+        language: system
+        entry: echo "captured"
+        always_run: true
+
+# generated:file-checks - File format and basic checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -34,26 +44,26 @@ repos:
     hooks:
       - id: check-json5
 
-  # Markdown
+# generated:markdown - Markdown
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.47.0
     hooks:
       - id: markdownlint
         args: [--fix]
 
-  # Shell
+# generated:shell - Shell
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.10.0
     hooks:
       - id: shellcheck
 
-  # Spell checking
+# generated:codespell - Spell checking
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
     hooks:
       - id: codespell
 
-  # Go
+# generated:go - Go
   - repo: https://github.com/tekwizely/pre-commit-golang
     rev: v1.0.0-rc.1
     hooks:
@@ -64,19 +74,9 @@ repos:
       - id: go-test-repo-mod
       - id: golangci-lint-repo-mod
 
-  # GitHub Actions
+# generated:github-actions - GitHub Actions
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.7
     hooks:
       - id: actionlint
         args: ["-color", "-shellcheck="]
-
-  # Strip AI branding from commits
-  - repo: local
-    hooks:
-      - id: prepare-commit-msg
-        name: Strip AI branding from commits
-        entry: /home/chris/.claude/hooks/prepare-commit-msg
-        language: system
-        always_run: true
-        stages: [prepare-commit-msg]

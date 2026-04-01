@@ -1,12 +1,13 @@
 #!/bin/bash
 # Synchronize .pre-commit-config.yaml and tool configs from standard templates.
-# Detects the repo's tech stack and composes applicable blocks.
-# Project-specific hooks below "# === PROJECT HOOKS ===" are preserved.
+# Detects the repo's tech stack, composes standard blocks, and preserves
+# project-specific hooks via >>> project:POSITION / <<< project markers.
 
 # Resolve forge repo root relative to this script (lives in dies/maintenance/)
 forge_root="$(cd "$(dirname "$0")/../.." && pwd)"
 blocks_dir="$forge_root/pre-commit/blocks"
 configs_dir="$forge_root/pre-commit/configs"
+scripts_dir="$forge_root/pre-commit/scripts"
 
 if [ ! -d "$blocks_dir" ]; then
   echo "ERROR: blocks directory not found: $blocks_dir"
@@ -14,70 +15,21 @@ if [ ! -d "$blocks_dir" ]; then
 fi
 
 # --- Detect tech stack ---
-has_python=false
-has_go=false
-has_vue=false
-has_docker=false
-has_actions=false
-has_terraform=false
+detected=""
 
-{ [ -f pyproject.toml ] || [ -f setup.py ] || [ -f requirements.txt ] || [ -f Pipfile ]; } && has_python=true
-[ -f go.mod ] && has_go=true
-[ -f frontend/package.json ] && has_vue=true
-{ [ -f Dockerfile ] || compgen -G "docker-compose*.yml" > /dev/null 2>&1; } && has_docker=true
-[ -d .github/workflows ] && has_actions=true
-{ compgen -G "*.tf" > /dev/null 2>&1 || [ -d terraform ]; } && has_terraform=true
+{ [ -f pyproject.toml ] || [ -f setup.py ] || [ -f requirements.txt ] || [ -f Pipfile ]; } && detected="$detected,python"
+[ -f go.mod ] && detected="$detected,go"
+[ -f frontend/package.json ] && detected="$detected,vue"
+{ [ -f Dockerfile ] || compgen -G "docker-compose*.yml" > /dev/null 2>&1; } && detected="$detected,docker"
+[ -d .github/workflows ] && detected="$detected,actions"
+{ compgen -G "*.tf" > /dev/null 2>&1 || [ -d terraform ]; } && detected="$detected,terraform"
 
-# --- Preserve project hooks ---
-project_hooks=""
-if [ -f .pre-commit-config.yaml ]; then
-  project_hooks=$(sed -n '/^# === PROJECT HOOKS ===/,$p' .pre-commit-config.yaml)
-fi
+# Strip leading comma
+detected="${detected#,}"
 
 # --- Generate pre-commit config ---
-config=".pre-commit-config.yaml"
-
-cat > "$config" << 'HEADER'
-fail_fast: true
-default_stages: [pre-commit]
-repos:
-HEADER
-
-for block in "$blocks_dir"/[0-9]*.yml; do
-  name=$(basename "$block" .yml)
-  category="${name#*-}"
-
-  case "$category" in
-    python-*) $has_python || continue ;;
-    go)       $has_go || continue ;;
-    vue)      $has_vue || continue ;;
-    docker)   $has_docker || continue ;;
-    github-actions) $has_actions || continue ;;
-    terraform)      $has_terraform || continue ;;
-  esac
-
-  cat "$block" >> "$config"
-  printf "\n" >> "$config"
-done
-
-hook_path="$HOME/.claude/hooks/prepare-commit-msg"
-if [ -x "$hook_path" ]; then
-  cat >> "$config" << EOF
-  # Strip AI branding from commits
-  - repo: local
-    hooks:
-      - id: prepare-commit-msg
-        name: Strip AI branding from commits
-        entry: $hook_path
-        language: system
-        always_run: true
-        stages: [prepare-commit-msg]
-EOF
-fi
-
-if [ -n "$project_hooks" ]; then
-  printf "\n" >> "$config"
-  echo "$project_hooks" >> "$config"
+if ! python3 "$scripts_dir/generate_config.py" "$blocks_dir" "$detected"; then
+  exit 1
 fi
 
 # --- Deploy tool configs ---
@@ -90,7 +42,7 @@ if [ ! -f .markdownlint.json ] || ! diff -q "$configs_dir/markdownlint.json" .ma
 fi
 
 # Go lint config
-if $has_go; then
+if echo "$detected" | grep -q "go"; then
   if [ ! -f .golangci.yml ] || ! diff -q "$configs_dir/golangci.yml" .golangci.yml > /dev/null 2>&1; then
     cp "$configs_dir/golangci.yml" .golangci.yml
     configs_deployed="$configs_deployed golangci"
@@ -98,13 +50,11 @@ if $has_go; then
 fi
 
 # Vue/Frontend configs
-if $has_vue; then
-  # Prettier — deploy to repo root (applies to frontend/ via pre-commit file patterns)
+if echo "$detected" | grep -q "vue"; then
   if [ ! -f .prettierrc.json ] || ! diff -q "$configs_dir/prettierrc.json" .prettierrc.json > /dev/null 2>&1; then
     cp "$configs_dir/prettierrc.json" .prettierrc.json
     configs_deployed="$configs_deployed prettier"
   fi
-  # Stylelint — deploy to repo root
   if [ ! -f .stylelintrc.json ] || ! diff -q "$configs_dir/stylelintrc.json" .stylelintrc.json > /dev/null 2>&1; then
     cp "$configs_dir/stylelintrc.json" .stylelintrc.json
     configs_deployed="$configs_deployed stylelint"
@@ -112,8 +62,8 @@ if $has_vue; then
 fi
 
 # Python tool configs — merge standard sections into pyproject.toml
-if $has_python && [ -f pyproject.toml ]; then
-  merge_script="$forge_root/pre-commit/scripts/merge-pyproject-tools.py"
+if echo "$detected" | grep -q "python" && [ -f pyproject.toml ]; then
+  merge_script="$scripts_dir/merge_pyproject_tools.py"
   standard_tools="$configs_dir/pyproject-tools.toml"
   if uv run --with tomlkit python "$merge_script" "$standard_tools" pyproject.toml 2>/dev/null; then
     configs_deployed="$configs_deployed pyproject"
@@ -124,18 +74,10 @@ fi
 
 # --- Install hooks ---
 if command -v pre-commit &> /dev/null; then
-  pre-commit install --install-hooks -t pre-commit -t commit-msg -t prepare-commit-msg 2>&1 | tail -1
+  pre-commit install --install-hooks -t pre-commit -t commit-msg 2>&1 | tail -1
 fi
 
 # --- Summary ---
-detected=""
-$has_python && detected="$detected python"
-$has_go && detected="$detected go"
-$has_vue && detected="$detected vue"
-$has_docker && detected="$detected docker"
-$has_actions && detected="$detected actions"
-$has_terraform && detected="$detected terraform"
-[ -n "$project_hooks" ] && detected="$detected +project-hooks"
-[ -n "$configs_deployed" ] && detected="$detected |$configs_deployed"
-
-echo "synced:${detected:- generic-only}"
+summary="synced: ${detected:-generic-only}"
+[ -n "$configs_deployed" ] && summary="$summary |$configs_deployed"
+echo "$summary"
