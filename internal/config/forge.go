@@ -29,13 +29,12 @@ func LoadForgeConfig(path string) (*ForgeConfig, error) {
 		return nil, fmt.Errorf("parsing forge config: %w", err)
 	}
 
-	if cfg.DiesDir == "" {
-		return nil, fmt.Errorf("dies_dir is required in %s", expanded)
-	}
-
-	cfg.DiesDir, err = ExpandTilde(cfg.DiesDir)
-	if err != nil {
-		return nil, fmt.Errorf("expanding dies_dir: %w", err)
+	// dies_dir is optional — when empty, the binary uses embedded dies
+	if cfg.DiesDir != "" {
+		cfg.DiesDir, err = ExpandTilde(cfg.DiesDir)
+		if err != nil {
+			return nil, fmt.Errorf("expanding dies_dir: %w", err)
+		}
 	}
 
 	return &cfg, nil

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -10,6 +11,18 @@ import (
 )
 
 var cfgPath string
+
+// Embedded asset filesystems, set by main before Execute().
+var (
+	embeddedDies      fs.FS
+	embeddedPreCommit fs.FS
+)
+
+// SetEmbeddedAssets stores the embedded filesystems for use by subcommands.
+func SetEmbeddedAssets(dies, preCommit fs.FS) {
+	embeddedDies = dies
+	embeddedPreCommit = preCommit
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "forge",

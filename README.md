@@ -16,15 +16,24 @@ Download the latest binary from [Releases](https://github.com/datapointchris/for
 go install github.com/datapointchris/forge@latest
 ```
 
+### Self-Update
+
+```bash
+forge update
+```
+
+Downloads and installs the latest release binary from GitHub. No Go toolchain required.
+
 ## Configuration
 
 Forge uses two config files:
 
 ### Forge Config
 
-`~/.config/forge/config.yml` — points to the directory containing die scripts.
+`~/.config/forge/config.yml` — optional configuration. Die scripts are embedded in the binary by default.
 
 ```yaml
+# Optional: override embedded dies with a local directory (for development)
 dies_dir: ~/tools/forge/dies
 ```
 
@@ -89,6 +98,23 @@ forge dies show maintenance/add-planning-to-gitignore.sh
 # View execution history
 forge dies stats
 forge dies stats checks/pre-commit-config.sh
+```
+
+### Pre-commit config generation
+
+```bash
+# Generate .pre-commit-config.yaml for the current repo's tech stack
+forge precommit generate --detected python,go
+```
+
+### Version and update
+
+```bash
+# Show version info
+forge version
+
+# Self-update to latest release
+forge update
 ```
 
 ## Writing Dies

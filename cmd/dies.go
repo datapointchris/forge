@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"github.com/datapointchris/forge/internal/assets"
 	"github.com/datapointchris/forge/internal/config"
 	"github.com/datapointchris/forge/internal/dies"
 	"github.com/datapointchris/forge/internal/runner"
@@ -128,11 +130,15 @@ func loadForgeConfig() (*config.ForgeConfig, error) {
 }
 
 func loadDiesRegistry() (*dies.Registry, error) {
-	forgeCfg, err := loadForgeConfig()
-	if err != nil {
-		return nil, err
+	forgeCfg, _ := loadForgeConfig()
+	if forgeCfg != nil && forgeCfg.DiesDir != "" {
+		return dies.LoadRegistry(os.DirFS(forgeCfg.DiesDir))
 	}
-	return dies.LoadRegistry(forgeCfg.DiesDir)
+	diesFS, err := fs.Sub(embeddedDies, "dies")
+	if err != nil {
+		return nil, fmt.Errorf("accessing embedded dies: %w", err)
+	}
+	return dies.LoadRegistry(diesFS)
 }
 
 func runDiesList(cmd *cobra.Command, args []string) error {
@@ -200,21 +206,14 @@ func runDiesList(cmd *cobra.Command, args []string) error {
 }
 
 func runDiesRun(cmd *cobra.Command, args []string) error {
-	forgeCfg, err := loadForgeConfig()
-	if err != nil {
-		return err
-	}
-
-	reg, err := dies.LoadRegistry(forgeCfg.DiesDir)
-	if err != nil {
-		return err
-	}
-
 	diePath := args[0]
-	absScript, err := reg.Resolve(forgeCfg.DiesDir, diePath)
+
+	// Resolve die source: filesystem (dies_dir configured) or embedded
+	scriptPath, env, cleanup, err := resolveDie(diePath)
 	if err != nil {
 		return err
 	}
+	defer cleanup()
 
 	syncerCfg, err := config.LoadSyncerConfig(cfgPath)
 	if err != nil {
@@ -227,7 +226,8 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := runner.Opts{
-		ScriptFile:    absScript,
+		ScriptFile:    scriptPath,
+		Env:           env,
 		DryRun:        diesDryRun,
 		CaptureOutput: true,
 	}
@@ -289,13 +289,59 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runDiesShow(cmd *cobra.Command, args []string) error {
-	forgeCfg, err := loadForgeConfig()
-	if err != nil {
-		return err
+// resolveDie returns the script path, env vars, and cleanup function for a die.
+// When dies_dir is configured, it uses the filesystem directly.
+// Otherwise, it extracts from embedded assets.
+func resolveDie(diePath string) (scriptPath string, env []string, cleanup func(), err error) {
+	noop := func() {}
+
+	forgeCfg, _ := loadForgeConfig()
+	if forgeCfg != nil && forgeCfg.DiesDir != "" {
+		// Filesystem mode: use dies_dir from config
+		reg, err := dies.LoadRegistry(os.DirFS(forgeCfg.DiesDir))
+		if err != nil {
+			return "", nil, noop, err
+		}
+		absScript, err := reg.Resolve(forgeCfg.DiesDir, diePath)
+		if err != nil {
+			return "", nil, noop, err
+		}
+		return absScript, nil, noop, nil
 	}
 
-	reg, err := dies.LoadRegistry(forgeCfg.DiesDir)
+	// Embedded mode: extract to temp files
+	diesFS, err := fs.Sub(embeddedDies, "dies")
+	if err != nil {
+		return "", nil, noop, fmt.Errorf("accessing embedded dies: %w", err)
+	}
+
+	reg, err := dies.LoadRegistry(diesFS)
+	if err != nil {
+		return "", nil, noop, err
+	}
+	if _, ok := reg.Dies[diePath]; !ok {
+		return "", nil, noop, fmt.Errorf("die not found: %s", diePath)
+	}
+
+	mgr := assets.NewManager(embeddedDies, embeddedPreCommit)
+
+	script, err := mgr.ExtractScript(diePath)
+	if err != nil {
+		mgr.Cleanup()
+		return "", nil, noop, err
+	}
+
+	dataDir, err := mgr.DataDir()
+	if err != nil {
+		mgr.Cleanup()
+		return "", nil, noop, err
+	}
+
+	return script, []string{"FORGE_DATA_DIR=" + dataDir}, mgr.Cleanup, nil
+}
+
+func runDiesShow(cmd *cobra.Command, args []string) error {
+	reg, err := loadDiesRegistry()
 	if err != nil {
 		return err
 	}

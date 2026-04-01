@@ -28,7 +28,7 @@ func TestLoadForgeConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("missing dies_dir", func(t *testing.T) {
+	t.Run("empty dies_dir uses embedded", func(t *testing.T) {
 		dir := t.TempDir()
 		cfgPath := filepath.Join(dir, "config.yml")
 
@@ -36,9 +36,12 @@ func TestLoadForgeConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err := LoadForgeConfig(cfgPath)
-		if err == nil {
-			t.Fatal("expected error for missing dies_dir")
+		cfg, err := LoadForgeConfig(cfgPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.DiesDir != "" {
+			t.Errorf("DiesDir = %q, want empty", cfg.DiesDir)
 		}
 	})
 }

@@ -5,6 +5,11 @@ builds:
     binary: forge
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/datapointchris/forge/cmd.version={{.Version}}
+      - -X github.com/datapointchris/forge/cmd.commit={{.ShortCommit}}
+      - -X github.com/datapointchris/forge/cmd.date={{.Date}}
     goos:
       - linux
       - darwin

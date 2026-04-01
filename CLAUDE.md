@@ -19,22 +19,34 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 
 ## Architecture
 
-**CLI layer** (`cmd/`) uses Cobra. Two top-level commands:
+**CLI layer** (`cmd/`) uses Cobra. Top-level commands:
 
 - `exec` — run an inline command or script file across repos
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`
+- `precommit generate` — generate `.pre-commit-config.yaml` from standard blocks (Go implementation)
+- `version` — print version, commit, and build date (set via ldflags)
+- `update` — self-update from GitHub releases (downloads pre-built binary, atomic swap)
+
+**Embedded assets** — dies, pre-commit blocks, configs, and scripts are embedded into the binary via `//go:embed` in `embed.go` at the repo root. The binary is self-contained — no repo clone needed.
+
+**Dual-mode operation:**
+
+- **Embedded mode** (default): binary uses embedded assets. Die scripts are extracted to temp files for execution. `FORGE_DATA_DIR` env var points to extracted pre-commit assets.
+- **Filesystem mode** (development): when `dies_dir` is set in forge config, dies and assets are read from disk. Scripts reference assets via `dirname $0` resolution.
 
 **Internal packages** (`internal/`):
 
 - `config` — loads two config files:
-  - **Forge config** (`~/.config/forge/config.yml`, YAML): points to the `dies_dir` where die scripts live
+  - **Forge config** (`~/.config/forge/config.yml`, YAML): optional `dies_dir` (empty = use embedded assets)
   - **Syncer config** (`~/.config/syncer/datapointchris.json`, JSON): defines the list of repos (`name` + `path` pairs)
   - The `-c` persistent flag overrides the syncer config path only
-- `dies` — registry (filesystem scan of dies_dir, merged with optional `registry.yml` metadata) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`)
-- `runner` — executes commands in each repo directory, handles output capture, colored results, and filtering
+- `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`)
+- `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection
+- `assets` — extracts embedded assets to temp directories for shell execution, manages cleanup
+- `precommit` — Go implementation of config generation (block composition, custom section preservation, hook deduplication, safety checks)
 
-**Data flow for `dies run`:** load forge config → find dies_dir → load registry → validate die exists → load syncer config → get repos → filter by `-F` flag → execute script in each repo via bash → print colored results → append stats record.
+**Data flow for `dies run`:** determine asset source (embedded or filesystem) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load syncer config → get repos → filter by `-F` flag → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
 
 ## Die Scripts
 
@@ -74,10 +86,12 @@ Forge includes a composable system for generating standardized `.pre-commit-conf
 - `stylelintrc.json` — Vue repos
 - `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, pyright, codespell, pytest)
 
-**`pre-commit/scripts/`** — Python helper scripts:
+**Config generation** — now a Go function in `internal/precommit/generate.go`, invoked via `forge precommit generate --detected <stack>`. The `sync-pre-commit.sh` die calls this instead of the Python script. Handles block composition, custom section preservation, hook deduplication, and safety checks.
 
-- `generate_config.py` — generates .pre-commit-config.yaml from blocks, preserves custom markers, deduplicates overlapping hooks
-- `merge_pyproject_tools.py` — merges standard tool sections into pyproject.toml using tomlkit (replace sections like pyright/ruff, merge sections like codespell/pytest)
+**`pre-commit/scripts/`** — Python helper scripts (embedded in binary):
+
+- `generate_config.py` — legacy Python generator (replaced by Go implementation, kept as reference)
+- `merge_pyproject_tools.py` — merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing)
 
 **Custom hook markers** — repos with project-specific hooks use these markers in their `.pre-commit-config.yaml`:
 
@@ -97,21 +111,26 @@ The generator preserves these across re-runs. A safety check aborts if unrecogni
 
 - `internal/config/` — forge and syncer config loading
 - `internal/dies/` — registry and stats, plus integration tests for sync-pre-commit die (9 tests covering tech detection, dedup, custom preservation, safety, config deployment)
+- `internal/precommit/` — config generator: 9 unit tests (using `fstest.MapFS`) + 7 integration tests against real blocks
 - `internal/runner/` — repo filtering, execution
+
+**Note:** The sync-pre-commit integration tests (`internal/dies/sync_precommit_test.go`) require the `forge` binary on PATH since the die script calls `forge precommit generate`. Run `go install .` before `go test ./...`.
 
 **Python tests** (`pre-commit/scripts/run_tests.sh`):
 
-- `test_generate_config.py` — 8 unit tests for the generator
+- `test_generate_config.py` — 8 unit tests for the legacy Python generator
 - `test_merge_pyproject_tools.py` — 5 unit tests for pyproject merge
-- `test_integration.py` — 10 integration tests running the generator end-to-end
+- `test_integration.py` — 10 integration tests for the legacy Python generator
 
 Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 
 ## Build and Release
 
-- `.goreleaser.yaml` — goreleaser config for cross-platform binary releases
+- `.goreleaser.yaml` — goreleaser config with ldflags injecting version/commit/date into the binary
 - `.github/workflows/release.yml` — GitHub Actions release workflow triggered by version tags
 - Installed via `go install github.com/datapointchris/forge@latest` or dotfiles `go-tools.sh`
+- `forge update` — self-updates by downloading the latest release binary from GitHub (no Go toolchain needed)
+- `forge version` — shows version, commit SHA, and build date (`dev` when built without ldflags)
 
 ## Key Patterns
 
@@ -121,6 +140,6 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 - `ExpandTilde()` supports `~` and `~/path` only, not `~user/path`
 - Stats are JSONL (one JSON object per line), malformed lines silently skipped for crash resilience
 
-## Known Issue
+## Embedded Assets
 
-The binary installed via `go install` depends on the repo clone at `~/tools/forge/` for die scripts, blocks, and Python scripts. Plan in `.planning/embed-and-self-update.md` to fix with `go:embed` and a `forge update` command.
+All die scripts, pre-commit blocks, configs, and Python scripts are embedded into the binary via `//go:embed` directives in `embed.go`. The `dies_dir` config field is optional — when empty, the binary uses embedded assets. Set `dies_dir` in `~/.config/forge/config.yml` to use filesystem assets during development.

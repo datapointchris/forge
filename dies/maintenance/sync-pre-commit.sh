@@ -3,11 +3,17 @@
 # Detects the repo's tech stack, composes standard blocks, and preserves
 # project-specific hooks via >>> project:POSITION / <<< project markers.
 
-# Resolve forge repo root relative to this script (lives in dies/maintenance/)
-forge_root="$(cd "$(dirname "$0")/../.." && pwd)"
-blocks_dir="$forge_root/pre-commit/blocks"
-configs_dir="$forge_root/pre-commit/configs"
-scripts_dir="$forge_root/pre-commit/scripts"
+# Resolve asset directories: FORGE_DATA_DIR (embedded binary) or script-relative (dev)
+if [ -n "${FORGE_DATA_DIR:-}" ]; then
+  blocks_dir="$FORGE_DATA_DIR/pre-commit/blocks"
+  configs_dir="$FORGE_DATA_DIR/pre-commit/configs"
+  scripts_dir="$FORGE_DATA_DIR/pre-commit/scripts"
+else
+  forge_root="$(cd "$(dirname "$0")/../.." && pwd)"
+  blocks_dir="$forge_root/pre-commit/blocks"
+  configs_dir="$forge_root/pre-commit/configs"
+  scripts_dir="$forge_root/pre-commit/scripts"
+fi
 
 if [ ! -d "$blocks_dir" ]; then
   echo "ERROR: blocks directory not found: $blocks_dir"
@@ -28,7 +34,7 @@ detected=""
 detected="${detected#,}"
 
 # --- Generate pre-commit config ---
-gen_output=$(python3 "$scripts_dir/generate_config.py" "$blocks_dir" "$detected")
+gen_output=$(forge precommit generate --detected "$detected" 2>&1)
 gen_rc=$?
 if [ $gen_rc -ne 0 ]; then
   echo "$gen_output"

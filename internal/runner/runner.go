@@ -45,6 +45,7 @@ type Result struct {
 type Opts struct {
 	ScriptFile    string   // absolute path to script (empty for inline mode)
 	InlineArgs    []string // command + args (empty for script mode)
+	Env           []string // additional env vars (e.g., "FORGE_DATA_DIR=/tmp/forge-xxx")
 	DryRun        bool
 	CaptureOutput bool // tee stdout/stderr to buffer for failure replay
 }
@@ -91,6 +92,9 @@ func ExecuteInRepo(repo config.Repo, opts Opts) Result {
 		c = exec.Command(opts.InlineArgs[0], opts.InlineArgs[1:]...)
 	}
 	c.Dir = repo.Path
+	if len(opts.Env) > 0 {
+		c.Env = append(os.Environ(), opts.Env...)
+	}
 
 	var buf bytes.Buffer
 	if opts.CaptureOutput {

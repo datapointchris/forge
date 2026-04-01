@@ -33,7 +33,7 @@ func TestLoadRegistry(t *testing.T) {
 	t.Run("scans filesystem", func(t *testing.T) {
 		dir := setupTestDies(t)
 
-		reg, err := LoadRegistry(dir)
+		reg, err := LoadRegistry(os.DirFS(dir))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -57,7 +57,7 @@ func TestLoadRegistry(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		reg, err := LoadRegistry(dir)
+		reg, err := LoadRegistry(os.DirFS(dir))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -79,7 +79,7 @@ func TestLoadRegistry(t *testing.T) {
 	t.Run("no registry file is ok", func(t *testing.T) {
 		dir := setupTestDies(t)
 
-		reg, err := LoadRegistry(dir)
+		reg, err := LoadRegistry(os.DirFS(dir))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -94,7 +94,7 @@ func TestLoadRegistry(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		reg, err := LoadRegistry(dir)
+		reg, err := LoadRegistry(os.DirFS(dir))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -109,7 +109,7 @@ func TestLoadRegistry(t *testing.T) {
 
 func TestResolve(t *testing.T) {
 	dir := setupTestDies(t)
-	reg, _ := LoadRegistry(dir)
+	reg, _ := LoadRegistry(os.DirFS(dir))
 
 	t.Run("valid die", func(t *testing.T) {
 		got, err := reg.Resolve(dir, "maintenance/fix.sh")
@@ -132,7 +132,7 @@ func TestResolve(t *testing.T) {
 
 func TestCategories(t *testing.T) {
 	dir := setupTestDies(t)
-	reg, _ := LoadRegistry(dir)
+	reg, _ := LoadRegistry(os.DirFS(dir))
 
 	cats := reg.Categories()
 	if len(cats) != 2 {
@@ -145,7 +145,7 @@ func TestCategories(t *testing.T) {
 
 func TestByCategory(t *testing.T) {
 	dir := setupTestDies(t)
-	reg, _ := LoadRegistry(dir)
+	reg, _ := LoadRegistry(os.DirFS(dir))
 
 	t.Run("all categories", func(t *testing.T) {
 		grouped := reg.ByCategory("")
@@ -175,7 +175,7 @@ func TestSearch(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "registry.yml"), []byte(registry), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	reg, _ := LoadRegistry(dir)
+	reg, _ := LoadRegistry(os.DirFS(dir))
 
 	t.Run("match by name", func(t *testing.T) {
 		matches := reg.Search("lint")

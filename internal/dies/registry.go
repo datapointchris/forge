@@ -1,8 +1,9 @@
 package dies
 
 import (
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,23 +25,24 @@ type Registry struct {
 	Dies map[string]Die // key is relative path within dies_dir (e.g. "maintenance/fix.sh")
 }
 
-func LoadRegistry(diesDir string) (*Registry, error) {
+// LoadRegistry scans an fs.FS for die scripts and merges optional registry.yml metadata.
+// Use os.DirFS(path) for filesystem directories or an embedded fs.FS.
+func LoadRegistry(fsys fs.FS) (*Registry, error) {
 	reg := &Registry{Dies: make(map[string]Die)}
 
-	if err := reg.scan(diesDir); err != nil {
+	if err := reg.scan(fsys); err != nil {
 		return nil, fmt.Errorf("scanning dies directory: %w", err)
 	}
 
-	registryPath := filepath.Join(diesDir, "registry.yml")
-	if err := reg.mergeMetadata(registryPath); err != nil {
+	if err := reg.mergeMetadata(fsys); err != nil {
 		return nil, err
 	}
 
 	return reg, nil
 }
 
-func (r *Registry) scan(diesDir string) error {
-	return filepath.WalkDir(diesDir, func(path string, d os.DirEntry, err error) error {
+func (r *Registry) scan(fsys fs.FS) error {
+	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -53,23 +55,19 @@ func (r *Registry) scan(diesDir string) error {
 			return nil
 		}
 
-		rel, err := filepath.Rel(diesDir, path)
-		if err != nil {
-			return err
-		}
-
-		r.Dies[rel] = Die{}
+		// fs.WalkDir with root "." produces paths like "maintenance/fix.sh"
+		r.Dies[path] = Die{}
 		return nil
 	})
 }
 
-func (r *Registry) mergeMetadata(registryPath string) error {
-	data, err := os.ReadFile(registryPath)
-	if os.IsNotExist(err) {
+func (r *Registry) mergeMetadata(fsys fs.FS) error {
+	data, err := fs.ReadFile(fsys, "registry.yml")
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("reading registry %s: %w", registryPath, err)
+		return fmt.Errorf("reading registry: %w", err)
 	}
 
 	var rf registryFile
@@ -90,6 +88,8 @@ func (r *Registry) mergeMetadata(registryPath string) error {
 	return nil
 }
 
+// Resolve validates the die exists and returns its absolute path within diesDir.
+// For embedded mode, use the assets.Manager to extract instead.
 func (r *Registry) Resolve(diesDir, diePath string) (string, error) {
 	if _, ok := r.Dies[diePath]; !ok {
 		return "", fmt.Errorf("die not found: %s", diePath)

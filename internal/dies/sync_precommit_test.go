@@ -53,7 +53,10 @@ func runSyncDie(t *testing.T, repoDir string) string {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("sync die failed: %s\n%s", err, out)
+		// Exit 2 = SKIP (nothing to do) — valid for idempotent reruns
+		if cmd.ProcessState.ExitCode() != 2 {
+			t.Fatalf("sync die failed: %s\n%s", err, out)
+		}
 	}
 
 	content, err := os.ReadFile(filepath.Join(repoDir, ".pre-commit-config.yaml"))
