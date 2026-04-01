@@ -54,7 +54,7 @@ def test_merges_non_replace_sections():
     codespell = target['codespell']
     assert codespell['check-filenames'] is True
     assert codespell['skip'] == '*.css.map'
-    assert codespell['ignore-words-list'] == 'astroid'
+    assert codespell['ignore-words-list'] == 'colour'
 
 
 def test_preserves_unrelated_sections():

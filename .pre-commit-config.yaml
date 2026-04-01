@@ -65,6 +65,16 @@ repos:
       - id: go-test-repo-mod
       - id: golangci-lint-repo-mod
 
+# > custom:after:go - Pre-commit script tests
+  - repo: local
+    hooks:
+      - id: pre-commit-script-tests
+        name: pre-commit script tests
+        entry: pre-commit/scripts/run_tests.sh
+        language: system
+        pass_filenames: false
+        files: ^pre-commit/
+
 # generated:github-actions - GitHub Actions
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.7
