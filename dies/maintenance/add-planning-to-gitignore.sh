@@ -7,6 +7,8 @@ if grep -qxF "$pattern" .gitignore 2>/dev/null; then
   exit 2
 fi
 
+# Ensure trailing newline before appending so the entry lands on its own line
+sed -i -e '$a\' .gitignore 2>/dev/null
 echo "$pattern" >>.gitignore
 git add .gitignore
 git commit -m "chore: add .planning to gitignore"
