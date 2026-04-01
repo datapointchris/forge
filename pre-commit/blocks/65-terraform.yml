@@ -1,0 +1,11 @@
+  # Terraform
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.99.5
+    hooks:
+      - id: terraform_validate
+      - id: terraform_tflint
+      - id: terraform_fmt
+      - id: terraform_docs
+        args:
+          - --args=--anchor=false
+          - --args=--html=false

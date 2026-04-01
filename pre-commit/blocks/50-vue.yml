@@ -1,0 +1,23 @@
+  # Vue/Frontend
+  - repo: local
+    hooks:
+      - id: vue-eslint
+        name: eslint (vue)
+        entry: bash -c 'cd frontend && npm run lint:fix'
+        language: system
+        pass_filenames: false
+        files: '^frontend/.*\.(vue|js|ts|jsx|tsx)$'
+
+      - id: vue-prettier
+        name: prettier (vue)
+        entry: bash -c 'cd frontend && npm run format'
+        language: system
+        pass_filenames: false
+        files: '^frontend/.*\.(vue|js|ts|jsx|tsx|css|scss|json|md)$'
+
+      - id: vue-typecheck
+        name: typecheck (vue)
+        entry: bash -c 'cd frontend && npm run typecheck'
+        language: system
+        pass_filenames: false
+        files: '^frontend/.*\.(vue|ts|tsx)$'

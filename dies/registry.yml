@@ -2,12 +2,30 @@ dies:
   checks/pre-commit-config.sh:
     description: "Check that a .pre-commit-config.yaml (or .yml) exists in the repo."
     tags: [checks, pre-commit, linting]
-  maintenance/add-planning-to-gitignore.sh:
-    description: "Add .planning/ to .gitignore if not already present, then commit the change. Skips repos where .planning/ is already ignored."
-    tags: [gitignore, planning, setup]
+  checks/has-pre-commit.sh:
+    description: "Check that repo has a .pre-commit-config.yaml and report hook count."
+    tags: [checks, pre-commit, scorecard]
+  checks/has-claude-md.sh:
+    description: "Check that repo has a CLAUDE.md and report its size."
+    tags: [checks, claude, scorecard]
+  checks/has-clean-gitignore.sh:
+    description: "Check that .gitignore exists, is not generated bloat, has .planning entry, no duplicates."
+    tags: [checks, gitignore, scorecard]
+  checks/has-planning-dir.sh:
+    description: "Check that repo has a .planning/ directory and report file count."
+    tags: [checks, planning, scorecard]
   checks/planning-docs.sh:
     description: "List document names in .planning/ for each repo. Skips repos without a .planning directory or with an empty one."
     tags: [checks, planning, docs]
+  maintenance/add-planning-to-gitignore.sh:
+    description: "Add .planning to .gitignore if not already present, then commit the change."
+    tags: [gitignore, planning, setup]
+  maintenance/sync-pre-commit.sh:
+    description: "Sync .pre-commit-config.yaml from standard blocks based on detected tech stack. Preserves project hooks."
+    tags: [pre-commit, standardization, golden-path]
+  maintenance/pre-commit-update.sh:
+    description: "Run pre-commit autoupdate and show what versions changed."
+    tags: [pre-commit, dependencies, maintenance]
   onetime/remove-empty-discussion.sh:
     description: "Remove .discussion/ directory if empty, error with contents listing if not. No git changes."
     tags: [cleanup, discussion]

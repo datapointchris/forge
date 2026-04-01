@@ -1,0 +1,13 @@
+  # Python: linting (ruff replaces bandit, pyupgrade, refurb)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.5
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+
+  # Python: type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.17.0
+    hooks:
+      - id: mypy
+        args: [--install-types, --non-interactive]

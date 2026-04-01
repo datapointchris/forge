@@ -1,5 +1,7 @@
+fail_fast: true
+default_stages: [pre-commit]
 repos:
-  # Conventional commits enforcement
+  # Conventional commits
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.3.0
     hooks:
@@ -7,63 +9,74 @@ repos:
         stages: [commit-msg]
         args: [--strict]
 
-  # Standard pre-commit hooks
+  # File format and basic checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: check-yaml
-        stages: [pre-commit]
       - id: check-toml
-        stages: [pre-commit]
+      - id: check-json
       - id: end-of-file-fixer
-        stages: [pre-commit]
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
-        stages: [pre-commit]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
       - id: check-added-large-files
         args: ['--maxkb=1000']
-        stages: [pre-commit]
       - id: check-merge-conflict
-        stages: [pre-commit]
       - id: mixed-line-ending
         args: ['--fix=lf']
-        stages: [pre-commit]
       - id: check-case-conflict
-        stages: [pre-commit]
       - id: detect-private-key
-        stages: [pre-commit]
 
+  - repo: https://gitlab.com/bmares/check-json5
+    rev: v1.0.0
+    hooks:
+      - id: check-json5
+
+  # Markdown
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.47.0
     hooks:
       - id: markdownlint
         args: [--fix]
-        stages: [pre-commit]
 
-  # Go hooks
+  # Shell
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+
+  # Spell checking
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+
+  # Go
   - repo: https://github.com/tekwizely/pre-commit-golang
     rev: v1.0.0-rc.1
     hooks:
       - id: go-fumpt-repo
-        stages: [pre-commit]
       - id: go-vet-repo-mod
-        stages: [pre-commit]
       - id: go-build-repo-mod
-        stages: [pre-commit]
       - id: go-mod-tidy-repo
-        stages: [pre-commit]
       - id: go-test-repo-mod
-        stages: [pre-commit]
       - id: golangci-lint-repo-mod
-        stages: [pre-commit]
 
-  # Local hooks
+  # GitHub Actions
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+        args: ["-color", "-shellcheck="]
+
+  # Strip AI branding from commits
   - repo: local
     hooks:
-      # Strip Claude Code branding from commit messages
       - id: prepare-commit-msg
         name: Strip AI branding from commits
-        entry: /Users/chris/.claude/hooks/prepare-commit-msg
+        entry: /home/chris/.claude/hooks/prepare-commit-msg
         language: system
         always_run: true
         stages: [prepare-commit-msg]
