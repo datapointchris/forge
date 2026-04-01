@@ -10,15 +10,6 @@ repos:
         stages: [commit-msg]
         args: [--strict]
 
-# > custom:before:file-checks - Capture hook outputs
-  - repo: local
-    hooks:
-      - id: devstats-capture
-        name: devstats capture
-        language: system
-        entry: echo "captured"
-        always_run: true
-
 # generated:file-checks - File format and basic checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
