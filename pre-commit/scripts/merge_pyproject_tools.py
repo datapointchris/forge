@@ -68,9 +68,16 @@ def main():
 
     deep_merge(standard['tool'], target['tool'])
 
-    with open(target_path, 'w') as f:
-        f.write(tomlkit.dumps(target))
+    new_content = tomlkit.dumps(target)
 
+    with open(target_path) as f:
+        if f.read() == new_content:
+            return 0
+
+    with open(target_path, 'w') as f:
+        f.write(new_content)
+
+    print('updated')
     return 0
 
 

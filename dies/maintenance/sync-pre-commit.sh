@@ -28,7 +28,10 @@ detected=""
 detected="${detected#,}"
 
 # --- Generate pre-commit config ---
-if ! python3 "$scripts_dir/generate_config.py" "$blocks_dir" "$detected"; then
+gen_output=$(python3 "$scripts_dir/generate_config.py" "$blocks_dir" "$detected")
+gen_rc=$?
+if [ $gen_rc -ne 0 ]; then
+  echo "$gen_output"
   exit 1
 fi
 
@@ -65,8 +68,8 @@ fi
 if echo "$detected" | grep -q "python" && [ -f pyproject.toml ]; then
   merge_script="$scripts_dir/merge_pyproject_tools.py"
   standard_tools="$configs_dir/pyproject-tools.toml"
-  if uv run --with tomlkit python "$merge_script" "$standard_tools" pyproject.toml 2>/dev/null; then
-    configs_deployed="$configs_deployed pyproject"
+  if merge_out=$(uv run --with tomlkit python "$merge_script" "$standard_tools" pyproject.toml 2>/dev/null); then
+    [ "$merge_out" = "updated" ] && configs_deployed="$configs_deployed pyproject"
   else
     configs_deployed="$configs_deployed WARN:pyproject-merge-failed"
   fi
@@ -78,6 +81,11 @@ if command -v pre-commit &> /dev/null; then
 fi
 
 # --- Summary ---
+if [ "$gen_output" = "no changes" ] && [ -z "$configs_deployed" ]; then
+  echo "no changes"
+  exit 2
+fi
+
 summary="synced: ${detected:-generic-only}"
 [ -n "$configs_deployed" ] && summary="$summary |$configs_deployed"
 echo "$summary"

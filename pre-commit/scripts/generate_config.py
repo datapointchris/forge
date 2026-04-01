@@ -237,6 +237,12 @@ def main() -> int:
             return 1
 
     config = generate_config(blocks_dir, detected, custom_sections)
+
+    # Skip write if nothing changed
+    if config_path.exists() and config_path.read_text() == config:
+        print('no changes')
+        return 0
+
     config_path.write_text(config)
 
     custom_count = len(custom_sections)
