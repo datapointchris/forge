@@ -97,13 +97,14 @@ if $has_go; then
   fi
 fi
 
-# Python tool configs — report status, don't auto-merge pyproject.toml
+# Python tool configs — merge standard sections into pyproject.toml
 if $has_python && [ -f pyproject.toml ]; then
-  if ! grep -q '\[tool\.ruff\]' pyproject.toml 2>/dev/null; then
-    configs_deployed="$configs_deployed WARN:missing-ruff-config"
-  fi
-  if ! grep -q '\[tool\.mypy\]' pyproject.toml 2>/dev/null; then
-    configs_deployed="$configs_deployed WARN:missing-mypy-config"
+  merge_script="$forge_root/pre-commit/scripts/merge-pyproject-tools.py"
+  standard_tools="$configs_dir/pyproject-tools.toml"
+  if uv run --with tomlkit python "$merge_script" "$standard_tools" pyproject.toml 2>/dev/null; then
+    configs_deployed="$configs_deployed pyproject"
+  else
+    configs_deployed="$configs_deployed WARN:pyproject-merge-failed"
   fi
 fi
 
