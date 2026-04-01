@@ -97,6 +97,20 @@ if $has_go; then
   fi
 fi
 
+# Vue/Frontend configs
+if $has_vue; then
+  # Prettier — deploy to repo root (applies to frontend/ via pre-commit file patterns)
+  if [ ! -f .prettierrc.json ] || ! diff -q "$configs_dir/prettierrc.json" .prettierrc.json > /dev/null 2>&1; then
+    cp "$configs_dir/prettierrc.json" .prettierrc.json
+    configs_deployed="$configs_deployed prettier"
+  fi
+  # Stylelint — deploy to repo root
+  if [ ! -f .stylelintrc.json ] || ! diff -q "$configs_dir/stylelintrc.json" .stylelintrc.json > /dev/null 2>&1; then
+    cp "$configs_dir/stylelintrc.json" .stylelintrc.json
+    configs_deployed="$configs_deployed stylelint"
+  fi
+fi
+
 # Python tool configs — merge standard sections into pyproject.toml
 if $has_python && [ -f pyproject.toml ]; then
   merge_script="$forge_root/pre-commit/scripts/merge-pyproject-tools.py"

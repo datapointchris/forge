@@ -10,10 +10,15 @@
 
       - id: vue-prettier
         name: prettier (vue)
-        entry: bash -c 'cd frontend && npm run format'
+        entry: bash -c 'cd frontend && npx prettier --write'
         language: system
-        pass_filenames: false
-        files: '^frontend/.*\.(vue|js|ts|jsx|tsx|css|scss|json|md)$'
+        files: '^frontend/.*\.(vue|js|ts|jsx|tsx|css|scss|json)$'
+
+      - id: vue-stylelint
+        name: stylelint (scss)
+        entry: bash -c 'cd frontend && npx stylelint --fix'
+        language: system
+        files: '^frontend/.*\.(vue|css|scss)$'
 
       - id: vue-typecheck
         name: typecheck (vue)
