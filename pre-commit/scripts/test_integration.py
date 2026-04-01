@@ -192,6 +192,62 @@ def test_safety_aborts_on_unknown_hooks():
         assert 'my-custom-thing' in result.stdout
 
 
+def test_custom_between_blocks_valid_yaml():
+    """Custom hook between two standard blocks produces valid YAML with all hooks intact."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+
+        (tmp / '.pre-commit-config.yaml').write_text(
+            '# > custom:after:go - Script tests\n'
+            '  - repo: local\n'
+            '    hooks:\n'
+            '      - id: my-test-runner\n'
+            '        name: test runner\n'
+            '        entry: ./run_tests.sh\n'
+            '        language: system\n'
+            '        pass_filenames: false\n'
+        )
+
+        config = run_generator(tmp, 'go,actions')
+
+        # Custom hook is present
+        hooks = get_hook_ids(config)
+        assert 'my-test-runner' in hooks
+
+        # Standard blocks on both sides are intact
+        assert 'go-fumpt-repo' in hooks
+        assert 'actionlint' in hooks
+
+        # Custom is between go and github-actions
+        assert hooks.index('golangci-lint-repo-mod') < hooks.index('my-test-runner')
+        assert hooks.index('my-test-runner') < hooks.index('actionlint')
+
+        # Valid YAML
+        result = subprocess.run(
+            ['yq', '.', str(tmp / '.pre-commit-config.yaml')],
+            capture_output=True,
+        )
+        assert result.returncode == 0, 'Generated config is not valid YAML'
+
+        # Roundtrip stable
+        config2 = run_generator(tmp, 'go,actions')
+        assert config == config2
+
+
+def test_generated_config_is_valid_yaml():
+    """Every tech stack combination produces valid YAML."""
+    stacks = ['', 'python', 'go', 'go,actions', 'python,vue,docker,actions,terraform']
+    for stack in stacks:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = run_generator(Path(tmp), stack)
+            config_path = Path(tmp) / '.pre-commit-config.yaml'
+            result = subprocess.run(
+                ['yq', '.', str(config_path)],
+                capture_output=True,
+            )
+            assert result.returncode == 0, f'Invalid YAML for stack "{stack}"'
+
+
 if __name__ == '__main__':
     test_python_repo()
     test_go_repo()
@@ -201,4 +257,6 @@ if __name__ == '__main__':
     test_custom_hooks_survive_roundtrip()
     test_custom_hooks_dedup_standard()
     test_safety_aborts_on_unknown_hooks()
+    test_custom_between_blocks_valid_yaml()
+    test_generated_config_is_valid_yaml()
     print('all tests passed')
