@@ -6,8 +6,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	"github.com/datapointchris/forge/internal/config"
 )
 
 var cfgPath string
@@ -38,5 +36,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&cfgPath, "config", "c", config.DefaultConfigPath, "path to syncer config file")
+	rootCmd.PersistentFlags().StringVarP(&cfgPath, "config", "c", "", "path to repos file (overrides forge config)")
 }

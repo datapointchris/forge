@@ -7,15 +7,13 @@ import (
 )
 
 func TestLoadForgeConfig(t *testing.T) {
-	t.Run("valid config", func(t *testing.T) {
+	t.Run("valid config with repos_file", func(t *testing.T) {
 		dir := t.TempDir()
-		cfgPath := filepath.Join(dir, "config.yml")
-		diesDir := filepath.Join(dir, "dies")
+		cfgPath := filepath.Join(dir, "config.toml")
+		reposFile := filepath.Join(dir, "repos.json")
 
-		if err := os.MkdirAll(diesDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(cfgPath, []byte("dies_dir: "+diesDir+"\n"), 0o644); err != nil {
+		content := `repos_file = "` + reposFile + `"` + "\n"
+		if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -23,16 +21,16 @@ func TestLoadForgeConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if cfg.DiesDir != diesDir {
-			t.Errorf("DiesDir = %q, want %q", cfg.DiesDir, diesDir)
+		if cfg.ReposFile != reposFile {
+			t.Errorf("ReposFile = %q, want %q", cfg.ReposFile, reposFile)
 		}
 	})
 
-	t.Run("empty dies_dir uses embedded", func(t *testing.T) {
+	t.Run("empty repos_file", func(t *testing.T) {
 		dir := t.TempDir()
-		cfgPath := filepath.Join(dir, "config.yml")
+		cfgPath := filepath.Join(dir, "config.toml")
 
-		if err := os.WriteFile(cfgPath, []byte("other_field: value\n"), 0o644); err != nil {
+		if err := os.WriteFile(cfgPath, []byte("other_field = \"value\"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -40,8 +38,32 @@ func TestLoadForgeConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if cfg.DiesDir != "" {
-			t.Errorf("DiesDir = %q, want empty", cfg.DiesDir)
+		if cfg.ReposFile != "" {
+			t.Errorf("ReposFile = %q, want empty", cfg.ReposFile)
+		}
+	})
+
+	t.Run("repos_file tilde expansion", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.toml")
+
+		content := `repos_file = "~/config/repos.json"` + "\n"
+		if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := LoadForgeConfig(cfgPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(home, "config", "repos.json")
+		if cfg.ReposFile != want {
+			t.Errorf("ReposFile = %q, want %q", cfg.ReposFile, want)
 		}
 	})
 }

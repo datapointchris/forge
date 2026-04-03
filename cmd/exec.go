@@ -60,12 +60,20 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	cfg, err := config.LoadSyncerConfig(cfgPath)
+	var (
+		cfg *config.SyncerConfig
+		err error
+	)
+	if cfgPath != "" {
+		cfg, err = config.LoadSyncerConfig(cfgPath)
+	} else {
+		cfg, err = config.LoadReposFromForgeConfig()
+	}
 	if err != nil {
 		return err
 	}
 
-	repos := runner.FilterRepos(cfg.Repos, execFilterNames)
+	repos := runner.FilterRepos(runner.ActiveRepos(cfg.Repos), execFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(execFilterNames, ", "))
 	}

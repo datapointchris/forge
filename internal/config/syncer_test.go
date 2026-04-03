@@ -49,6 +49,44 @@ func TestLoadSyncerConfig(t *testing.T) {
 	}
 }
 
+func TestLoadSyncerConfigWithStatus(t *testing.T) {
+	configJSON := `{
+		"owner": "testuser",
+		"host": "https://github.com",
+		"search_paths": [],
+		"repos": [
+			{"name": "active-repo", "path": "/code/active", "status": "active"},
+			{"name": "retired-repo", "path": "/code/retired", "status": "retired"},
+			{"name": "no-status-repo", "path": "/code/nostatus"}
+		]
+	}`
+
+	tmpFile := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(tmpFile, []byte(configJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadSyncerConfig(tmpFile)
+	if err != nil {
+		t.Fatalf("LoadSyncerConfig() error: %v", err)
+	}
+
+	if len(cfg.Repos) != 3 {
+		t.Fatalf("len(Repos) = %d, want 3", len(cfg.Repos))
+	}
+
+	// Repos are sorted by name
+	if cfg.Repos[0].Name != "active-repo" || cfg.Repos[0].Status != "active" {
+		t.Errorf("Repos[0] = {%q, %q}, want {active-repo, active}", cfg.Repos[0].Name, cfg.Repos[0].Status)
+	}
+	if cfg.Repos[1].Name != "no-status-repo" || cfg.Repos[1].Status != "" {
+		t.Errorf("Repos[1] = {%q, %q}, want {no-status-repo, \"\"}", cfg.Repos[1].Name, cfg.Repos[1].Status)
+	}
+	if cfg.Repos[2].Name != "retired-repo" || cfg.Repos[2].Status != "retired" {
+		t.Errorf("Repos[2] = {%q, %q}, want {retired-repo, retired}", cfg.Repos[2].Name, cfg.Repos[2].Status)
+	}
+}
+
 func TestExpandTilde(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/yaml.v3"
+	"github.com/BurntSushi/toml"
 )
 
-const DefaultForgeConfigPath = "~/.config/forge/config.yml"
+const DefaultForgeConfigPath = "~/.config/forge/config.toml"
 
 type ForgeConfig struct {
-	DiesDir string `yaml:"dies_dir"`
+	ReposFile string `toml:"repos_file"`
 }
 
 func LoadForgeConfig(path string) (*ForgeConfig, error) {
@@ -25,15 +25,14 @@ func LoadForgeConfig(path string) (*ForgeConfig, error) {
 	}
 
 	var cfg ForgeConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := toml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing forge config: %w", err)
 	}
 
-	// dies_dir is optional — when empty, the binary uses embedded dies
-	if cfg.DiesDir != "" {
-		cfg.DiesDir, err = ExpandTilde(cfg.DiesDir)
+	if cfg.ReposFile != "" {
+		cfg.ReposFile, err = ExpandTilde(cfg.ReposFile)
 		if err != nil {
-			return nil, fmt.Errorf("expanding dies_dir: %w", err)
+			return nil, fmt.Errorf("expanding repos_file: %w", err)
 		}
 	}
 

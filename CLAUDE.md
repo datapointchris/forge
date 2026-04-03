@@ -33,20 +33,20 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 **Dual-mode operation:**
 
 - **Embedded mode** (default): binary uses embedded assets. Die scripts are extracted to temp files for execution. `FORGE_DATA_DIR` env var points to extracted pre-commit assets.
-- **Filesystem mode** (development): when `dies_dir` is set in forge config, dies and assets are read from disk. Scripts reference assets via `dirname $0` resolution.
+- **Filesystem mode** (development): when `FORGE_DIES_DIR` env var is set, dies and assets are read from disk. Use direnv (`.envrc` in repo root) for automatic setup. Scripts reference assets via `dirname $0` resolution.
 
 **Internal packages** (`internal/`):
 
 - `config` — loads two config files:
-  - **Forge config** (`~/.config/forge/config.yml`, YAML): optional `dies_dir` (empty = use embedded assets)
-  - **Syncer config** (`~/.config/syncer/datapointchris.json`, JSON): defines the list of repos (`name` + `path` pairs)
-  - The `-c` persistent flag overrides the syncer config path only
+  - **Forge config** (`~/.config/forge/config.toml`, TOML): `repos_file` pointing to the repo registry
+  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, and `status` (`active`/`dormant`/`retired`)
+  - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
 - `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`)
 - `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection
 - `assets` — extracts embedded assets to temp directories for shell execution, manages cleanup
 - `precommit` — Go implementation of config generation (block composition, custom section preservation, hook deduplication, safety checks)
 
-**Data flow for `dies run`:** determine asset source (embedded or filesystem) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load syncer config → get repos → filter by `-F` flag → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
+**Data flow for `dies run`:** determine asset source (embedded or `FORGE_DIES_DIR`) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load repo registry → get repos → filter retired → filter by `-F` flag → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
 
 ## Die Scripts
 
@@ -142,4 +142,4 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 
 ## Embedded Assets
 
-All die scripts, pre-commit blocks, configs, and Python scripts are embedded into the binary via `//go:embed` directives in `embed.go`. The `dies_dir` config field is optional — when empty, the binary uses embedded assets. Set `dies_dir` in `~/.config/forge/config.yml` to use filesystem assets during development.
+All die scripts, pre-commit blocks, configs, and Python scripts are embedded into the binary via `//go:embed` directives in `embed.go`. By default, the binary uses embedded assets. Set `FORGE_DIES_DIR` env var to use filesystem assets during development (the `.envrc` in the repo root does this automatically via direnv).

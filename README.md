@@ -30,16 +30,17 @@ Forge uses two config files:
 
 ### Forge Config
 
-`~/.config/forge/config.yml` — optional configuration. Die scripts are embedded in the binary by default.
+`~/.config/forge/config.toml` — points to the repo registry.
 
-```yaml
-# Optional: override embedded dies with a local directory (for development)
-dies_dir: ~/tools/forge/dies
+```toml
+repos_file = "~/dev/repos.json"
 ```
 
-### Syncer Config
+For development, set `FORGE_DIES_DIR` to use filesystem dies instead of embedded. The `.envrc` in the repo root handles this via direnv.
 
-`~/.config/syncer/datapointchris.json` — defines the repos forge operates on. Override with `-c`.
+### Repo Registry
+
+`~/dev/repos.json` — defines the repos forge operates on. Override with `-c`.
 
 ```json
 {
@@ -47,11 +48,13 @@ dies_dir: ~/tools/forge/dies
   "host": "https://github.com",
   "search_paths": ["~/code"],
   "repos": [
-    {"name": "forge", "path": "~/tools/forge"},
-    {"name": "dotfiles", "path": "~/dotfiles"}
+    {"name": "forge", "path": "~/tools/forge", "status": "active"},
+    {"name": "old-project", "path": "~/code/old", "status": "retired"}
   ]
 }
 ```
+
+Repos with `"status": "retired"` are skipped. Valid statuses: `active` (default), `dormant`, `retired`.
 
 ## Usage
 

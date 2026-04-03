@@ -50,6 +50,17 @@ type Opts struct {
 	CaptureOutput bool // tee stdout/stderr to buffer for failure replay
 }
 
+// ActiveRepos returns repos that are not retired.
+func ActiveRepos(repos []config.Repo) []config.Repo {
+	var active []config.Repo
+	for _, r := range repos {
+		if r.Status != "retired" {
+			active = append(active, r)
+		}
+	}
+	return active
+}
+
 func FilterRepos(repos []config.Repo, names []string) []config.Repo {
 	if len(names) == 0 {
 		return repos

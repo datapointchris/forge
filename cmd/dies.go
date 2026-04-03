@@ -125,14 +125,9 @@ func init() {
 	rootCmd.AddCommand(diesCmd)
 }
 
-func loadForgeConfig() (*config.ForgeConfig, error) {
-	return config.LoadForgeConfig(config.DefaultForgeConfigPath)
-}
-
 func loadDiesRegistry() (*dies.Registry, error) {
-	forgeCfg, _ := loadForgeConfig()
-	if forgeCfg != nil && forgeCfg.DiesDir != "" {
-		return dies.LoadRegistry(os.DirFS(forgeCfg.DiesDir))
+	if diesDir := os.Getenv("FORGE_DIES_DIR"); diesDir != "" {
+		return dies.LoadRegistry(os.DirFS(diesDir))
 	}
 	diesFS, err := fs.Sub(embeddedDies, "dies")
 	if err != nil {
@@ -215,12 +210,17 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	syncerCfg, err := config.LoadSyncerConfig(cfgPath)
+	var syncerCfg *config.SyncerConfig
+	if cfgPath != "" {
+		syncerCfg, err = config.LoadSyncerConfig(cfgPath)
+	} else {
+		syncerCfg, err = config.LoadReposFromForgeConfig()
+	}
 	if err != nil {
 		return err
 	}
 
-	repos := runner.FilterRepos(syncerCfg.Repos, diesFilterNames)
+	repos := runner.FilterRepos(runner.ActiveRepos(syncerCfg.Repos), diesFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(diesFilterNames, ", "))
 	}
@@ -295,14 +295,13 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 func resolveDie(diePath string) (scriptPath string, env []string, cleanup func(), err error) {
 	noop := func() {}
 
-	forgeCfg, _ := loadForgeConfig()
-	if forgeCfg != nil && forgeCfg.DiesDir != "" {
-		// Filesystem mode: use dies_dir from config
-		reg, err := dies.LoadRegistry(os.DirFS(forgeCfg.DiesDir))
+	if diesDir := os.Getenv("FORGE_DIES_DIR"); diesDir != "" {
+		// Filesystem mode: use FORGE_DIES_DIR env var
+		reg, err := dies.LoadRegistry(os.DirFS(diesDir))
 		if err != nil {
 			return "", nil, noop, err
 		}
-		absScript, err := reg.Resolve(forgeCfg.DiesDir, diePath)
+		absScript, err := reg.Resolve(diesDir, diePath)
 		if err != nil {
 			return "", nil, noop, err
 		}

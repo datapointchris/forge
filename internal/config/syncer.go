@@ -9,11 +9,12 @@ import (
 	"strings"
 )
 
-const DefaultConfigPath = "~/.config/syncer/datapointchris.json"
+const defaultReposFileFallback = "~/.config/syncer/datapointchris.json"
 
 type Repo struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Status string `json:"status"`
 }
 
 type SyncerConfig struct {
@@ -73,4 +74,20 @@ func ExpandTilde(path string) (string, error) {
 
 	// ~otheruser/... is not supported
 	return "", fmt.Errorf("expanding ~user paths is not supported: %s", path)
+}
+
+// LoadReposFromForgeConfig loads repos using the path from ForgeConfig.ReposFile,
+// falling back to the default syncer config path if not configured.
+func LoadReposFromForgeConfig() (*SyncerConfig, error) {
+	forgeCfg, err := LoadForgeConfig(DefaultForgeConfigPath)
+	if err != nil {
+		// Config file missing or unreadable — use fallback
+		return LoadSyncerConfig(defaultReposFileFallback)
+	}
+
+	if forgeCfg.ReposFile != "" {
+		return LoadSyncerConfig(forgeCfg.ReposFile)
+	}
+
+	return LoadSyncerConfig(defaultReposFileFallback)
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/internal/config"
 	"github.com/datapointchris/forge/internal/precommit"
 )
 
@@ -64,10 +63,9 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 // resolveBlocksFS returns an fs.FS rooted at the blocks directory.
 // Uses filesystem when dies_dir is configured, embedded otherwise.
 func resolveBlocksFS() (fs.FS, error) {
-	forgeCfg, _ := config.LoadForgeConfig(config.DefaultForgeConfigPath)
-	if forgeCfg != nil && forgeCfg.DiesDir != "" {
+	if diesDir := os.Getenv("FORGE_DIES_DIR"); diesDir != "" {
 		// Filesystem mode: blocks are sibling to dies dir
-		forgeRoot := strings.TrimSuffix(forgeCfg.DiesDir, "/dies")
+		forgeRoot := strings.TrimSuffix(diesDir, "/dies")
 		forgeRoot = strings.TrimSuffix(forgeRoot, "/dies/")
 		blocksDir := forgeRoot + "/pre-commit/blocks"
 		if _, err := os.Stat(blocksDir); err != nil {
