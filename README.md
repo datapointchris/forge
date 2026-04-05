@@ -48,15 +48,41 @@ For development, set `FORGE_DIES_DIR` to use filesystem dies instead of embedded
   "host": "https://github.com",
   "search_paths": ["~/code"],
   "repos": [
-    {"name": "forge", "path": "~/tools/forge", "status": "active"},
+    {"name": "forge", "path": "~/tools/forge", "status": "active", "description": "Go CLI for cross-repo operations."},
     {"name": "old-project", "path": "~/code/old", "status": "retired"}
   ]
 }
 ```
 
-Repos with `"status": "retired"` are skipped. Valid statuses: `active` (default), `dormant`, `retired`.
+Repos with `"status": "retired"` are skipped. Valid statuses: `active` (default), `dormant`, `retired`. The optional `description` field is shown by `forge status`.
 
 ## Usage
+
+### Cross-project status
+
+```bash
+# Show repos with planning content (status.md, design docs)
+forge status
+
+# Include all active repos (even description-only)
+forge status --all
+
+# Filter to specific repos
+forge status -F ichrisbirch,homelab
+
+# Show full status.md content including completed records
+forge status --verbose
+```
+
+### Sync planning directories
+
+```bash
+# Create .planning/ symlinks to ~/dev/repos/ for Syncthing sync
+forge planning-sync
+
+# Preview without making changes
+forge planning-sync --dry-run
+```
 
 ### Execute commands across repos
 

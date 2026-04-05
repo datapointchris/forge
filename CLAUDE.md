@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Forge
 
-Forge is a Go CLI tool that runs commands and scripts ("dies") across multiple git repositories. It reads a repo list from a syncer config and executes operations in each repo's working directory. It also manages a composable pre-commit standardization system.
+Forge is a Go CLI tool that serves as an internal developer platform (IDP) for managing a portfolio of git repositories. It provides cross-project status views, planning directory sync, command execution across repos, reusable maintenance scripts ("dies"), and a composable pre-commit standardization system.
 
 ## Commands
 
@@ -21,6 +21,8 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 
 **CLI layer** (`cmd/`) uses Cobra. Top-level commands:
 
+- `status` — cross-project status view: descriptions from repos.json, status.md content, design doc listings from .planning/ directories. Flags: `--all` (include description-only repos), `--verbose` (full status.md), `-F` (filter repos)
+- `planning-sync` — creates symlinks from each repo's `.planning/` to `~/dev/repos/{name}/planning/` for Syncthing sync. Also handles project-specific extra dirs (e.g., ichrisbirch stats/data). Idempotent with migration support.
 - `exec` — run an inline command or script file across repos
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`
@@ -39,7 +41,7 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 
 - `config` — loads two config files:
   - **Forge config** (`~/.config/forge/config.toml`, TOML): `repos_file` pointing to the repo registry
-  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, and `status` (`active`/`dormant`/`retired`)
+  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description`
   - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
 - `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`)
 - `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection
@@ -61,7 +63,7 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 **Categories:**
 
 - `checks/` — scorecard dies (has-pre-commit, has-claude-md, has-clean-gitignore, has-planning-dir, planning-docs)
-- `maintenance/` — golden path enforcement (sync-pre-commit, pre-commit-update, add-planning-to-gitignore)
+- `maintenance/` — golden path enforcement (sync-pre-commit, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
 - `onetime/` — one-shot migrations
 
 ## Pre-commit Standardization System
