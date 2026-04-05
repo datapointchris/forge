@@ -23,6 +23,9 @@ dies:
   maintenance/sync-pre-commit.sh:
     description: "Sync .pre-commit-config.yaml from standard blocks based on detected tech stack. Preserves project hooks."
     tags: [pre-commit, standardization, golden-path]
+  maintenance/rename-master-to-main.sh:
+    description: "Rename master branch to main (local + remote + GitHub default). Idempotent."
+    tags: [git, branches, maintenance]
   maintenance/pre-commit-update.sh:
     description: "Run pre-commit autoupdate and show what versions changed."
     tags: [pre-commit, dependencies, maintenance]

@@ -12,9 +12,10 @@ import (
 const defaultReposFileFallback = "~/.config/syncer/datapointchris.json"
 
 type Repo struct {
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Status string `json:"status"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Status      string `json:"status"`
+	Description string `json:"description,omitempty"`
 }
 
 type SyncerConfig struct {
