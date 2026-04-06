@@ -17,6 +17,9 @@ dies:
   checks/planning-docs.sh:
     description: "List document names in .planning/ for each repo. Skips repos without a .planning directory or with an empty one."
     tags: [checks, planning, docs]
+  checks/work-context.sh:
+    description: "Show recent git commits (last 2 weeks) for the current repo."
+    tags: [checks, activity, scorecard]
   maintenance/add-planning-to-gitignore.sh:
     description: "Add .planning to .gitignore if not already present, then commit the change."
     tags: [gitignore, planning, setup]
