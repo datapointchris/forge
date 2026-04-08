@@ -37,13 +37,13 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 - **Embedded mode** (default): binary uses embedded assets. Die scripts are extracted to temp files for execution. `FORGE_DATA_DIR` env var points to extracted pre-commit assets.
 - **Filesystem mode** (development): when `FORGE_DIES_DIR` env var is set, dies and assets are read from disk. Use direnv (`.envrc` in repo root) for automatic setup. Scripts reference assets via `dirname $0` resolution.
 
-**Internal packages** (`internal/`):
+**Packages** (at repo root):
 
 - `config` — loads two config files:
   - **Forge config** (`~/.config/forge/config.toml`, TOML): `repos_file` pointing to the repo registry
   - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description`
   - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
-- `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`)
+- `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`). Also contains the bash die scripts in category subdirectories.
 - `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection
 - `assets` — extracts embedded assets to temp directories for shell execution, manages cleanup
 - `precommit` — Go implementation of config generation (block composition, custom section preservation, hook deduplication, safety checks)
@@ -88,7 +88,7 @@ Forge includes a composable system for generating standardized `.pre-commit-conf
 - `stylelintrc.json` — Vue repos
 - `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, pyright, codespell, pytest)
 
-**Config generation** — now a Go function in `internal/precommit/generate.go`, invoked via `forge precommit generate --detected <stack>`. The `sync-pre-commit.sh` die calls this instead of the Python script. Handles block composition, custom section preservation, hook deduplication, and safety checks.
+**Config generation** — now a Go function in `precommit/generate.go`, invoked via `forge precommit generate --detected <stack>`. The `sync-pre-commit.sh` die calls this instead of the Python script. Handles block composition, custom section preservation, hook deduplication, and safety checks.
 
 **`pre-commit/scripts/`** — Python helper scripts (embedded in binary):
 
@@ -111,12 +111,12 @@ The generator preserves these across re-runs. A safety check aborts if unrecogni
 
 **Go tests** (`go test ./...`):
 
-- `internal/config/` — forge and syncer config loading
-- `internal/dies/` — registry and stats, plus integration tests for sync-pre-commit die (9 tests covering tech detection, dedup, custom preservation, safety, config deployment)
-- `internal/precommit/` — config generator: 9 unit tests (using `fstest.MapFS`) + 7 integration tests against real blocks
-- `internal/runner/` — repo filtering, execution
+- `config/` — forge and syncer config loading
+- `dies/` — registry and stats, plus integration tests for sync-pre-commit die (9 tests covering tech detection, dedup, custom preservation, safety, config deployment)
+- `precommit/` — config generator: 9 unit tests (using `fstest.MapFS`) + 7 integration tests against real blocks
+- `runner/` — repo filtering, execution
 
-**Note:** The sync-pre-commit integration tests (`internal/dies/sync_precommit_test.go`) require the `forge` binary on PATH since the die script calls `forge precommit generate`. Run `go install .` before `go test ./...`.
+**Note:** The sync-pre-commit integration tests (`dies/sync_precommit_test.go`) require the `forge` binary on PATH since the die script calls `forge precommit generate`. Run `go install .` before `go test ./...`.
 
 **Python tests** (`pre-commit/scripts/run_tests.sh`):
 

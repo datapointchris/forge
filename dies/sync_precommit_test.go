@@ -9,15 +9,15 @@ import (
 	"testing"
 )
 
-// forgeRoot returns the root of the forge repo (two levels up from internal/dies/).
+// forgeRoot returns the root of the forge repo (one level up from dies/).
 func forgeRoot(t *testing.T) string {
 	t.Helper()
-	// This file is at internal/dies/sync_precommit_test.go
+	// This file is at dies/sync_precommit_test.go
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(wd, "..", "..")
+	return filepath.Join(wd, "..")
 }
 
 // makeTempRepo creates a temp directory with a .git dir and optional marker files.

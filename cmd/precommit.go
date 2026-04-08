@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/internal/precommit"
+	"github.com/datapointchris/forge/precommit"
 )
 
 var precommitCmd = &cobra.Command{

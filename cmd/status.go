@@ -10,8 +10,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/internal/config"
-	"github.com/datapointchris/forge/internal/runner"
+	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/runner"
 )
 
 var (
