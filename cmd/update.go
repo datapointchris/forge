@@ -64,7 +64,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	cyan.Printf("latest version:  %s\n", release.TagName)
 
-	assetName := fmt.Sprintf("forge_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	assetName := fmt.Sprintf("forge_%s_%s_%s.tar.gz", latest, runtime.GOOS, runtime.GOARCH)
 	var downloadURL string
 	for _, asset := range release.Assets {
 		if asset.Name == assetName {
