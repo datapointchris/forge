@@ -19,7 +19,7 @@ builds:
 
 archives:
   - format: tar.gz
-    name_template: "forge_{{ .Os }}_{{ .Arch }}"
+    name_template: "forge_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 changelog:
   sort: asc
