@@ -78,10 +78,7 @@ forge status --verbose
 
 ```bash
 # Create .planning/ symlinks to ~/dev/repos/ for Syncthing sync
-forge planning-sync
-
-# Preview without making changes
-forge planning-sync --dry-run
+forge dies run maintenance/sync-planning.sh
 ```
 
 ### Execute commands across repos

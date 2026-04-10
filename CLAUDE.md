@@ -22,7 +22,6 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 **CLI layer** (`cmd/`) uses Cobra. Top-level commands:
 
 - `status` — cross-project status view: descriptions from repos.json, status.md content, design doc listings from .planning/ directories. Flags: `--all` (include description-only repos), `--verbose` (full status.md), `-F` (filter repos)
-- `planning-sync` — creates symlinks from each repo's `.planning/` to `~/dev/repos/{name}/planning/` for Syncthing sync. Also handles project-specific extra dirs (e.g., ichrisbirch stats/data). Idempotent with migration support.
 - `exec` — run an inline command or script file across repos
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`
@@ -63,7 +62,7 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 **Categories:**
 
 - `checks/` — scorecard dies (has-pre-commit, has-claude-md, has-clean-gitignore, has-planning-dir, planning-docs)
-- `maintenance/` — golden path enforcement (sync-pre-commit, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
+- `maintenance/` — golden path enforcement (sync-pre-commit, sync-planning, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
 - `onetime/` — one-shot migrations
 
 ## Pre-commit Standardization System

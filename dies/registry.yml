@@ -20,6 +20,9 @@ dies:
   checks/work-context.sh:
     description: "Show recent git commits (last 2 weeks) for the current repo."
     tags: [checks, activity, scorecard]
+  maintenance/sync-planning.sh:
+    description: "Sync .planning/ to ~/dev/repos/{name}/planning/ via symlink for Syncthing. Migrates real dirs. Idempotent."
+    tags: [planning, symlink, syncthing, setup]
   maintenance/add-planning-to-gitignore.sh:
     description: "Add .planning to .gitignore if not already present, then commit the change."
     tags: [gitignore, planning, setup]
