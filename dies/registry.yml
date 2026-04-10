@@ -32,6 +32,9 @@ dies:
   maintenance/pre-commit-update.sh:
     description: "Run pre-commit autoupdate and show what versions changed."
     tags: [pre-commit, dependencies, maintenance]
+  maintenance/indy-index-all.sh:
+    description: "Incrementally re-index the current repo in the indy semantic search store. Skips if no files changed."
+    tags: [indy, search, indexing, maintenance]
   onetime/remove-empty-discussion.sh:
     description: "Remove .discussion/ directory if empty, error with contents listing if not. No git changes."
     tags: [cleanup, discussion]
