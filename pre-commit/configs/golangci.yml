@@ -1,47 +1,51 @@
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
-
 linters:
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosimple
     - gocritic
-    - gofumpt
-    - nakedret
     - misspell
+    - nakedret
     - unconvert
     - wastedassign
-
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - (*github.com/fatih/color.Color).Printf
+        - (*github.com/fatih/color.Color).Print
+        - (*github.com/fatih/color.Color).Println
+    gocritic:
+      enabled-tags:
+        - diagnostic
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
+    misspell:
+      locale: US
+    nakedret:
+      max-func-lines: 20
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
-
-linters-settings:
-  errcheck:
-    check-type-assertions: false
-    check-blank: false
-    exclude-functions:
-      - (*github.com/fatih/color.Color).Printf
-      - (*github.com/fatih/color.Color).Print
-      - (*github.com/fatih/color.Color).Println
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-      - shadow
-  gocritic:
-    enabled-tags:
-      - diagnostic
-    disabled-checks: []
-  gofumpt:
-    extra-rules: false
-  nakedret:
-    max-func-lines: 20
-  misspell:
-    locale: US
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: false
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
