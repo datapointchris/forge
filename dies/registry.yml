@@ -1,7 +1,7 @@
 dies:
   checks/pre-commit-config.sh:
-    description: "Check that a .pre-commit-config.yaml (or .yml) exists in the repo."
-    tags: [checks, pre-commit, linting]
+    description: "Check that a .pre-commit-config.yaml (or .yml) exists and sets default_stages when it uses non-pre-commit stages."
+    tags: [checks, pre-commit, linting, stages]
   checks/has-pre-commit.sh:
     description: "Check that repo has a .pre-commit-config.yaml and report hook count."
     tags: [checks, pre-commit, scorecard]
