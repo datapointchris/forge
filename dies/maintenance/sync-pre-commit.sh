@@ -25,6 +25,8 @@ detected=""
 
 { [ -f pyproject.toml ] || [ -f setup.py ] || [ -f requirements.txt ] || [ -f Pipfile ]; } && detected="$detected,python"
 [ -f go.mod ] && detected="$detected,go"
+[ -f Cargo.toml ] && detected="$detected,rust"
+{ [ -d lua ] || [ -f stylua.toml ] || [ -f .stylua.toml ] || compgen -G "*.lua" > /dev/null 2>&1; } && detected="$detected,lua"
 [ -f frontend/package.json ] && detected="$detected,vue"
 { [ -f Dockerfile ] || compgen -G "docker-compose*.yml" > /dev/null 2>&1; } && detected="$detected,docker"
 [ -d .github/workflows ] && detected="$detected,actions"

@@ -60,6 +60,13 @@ def test_should_include_block():
     assert should_include_block('python-format', detected)
     assert not should_include_block('go', detected)
     assert not should_include_block('vue', detected)
+    assert not should_include_block('rust', detected)
+    assert not should_include_block('lua', detected)
+
+    rust_lua = {'rust', 'lua'}
+    assert should_include_block('rust', rust_lua)
+    assert should_include_block('lua', rust_lua)
+    assert not should_include_block('go', rust_lua)
 
 
 def test_generate_simple_config():

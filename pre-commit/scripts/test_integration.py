@@ -74,15 +74,46 @@ def test_go_repo():
         assert 'golangci-lint-repo-mod' in hooks
 
 
+def test_rust_repo():
+    """Rust repo gets rust blocks, not go/python."""
+    with tempfile.TemporaryDirectory() as tmp:
+        config = run_generator(Path(tmp), 'rust')
+        blocks = get_generated_blocks(config)
+
+        assert 'rust' in blocks
+        assert 'go' not in blocks
+        assert 'python-format' not in blocks
+
+        hooks = get_hook_ids(config)
+        assert 'cargo-fmt' in hooks
+        assert 'cargo-clippy' in hooks
+
+
+def test_lua_repo():
+    """Lua repo gets the lua block, not go/python."""
+    with tempfile.TemporaryDirectory() as tmp:
+        config = run_generator(Path(tmp), 'lua')
+        blocks = get_generated_blocks(config)
+
+        assert 'lua' in blocks
+        assert 'go' not in blocks
+        assert 'python-format' not in blocks
+
+        hooks = get_hook_ids(config)
+        assert 'stylua-github' in hooks
+
+
 def test_full_stack_repo():
     """Repo with everything gets all blocks."""
     with tempfile.TemporaryDirectory() as tmp:
-        config = run_generator(Path(tmp), 'python,go,vue,docker,actions,terraform')
+        config = run_generator(Path(tmp), 'python,go,rust,lua,vue,docker,actions,terraform')
         blocks = get_generated_blocks(config)
 
         assert 'python-format' in blocks
         assert 'python-lint' in blocks
         assert 'go' in blocks
+        assert 'rust' in blocks
+        assert 'lua' in blocks
         assert 'vue' in blocks
         assert 'docker' in blocks
         assert 'github-actions' in blocks
@@ -106,7 +137,7 @@ def test_generic_only_repo():
 
 def test_no_duplicate_hook_ids():
     """No hook ID should appear twice in any generated config."""
-    stacks = ['python', 'go', 'python,vue,docker,actions,terraform', '']
+    stacks = ['python', 'go', 'rust', 'lua', 'python,rust,lua,vue,docker,actions,terraform', '']
     for stack in stacks:
         with tempfile.TemporaryDirectory() as tmp:
             config = run_generator(Path(tmp), stack)
@@ -236,7 +267,7 @@ def test_custom_between_blocks_valid_yaml():
 
 def test_generated_config_is_valid_yaml():
     """Every tech stack combination produces valid YAML."""
-    stacks = ['', 'python', 'go', 'go,actions', 'python,vue,docker,actions,terraform']
+    stacks = ['', 'python', 'go', 'rust', 'lua', 'go,actions', 'python,rust,lua,vue,docker,actions,terraform']
     for stack in stacks:
         with tempfile.TemporaryDirectory() as tmp:
             config = run_generator(Path(tmp), stack)
@@ -251,6 +282,8 @@ def test_generated_config_is_valid_yaml():
 if __name__ == '__main__':
     test_python_repo()
     test_go_repo()
+    test_rust_repo()
+    test_lua_repo()
     test_full_stack_repo()
     test_generic_only_repo()
     test_no_duplicate_hook_ids()

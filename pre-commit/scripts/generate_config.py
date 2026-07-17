@@ -83,6 +83,8 @@ def should_include_block(block_name: str, detected: set[str]) -> bool:
         'python-format': 'python',
         'python-lint': 'python',
         'go': 'go',
+        'rust': 'rust',
+        'lua': 'lua',
         'vue': 'vue',
         'docker': 'docker',
         'github-actions': 'actions',
