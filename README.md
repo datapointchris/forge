@@ -81,10 +81,11 @@ current-state snapshot, not a changelog), so there is nothing to summarize.
 
 `forge brief` composes a single, text-dense briefing to prime an AI coding
 session: each repo's planning status and design docs, your ordered ichrisbirch
-project roadmap and open items (via the `icb` CLI), Computer-category `icb`
-tasks, and each repo's open GitHub issues (via `gh`). The `icb` and `gh` layers
-degrade gracefully — a missing or unauthenticated tool is noted under warnings
-rather than failing the brief.
+project roadmap and open items (via the `icb` CLI), the Computer-category `icb`
+task list surfaced as a capture inbox to triage into the right project, and each
+repo's open GitHub issues (via `gh`). The `icb` and `gh` layers degrade
+gracefully — a missing or unauthenticated tool is noted under warnings rather
+than failing the brief.
 
 ```bash
 # Full brief across all repos with planning content

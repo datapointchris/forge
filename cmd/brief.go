@@ -13,9 +13,10 @@ import (
 	"github.com/datapointchris/forge/runner"
 )
 
-// computerCategory is the icb task category that flags dev/computer work. It is
-// the only task category `forge brief` surfaces — the rest are life admin that
-// belongs on the ichrisbirch web/mobile surface, not the dev pane-of-glass.
+// computerCategory is the icb task category that flags dev/computer work. The
+// task list is a capture inbox (things jotted down away from the computer), so
+// `forge brief` surfaces only this category as an inbox to triage into the right
+// project — the other categories are life admin for the web/mobile surface.
 const computerCategory = "Computer"
 
 var (
@@ -38,8 +39,9 @@ It joins three layers:
                  What's Next / Not Doing) and design docs.
   - Roadmap    — your ordered ichrisbirch projects and their open items, via the
                  icb CLI. This is the "do the next thing, in order" queue.
-  - Todos      — Computer-category icb tasks (a flat bucket; tasks carry no repo
-                 link) and each repo's open GitHub issues (which do).
+  - Inbox      — Computer-category icb tasks. The task list is a capture inbox, so
+                 these are surfaced to triage into the right project (they carry no
+                 repo link themselves), alongside each repo's open GitHub issues.
 
 The icb and GitHub layers degrade gracefully: if the icb CLI is missing or not
 authenticated on this machine, or gh is unavailable, those layers are skipped
@@ -107,7 +109,7 @@ type roadmapProject struct {
 type brief struct {
 	Repos    []repoBrief      `json:"repos"`
 	Roadmap  []roadmapProject `json:"roadmap,omitempty"`
-	Todos    []icbTask        `json:"computer_todos,omitempty"`
+	Inbox    []icbTask        `json:"inbox,omitempty"`
 	Warnings []string         `json:"warnings,omitempty"`
 }
 
@@ -145,7 +147,7 @@ func runBrief(cmd *cobra.Command, _ []string) error {
 		} else {
 			roadmap, todos, warns := fetchICB()
 			b.Roadmap = roadmap
-			b.Todos = todos
+			b.Inbox = todos
 			b.Warnings = append(b.Warnings, warns...)
 		}
 	}
@@ -324,9 +326,9 @@ func renderBrief(b brief) {
 		}
 	}
 
-	if len(b.Todos) > 0 {
-		cyan.Printf("\n## Computer todos — icb tasks, not repo-linked\n\n")
-		for _, t := range b.Todos {
+	if len(b.Inbox) > 0 {
+		cyan.Printf("\n## Inbox — Computer tasks to triage into a project\n\n")
+		for _, t := range b.Inbox {
 			fmt.Printf("  [#%d] %s\n", t.ID, t.Name)
 			if t.Notes != nil {
 				if note := strings.TrimSpace(*t.Notes); note != "" {
