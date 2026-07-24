@@ -33,7 +33,7 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	current := version
+	current := buildVersion()
 
 	if current == "dev" || current == "" {
 		fmt.Fprintln(os.Stderr, "✗ forge upgrade failed: cannot update a dev build")
