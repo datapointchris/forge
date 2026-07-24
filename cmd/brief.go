@@ -30,8 +30,12 @@ var briefCmd = &cobra.Command{
 	Use:   "brief",
 	Short: "One-page cross-project work brief for an AI coding session",
 	Long: `Compose a single, text-dense briefing of everything in flight across your
-repos, meant to prime a Claude Code session (distinct from the glance-sized menu
-dashboard).
+repos, meant to prime a Claude Code session.
+
+This is the AI's dev brief across REPOS — full cross-project status and the items
+that need actual computer work. It is NOT the human single pane of glass: that is
+'menu dashboard', which is a glance across all life apps (tasks, habits, next book,
+current learning). Two audiences, two scopes — they are not built to cover each other.
 
 It joins three layers:
 

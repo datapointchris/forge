@@ -87,6 +87,11 @@ repo's open GitHub issues (via `gh`). The `icb` and `gh` layers degrade
 gracefully — a missing or unauthenticated tool is noted under warnings rather
 than failing the brief.
 
+This is the AI's dev brief across **repos** and computer work. It is a different
+tool from the human single pane of glass (`menu dashboard`, in dotfiles), which is
+a glance across all life apps — tasks, habits, next book, current learning. Two
+audiences, two scopes; neither is built to cover the other.
+
 ```bash
 # Full brief across all repos with planning content
 forge brief
