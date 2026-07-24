@@ -21,7 +21,8 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 
 **CLI layer** (`cmd/`) uses Cobra. Top-level commands:
 
-- `status` — cross-project status view: descriptions from repos.json, status.md content, design doc listings from .planning/ directories. Flags: `--all` (include description-only repos), `--verbose` (full status.md), `-F` (filter repos)
+- `status` — cross-project status view: descriptions from repos.json, status.md content (printed verbatim — the docs are lean current-state snapshots, not changelogs), design doc listings from .planning/ directories. Flags: `--all` (include description-only repos), `--json` (machine-readable), `-F` (filter repos)
+- `brief` — one-page cross-project work brief for an AI coding session. Composes three layers: planning (each repo's status.md + design docs, reusing `status`'s collector), roadmap (ordered `icb` projects + open items), and todos (Computer-category `icb` tasks + open GitHub issues per repo via `gh`). The `icb`/`gh` layers degrade to warnings when a tool is missing or unauthenticated. Flags: `--json`, `-F`, `--no-issues`, `--no-tasks`
 - `exec` — run an inline command or script file across repos
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`

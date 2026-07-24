@@ -70,8 +70,32 @@ forge status --all
 # Filter to specific repos
 forge status -F ichrisbirch,homelab
 
-# Show full status.md content including completed records
-forge status --verbose
+# Machine-readable output
+forge status --json
+```
+
+`status.md` is printed verbatim — the docs are kept short at the source (a
+current-state snapshot, not a changelog), so there is nothing to summarize.
+
+### Session brief
+
+`forge brief` composes a single, text-dense briefing to prime an AI coding
+session: each repo's planning status and design docs, your ordered ichrisbirch
+project roadmap and open items (via the `icb` CLI), Computer-category `icb`
+tasks, and each repo's open GitHub issues (via `gh`). The `icb` and `gh` layers
+degrade gracefully — a missing or unauthenticated tool is noted under warnings
+rather than failing the brief.
+
+```bash
+# Full brief across all repos with planning content
+forge brief
+
+# Filter, or skip the remote layers
+forge brief -F dotfiles,indy
+forge brief --no-issues --no-tasks
+
+# Machine-readable output
+forge brief --json
 ```
 
 ### Sync planning directories

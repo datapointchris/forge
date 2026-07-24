@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/datapointchris/forge/config"
 )
 
 var cfgPath string
@@ -37,4 +39,13 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgPath, "config", "c", "", "path to repos file (overrides forge config)")
+}
+
+// loadRepos resolves the repo registry, honoring the -c override when set and
+// otherwise reading the path from the forge config (with the syncer fallback).
+func loadRepos() (*config.SyncerConfig, error) {
+	if cfgPath != "" {
+		return config.LoadSyncerConfig(cfgPath)
+	}
+	return config.LoadReposFromForgeConfig()
 }

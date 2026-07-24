@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 var (
 	statusFilterNames []string
 	statusShowAll     bool
-	statusVerbose     bool
+	statusJSON        bool
 )
 
 var statusCmd = &cobra.Command{
@@ -26,14 +27,16 @@ var statusCmd = &cobra.Command{
 	Long: `Show project descriptions, planning status, and design docs across all active repos.
 
 By default, only repos with planning content (status.md or design docs) are shown.
-Use --all to include all active repos with descriptions.`,
+Use --all to include all active repos with descriptions. status.md is printed
+verbatim — the docs are kept short at the source (a current-state snapshot, not a
+changelog), so there is nothing to truncate.`,
 	RunE: runStatus,
 }
 
 func init() {
 	statusCmd.Flags().StringSliceVarP(&statusFilterNames, "filter", "F", nil, "comma-separated repo names to include")
 	statusCmd.Flags().BoolVarP(&statusShowAll, "all", "a", false, "include repos with only a description")
-	statusCmd.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "show full status.md content")
+	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "output as JSON to stdout")
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -84,72 +87,41 @@ func (rs repoStatus) hasPlanningContent() bool {
 	return rs.statusMD != "" || len(rs.designDocs) > 0
 }
 
-// filterStatusContent returns the current-state portion of status.md,
-// skipping completed records, implementation phases, and other historical sections.
-func filterStatusContent(content string, verbose bool) string {
-	if verbose {
-		return content
-	}
-
-	lines := strings.Split(content, "\n")
-	var filtered []string
-	skipSection := false
-
-	skipKeywords := []string{
-		"completed", "previously", "phase", "implementation",
-		"design principle", "non-goal", "learning goal",
-		"v1 feature", "explicitly not",
-	}
-
-	for _, line := range lines {
-		isHeading := strings.HasPrefix(line, "## ") || strings.HasPrefix(line, "### Previously")
-		if isHeading {
-			lower := strings.ToLower(line)
-			skipSection = false
-			for _, kw := range skipKeywords {
-				if strings.Contains(lower, kw) {
-					skipSection = true
-					break
-				}
-			}
-		}
-		if !skipSection {
-			filtered = append(filtered, line)
-		}
-	}
-
-	// If still too long, truncate to first major section
-	if len(filtered) > 50 {
-		var truncated []string
-		for _, line := range filtered {
-			if len(truncated) > 30 && strings.HasPrefix(line, "## ") {
-				break
-			}
-			truncated = append(truncated, line)
-		}
-		truncated = append(truncated,
-			fmt.Sprintf("\n  (status.md is %d lines — run with --verbose or read directly)", len(lines)))
-		filtered = truncated
-	}
-
-	// Trim trailing blank lines
-	for len(filtered) > 0 && strings.TrimSpace(filtered[len(filtered)-1]) == "" {
-		filtered = filtered[:len(filtered)-1]
-	}
-
-	return strings.Join(filtered, "\n")
+// statusEntry is the machine-readable shape of a repo's planning status, shared
+// by the --json output here and consumed by `forge brief`.
+type statusEntry struct {
+	Name        string   `json:"name"`
+	Path        string   `json:"path"`
+	Description string   `json:"description,omitempty"`
+	StatusMD    string   `json:"status_md,omitempty"`
+	DesignDocs  []string `json:"design_docs,omitempty"`
 }
 
-func runStatus(cmd *cobra.Command, args []string) error {
-	var (
-		cfg *config.SyncerConfig
-		err error
-	)
-	if cfgPath != "" {
-		cfg, err = config.LoadSyncerConfig(cfgPath)
-	} else {
-		cfg, err = config.LoadReposFromForgeConfig()
+// collectStatusEntries walks the filtered repos and returns those with content
+// worth showing (planning content, or a description when showAll is set).
+func collectStatusEntries(repos []config.Repo, showAll bool) []statusEntry {
+	var entries []statusEntry
+	for _, repo := range repos {
+		rs := collectRepoStatus(repo)
+		if !showAll && !rs.hasPlanningContent() {
+			continue
+		}
+		if repo.Description == "" && !rs.hasPlanningContent() {
+			continue
+		}
+		entries = append(entries, statusEntry{
+			Name:        repo.Name,
+			Path:        repo.Path,
+			Description: repo.Description,
+			StatusMD:    rs.statusMD,
+			DesignDocs:  rs.designDocs,
+		})
 	}
+	return entries
+}
+
+func runStatus(cmd *cobra.Command, _ []string) error {
+	cfg, err := loadRepos()
 	if err != nil {
 		return err
 	}
@@ -159,51 +131,43 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(statusFilterNames, ", "))
 	}
 
-	bold := color.New(color.Bold)
-	dim := color.New(color.Faint)
-	cyan := color.New(color.FgHiCyan)
+	entries := collectStatusEntries(repos, statusShowAll)
 
-	shown := 0
-	for _, repo := range repos {
-		rs := collectRepoStatus(repo)
-
-		if !statusShowAll && !rs.hasPlanningContent() {
-			continue
-		}
-		// Skip repos with no description and no planning content
-		if repo.Description == "" && !rs.hasPlanningContent() {
-			continue
-		}
-
-		shown++
-		bold.Printf("## %s", repo.Name)
-		dim.Printf(" (%s)\n", repo.Path)
-
-		if repo.Description != "" {
-			fmt.Printf("  %s\n", repo.Description)
-		}
-
-		if rs.statusMD != "" {
-			content := filterStatusContent(rs.statusMD, statusVerbose)
-			fmt.Println(content)
-		}
-
-		if len(rs.designDocs) > 0 {
-			fmt.Println()
-			cyan.Printf("Design docs (%d):\n", len(rs.designDocs))
-			for _, doc := range rs.designDocs {
-				fmt.Printf("  - %s\n", doc)
-			}
-		}
-
-		fmt.Println()
+	if statusJSON {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(entries)
 	}
 
-	if shown == 0 {
+	if len(entries) == 0 {
 		fmt.Println("No repos with planning content found. Use --all to include description-only repos.")
 		return nil
 	}
 
-	dim.Printf("(%d repos shown)\n", shown)
+	bold := color.New(color.Bold)
+	dim := color.New(color.Faint)
+	cyan := color.New(color.FgHiCyan)
+
+	for _, e := range entries {
+		bold.Printf("## %s", e.Name)
+		dim.Printf(" (%s)\n", e.Path)
+
+		if e.Description != "" {
+			fmt.Printf("  %s\n", e.Description)
+		}
+		if e.StatusMD != "" {
+			fmt.Println(e.StatusMD)
+		}
+		if len(e.DesignDocs) > 0 {
+			fmt.Println()
+			cyan.Printf("Design docs (%d):\n", len(e.DesignDocs))
+			for _, doc := range e.DesignDocs {
+				fmt.Printf("  - %s\n", doc)
+			}
+		}
+		fmt.Println()
+	}
+
+	dim.Printf("(%d repos shown)\n", len(entries))
 	return nil
 }
