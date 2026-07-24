@@ -61,6 +61,20 @@ func ActiveRepos(repos []config.Repo) []config.Repo {
 	return active
 }
 
+// OwnedRepos returns repos in the portfolio, dropping third-party reference
+// clones (those carrying an upstream `owner`). Portfolio views — status and
+// brief — use this; `exec` and `dies` deliberately do not, so an explicit
+// cross-repo operation can still reach a reference clone.
+func OwnedRepos(repos []config.Repo) []config.Repo {
+	var owned []config.Repo
+	for _, r := range repos {
+		if r.Owner == "" {
+			owned = append(owned, r)
+		}
+	}
+	return owned
+}
+
 func FilterRepos(repos []config.Repo, names []string) []config.Repo {
 	if len(names) == 0 {
 		return repos
@@ -103,9 +117,11 @@ func ExecuteInRepo(repo config.Repo, opts Opts) Result {
 		c = exec.Command(opts.InlineArgs[0], opts.InlineArgs[1:]...)
 	}
 	c.Dir = repo.Path
-	if len(opts.Env) > 0 {
-		c.Env = append(os.Environ(), opts.Env...)
-	}
+	// FORGE_REPO_NAME is the registry name, which a script cannot derive from its
+	// cwd: basenames are neither unique (two `homelab` repos) nor always equal to
+	// the registry name (`zmk-config-corne42` lives at ~/code/zmk/corne42).
+	c.Env = append(os.Environ(), "FORGE_REPO_NAME="+repo.Name)
+	c.Env = append(c.Env, opts.Env...)
 
 	var buf bytes.Buffer
 	if opts.CaptureOutput {

@@ -21,7 +21,7 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 
 **CLI layer** (`cmd/`) uses Cobra. Top-level commands:
 
-- `status` — cross-project status view: descriptions from repos.json, status.md content (printed verbatim — the docs are lean current-state snapshots, not changelogs), design doc listings from .planning/ directories. Flags: `--all` (include description-only repos), `--json` (machine-readable), `-F` (filter repos)
+- `status` — cross-project status view: descriptions from repos.json, status.md content (printed verbatim — the docs are lean current-state snapshots, not changelogs), design doc listings from `.planning/` directories. Planning is resolved through each repo's own `.planning` symlink, never by joining `~/dev/repos/<name>/planning` — repo names are not unique, and name-keying attributed one repo's docs to another. A `.planning` that is a real directory instead of a symlink still renders but is reported as unsynced, since Syncthing never sees it. Flags: `--all` (include description-only repos), `--json` (machine-readable), `-F` (filter repos)
 - `brief` — one-page cross-project work brief for an AI coding session. Composes three layers: planning (each repo's status.md + design docs, reusing `status`'s collector), roadmap (ordered `icb` projects + open items), and todos (the Computer-category `icb` task list surfaced as a capture inbox to triage into a project, plus open GitHub issues per repo via `gh`). The `icb`/`gh` layers degrade to warnings when a tool is missing or unauthenticated. Flags: `--json`, `-F`, `--no-issues`, `--no-tasks`. **This is the AI's dev brief across repos — deliberately NOT the human single pane of glass (`menu dashboard` in dotfiles, a glance across all life apps: tasks/habits/books/learning). Two audiences, two scopes; do not extend one to cover the other.**
 - `exec` — run an inline command or script file across repos
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
@@ -41,7 +41,7 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 
 - `config` — loads two config files:
   - **Forge config** (`~/.config/forge/config.toml`, TOML): `repos_file` pointing to the repo registry
-  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description`
+  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone; `status` and `brief` exclude those via `runner.OwnedRepos`, while `exec` and `dies` still reach them.
   - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
 - `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`). Also contains the bash die scripts in category subdirectories.
 - `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection

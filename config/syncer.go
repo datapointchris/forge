@@ -16,6 +16,9 @@ type Repo struct {
 	Path        string `json:"path"`
 	Status      string `json:"status"`
 	Description string `json:"description,omitempty"`
+	// Owner marks a third-party reference clone (the upstream GitHub owner).
+	// Empty for repos in the portfolio.
+	Owner string `json:"owner,omitempty"`
 }
 
 type SyncerConfig struct {

@@ -123,7 +123,7 @@ func runBrief(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	repos := runner.FilterRepos(runner.ActiveRepos(cfg.Repos), briefFilterNames)
+	repos := runner.FilterRepos(runner.OwnedRepos(runner.ActiveRepos(cfg.Repos)), briefFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(briefFilterNames, ", "))
 	}
@@ -136,12 +136,24 @@ func runBrief(cmd *cobra.Command, _ []string) error {
 	if !briefNoIssues && !ghAvailable {
 		b.Warnings = append(b.Warnings, "gh not found on PATH — GitHub issues skipped")
 	}
+	var unsynced []string
 	for _, e := range entries {
+		if e.Unsynced {
+			unsynced = append(unsynced, e.Name)
+		}
 		rb := repoBrief{statusEntry: e}
 		if ghAvailable {
 			rb.Issues = fetchIssues(e.Path)
 		}
 		b.Repos = append(b.Repos, rb)
+	}
+	// A real .planning dir still renders, but Syncthing never sees it, so the
+	// docs exist on one machine only. Surface it rather than silently diverging.
+	if len(unsynced) > 0 {
+		b.Warnings = append(b.Warnings, fmt.Sprintf(
+			"%s: .planning is a real dir, not synced — run: forge dies run maintenance/sync-planning.sh -F %s",
+			strings.Join(unsynced, ", "), strings.Join(unsynced, ","),
+		))
 	}
 
 	// Roadmap + Computer-todo layers (icb CLI — remote, may be unauthenticated).

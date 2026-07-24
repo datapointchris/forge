@@ -33,6 +33,47 @@ func TestFilterRepos(t *testing.T) {
 	})
 }
 
+func TestOwnedRepos(t *testing.T) {
+	repos := []config.Repo{
+		{Name: "homelab", Path: "~/homelab"},
+		{Name: "homelab", Path: "~/code/refs/homelab", Owner: "khuedoan"},
+		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode"},
+		{Name: "forge", Path: "~/tools/forge"},
+	}
+
+	got := OwnedRepos(repos)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	for _, r := range got {
+		if r.Owner != "" {
+			t.Errorf("reference clone leaked through: %+v", r)
+		}
+	}
+	// The portfolio homelab must survive despite sharing a name with a clone.
+	if got[0].Path != "~/homelab" {
+		t.Errorf("got[0].Path = %q, want ~/homelab", got[0].Path)
+	}
+}
+
+func TestExecuteInRepoExportsRepoName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(t.TempDir(), "name.sh")
+	// The registry name differs from the cwd basename, so a basename-derived
+	// value would fail here — which is the bug this env var exists to prevent.
+	body := "#!/bin/bash\n[ \"$FORGE_REPO_NAME\" = zmk-config-corne42 ] || exit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repo := config.Repo{Name: "zmk-config-corne42", Path: dir}
+	if r := ExecuteInRepo(repo, Opts{ScriptFile: script}); r.Status != "OK" {
+		t.Errorf("status = %q, want OK (FORGE_REPO_NAME not exported)", r.Status)
+	}
+}
+
 func TestExecuteInRepo(t *testing.T) {
 	t.Run("missing directory", func(t *testing.T) {
 		repo := config.Repo{Name: "ghost", Path: "/nonexistent/path"}

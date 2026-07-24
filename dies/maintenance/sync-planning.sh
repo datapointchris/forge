@@ -2,7 +2,9 @@
 # Sync .planning/ to ~/dev/repos/{name}/planning/ via symlink for Syncthing.
 # Idempotent: skips if already correctly symlinked. Migrates real dirs to symlinks.
 
-repo_name=$(basename "$(pwd)")
+# Registry name, not basename: basenames collide (two `homelab` repos) and can
+# differ from the registry name (`zmk-config-corne42` lives at ~/code/zmk/corne42).
+repo_name="${FORGE_REPO_NAME:-$(basename "$(pwd)")}"
 sync_base="$HOME/dev/repos"
 
 # Sync one directory: create symlink from repo_target → synced_path.

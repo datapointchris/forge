@@ -40,21 +40,51 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 }
 
-// syncBase returns the path to ~/dev/repos/ where planning symlinks live.
+// syncBase returns the path to ~/dev/repos/ where planning content lives so
+// Syncthing can carry it between machines.
 func syncBase() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "dev", "repos")
+}
+
+// isSynced reports whether a repo's .planning resolves into syncBase, which is
+// what puts the docs in Syncthing's path. A real directory, or a symlink aimed
+// anywhere else, keeps them on this machine only.
+func isSynced(planningDir string) bool {
+	dest, err := filepath.EvalSymlinks(planningDir)
+	if err != nil {
+		return false
+	}
+	base, err := filepath.EvalSymlinks(syncBase())
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(base, dest)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 type repoStatus struct {
 	repo       config.Repo
 	statusMD   string   // content of status.md (empty if none)
 	designDocs []string // filenames of design docs
+	unsynced   bool     // .planning is a real dir, not a symlink into syncBase
 }
 
 func collectRepoStatus(repo config.Repo) repoStatus {
 	rs := repoStatus{repo: repo}
-	planningDir := filepath.Join(syncBase(), repo.Name, "planning")
+	// Resolve planning through the repo's own .planning symlink rather than
+	// syncBase()/<name>/planning: repo names are not unique (a portfolio repo and
+	// a reference clone can share a basename), so name-keying attributes one
+	// repo's planning docs to another. The symlink is the authoritative mapping.
+	planningDir := filepath.Join(repo.Path, ".planning")
+
+	if _, err := os.Lstat(planningDir); err != nil {
+		return rs
+	}
+	rs.unsynced = !isSynced(planningDir)
 
 	info, err := os.Stat(planningDir)
 	if err != nil || !info.IsDir() {
@@ -95,6 +125,7 @@ type statusEntry struct {
 	Description string   `json:"description,omitempty"`
 	StatusMD    string   `json:"status_md,omitempty"`
 	DesignDocs  []string `json:"design_docs,omitempty"`
+	Unsynced    bool     `json:"unsynced,omitempty"`
 }
 
 // collectStatusEntries walks the filtered repos and returns those with content
@@ -115,6 +146,7 @@ func collectStatusEntries(repos []config.Repo, showAll bool) []statusEntry {
 			Description: repo.Description,
 			StatusMD:    rs.statusMD,
 			DesignDocs:  rs.designDocs,
+			Unsynced:    rs.unsynced,
 		})
 	}
 	return entries
@@ -126,7 +158,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	repos := runner.FilterRepos(runner.ActiveRepos(cfg.Repos), statusFilterNames)
+	repos := runner.FilterRepos(runner.OwnedRepos(runner.ActiveRepos(cfg.Repos)), statusFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(statusFilterNames, ", "))
 	}
