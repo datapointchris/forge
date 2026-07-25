@@ -363,7 +363,7 @@ func renderBrief(b brief) {
 		for _, st := range b.Stale {
 			fmt.Printf("  %s → %s\n", st.Project, st.Title)
 			dim.Printf("     %s says: %s\n", st.Repo, st.Reason)
-			dim.Printf("     close with: icb items complete %s\n", st.ID)
+			dim.Printf("     close with: icb projects items complete %s\n", st.ID)
 		}
 	}
 
