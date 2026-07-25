@@ -158,7 +158,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	repos := runner.FilterRepos(runner.OwnedRepos(runner.ActiveRepos(cfg.Repos)), statusFilterNames)
+	repos := runner.SelectRepos(cfg.Repos, statusFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(statusFilterNames, ", "))
 	}

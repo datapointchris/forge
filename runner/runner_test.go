@@ -56,6 +56,34 @@ func TestOwnedRepos(t *testing.T) {
 	}
 }
 
+func TestSelectRepos(t *testing.T) {
+	repos := []config.Repo{
+		{Name: "forge", Path: "~/tools/forge"},
+		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode"},
+		{Name: "sess", Path: "~/tools/sess", Status: "retired"},
+	}
+
+	t.Run("implicit selection excludes reference clones", func(t *testing.T) {
+		got := SelectRepos(repos, nil)
+		if len(got) != 1 || got[0].Name != "forge" {
+			t.Errorf("got %v, want only forge", got)
+		}
+	})
+
+	t.Run("explicit -F reaches a reference clone", func(t *testing.T) {
+		got := SelectRepos(repos, []string{"httpx"})
+		if len(got) != 1 || got[0].Name != "httpx" {
+			t.Errorf("got %v, want httpx — naming a repo explicitly must override", got)
+		}
+	})
+
+	t.Run("retired repos stay excluded either way", func(t *testing.T) {
+		if got := SelectRepos(repos, []string{"sess"}); len(got) != 0 {
+			t.Errorf("got %v, want none — retired repos are never selected", got)
+		}
+	})
+}
+
 func TestExecuteInRepoExportsRepoName(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {

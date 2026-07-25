@@ -123,7 +123,7 @@ func runBrief(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	repos := runner.FilterRepos(runner.OwnedRepos(runner.ActiveRepos(cfg.Repos)), briefFilterNames)
+	repos := runner.SelectRepos(cfg.Repos, briefFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(briefFilterNames, ", "))
 	}

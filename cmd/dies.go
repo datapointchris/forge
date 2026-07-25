@@ -220,7 +220,7 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	repos := runner.FilterRepos(runner.ActiveRepos(syncerCfg.Repos), diesFilterNames)
+	repos := runner.SelectRepos(syncerCfg.Repos, diesFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(diesFilterNames, ", "))
 	}

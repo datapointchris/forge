@@ -61,10 +61,20 @@ func ActiveRepos(repos []config.Repo) []config.Repo {
 	return active
 }
 
+// SelectRepos resolves the repos a command should act on. With no -F names it
+// returns the active portfolio, excluding third-party reference clones — no
+// implicit operation should ever touch a repo that is not ours. Naming repos
+// explicitly overrides that, so a reference clone is still reachable on purpose.
+func SelectRepos(repos []config.Repo, names []string) []config.Repo {
+	active := ActiveRepos(repos)
+	if len(names) > 0 {
+		return FilterRepos(active, names)
+	}
+	return OwnedRepos(active)
+}
+
 // OwnedRepos returns repos in the portfolio, dropping third-party reference
-// clones (those carrying an upstream `owner`). Portfolio views — status and
-// brief — use this; `exec` and `dies` deliberately do not, so an explicit
-// cross-repo operation can still reach a reference clone.
+// clones (those carrying an upstream `owner`).
 func OwnedRepos(repos []config.Repo) []config.Repo {
 	var owned []config.Repo
 	for _, r := range repos {

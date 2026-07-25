@@ -41,14 +41,17 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 
 - `config` — loads two config files:
   - **Forge config** (`~/.config/forge/config.toml`, TOML): `repos_file` pointing to the repo registry
-  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone; `status` and `brief` exclude those via `runner.OwnedRepos`, while `exec` and `dies` still reach them.
+  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone — a repo cloned for reading, never for cross-repo work.
+
   - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
 - `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`). Also contains the bash die scripts in category subdirectories.
 - `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection
 - `assets` — extracts embedded assets to temp directories for shell execution, manages cleanup
 - `precommit` — Go implementation of config generation (block composition, custom section preservation, hook deduplication, safety checks)
 
-**Data flow for `dies run`:** determine asset source (embedded or `FORGE_DIES_DIR`) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load repo registry → get repos → filter retired → filter by `-F` flag → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
+**Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns the active portfolio and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides that, so a clone stays reachable on purpose. Retired repos are excluded either way.
+
+**Data flow for `dies run`:** determine asset source (embedded or `FORGE_DIES_DIR`) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load repo registry → `SelectRepos` (retired and reference clones dropped unless named) → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
 
 ## Die Scripts
 

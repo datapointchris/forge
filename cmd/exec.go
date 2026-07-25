@@ -73,7 +73,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	repos := runner.FilterRepos(runner.ActiveRepos(cfg.Repos), execFilterNames)
+	repos := runner.SelectRepos(cfg.Repos, execFilterNames)
 	if len(repos) == 0 {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(execFilterNames, ", "))
 	}
