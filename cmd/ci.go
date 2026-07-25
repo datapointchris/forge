@@ -13,6 +13,8 @@ import (
 	"github.com/datapointchris/forge/toolchain"
 )
 
+var ciDryRun bool
+
 var ciCmd = &cobra.Command{
 	Use:   "ci",
 	Short: "Manage generated CI workflows",
@@ -25,6 +27,7 @@ var ciGenerateCmd = &cobra.Command{
 }
 
 func init() {
+	ciGenerateCmd.Flags().BoolVar(&ciDryRun, "dry-run", false, "print the workflow instead of writing it")
 	ciCmd.AddCommand(ciGenerateCmd)
 	rootCmd.AddCommand(ciCmd)
 }
@@ -46,6 +49,15 @@ func runCIGenerate(_ *cobra.Command, _ []string) error {
 	components, err := declaredComponents()
 	if err != nil {
 		return err
+	}
+
+	if ciDryRun {
+		workflow, err := ci.DryRun(blocksFS, manifest, components)
+		if err != nil {
+			return err
+		}
+		fmt.Print(workflow)
+		return nil
 	}
 
 	msg, err := ci.Run(blocksFS, manifest, components)

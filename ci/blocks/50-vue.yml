@@ -9,6 +9,8 @@
 
       - run: npm ci
 
-      - run: npm run lint
+      # Not every frontend defines lint yet; --if-present keeps the rollout
+      # from hard-failing on a missing script.
+      - run: npm run lint --if-present
 
       - run: npm run build

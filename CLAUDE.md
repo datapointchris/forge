@@ -28,7 +28,8 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`
 - `precommit generate` — generate `.pre-commit-config.yaml` from standard blocks (Go implementation)
-- `ci generate` — generate `.github/workflows/validate.yml` from standard CI blocks
+- `ci generate` — generate `.github/workflows/validate.yml` from standard CI blocks (`--dry-run` prints instead of writing)
+- `precommit check` — report hooks that would abort a sync because they are non-standard and unmarked
 - `version` — print version, commit, and build date (set via ldflags)
 - `update` — self-update from GitHub releases (downloads pre-built binary, atomic swap)
 
@@ -70,7 +71,7 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 
 **Categories:**
 
-- `checks/` — scorecard dies (has-pre-commit, has-claude-md, has-clean-gitignore, has-planning-dir, planning-docs)
+- `checks/` — scorecard dies (has-pre-commit, has-claude-md, has-clean-gitignore, has-planning-dir, planning-docs, can-generate)
 - `maintenance/` — golden path enforcement (sync-pre-commit, sync-ci, sync-planning, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
 - `onetime/` — one-shot migrations
 
@@ -136,8 +137,21 @@ one would destroy work nothing could recover. `ci.Run` aborts on any `validate.y
 `# forge-toolchain:` header for the same reason. Bespoke pipelines stay as separate workflow files;
 the generated one is additive.
 
+**`dies/checks/can-generate.sh`** — the pre-rollout gate. Dry-runs both generators against a repo,
+validates the workflow with actionlint and the config with `pre-commit validate-config`, and reports
+what would block a real sync: unmarked custom hooks, or a hand-written `ci.yml`. Writes nothing.
+**Run it across the portfolio before bumping the manifest** — a version bump fans out to every repo,
+so the rollout is only as safe as its worst one. Current state: 52 ok, 13 needing custom markers,
+zero CI generation failures.
+
+Two classes of finding came out of the first sweep and are worth knowing, because `actionlint` cannot
+see either. `defaults.run.working-directory` does not apply to action inputs, so any path in one needs
+`{{dir}}`. And a valid workflow can still fail at runtime: the python block guards mypy behind a
+config check and tolerates pytest's exit 5 (no tests collected), because `docs`, `homelab` and
+`refcheck` would otherwise fail on a baseline they never opted into.
+
 **`dies/maintenance/sync-ci.sh`** — generates the workflow, exits SKIP when current or when no
-supported stack is detected.
+declared component has a CI block.
 
 **`dies/maintenance/sync-pre-commit.sh`** — the main die that orchestrates everything. Detects tech stack, generates config, deploys tool configs, merges pyproject.toml. Idempotent — exits with SKIP when nothing changed.
 

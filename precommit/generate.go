@@ -30,12 +30,38 @@ var categoryMap = map[string]string{
 	"terraform":      "terraform",
 }
 
-// knownAliases are hook IDs that standard blocks intentionally replace.
-// They're recognized so the safety check doesn't abort on repos that still have them.
+// knownAliases are hook IDs that standard blocks intentionally replace, listed
+// so the safety check does not abort on a repo that still names the old id.
+//
+// Only 1:1 replacements belong here. A hook implying behavior no standard block
+// provides — pytest, vitest, or a per-module go-vet-api — must keep triggering
+// the abort, because aliasing it away silently drops that coverage. Those need a
+// # > custom: marker instead.
 var knownAliases = map[string]bool{
-	"bandit":             true,
-	"pyupgrade":          true,
-	"refurb":             true,
+	// Superseded by ruff's rule sets.
+	"bandit":       true,
+	"pyupgrade":    true,
+	"refurb":       true,
+	"black":        true,
+	"blacken-docs": true,
+	"isort":        true,
+	"ruff":         true,
+	// Superseded by the uv-lock hook.
+	"poetry-check":  true,
+	"poetry-export": true,
+	"poetry-lock":   true,
+	// Same tool, different id, in the vue block.
+	"eslint":           true,
+	"prettier":         true,
+	"stylelint":        true,
+	"typecheck":        true,
+	"typescript-check": true,
+	// Same tool, different id, in the go block.
+	"gofmt":   true,
+	"gofumpt": true,
+	// Same tool, different id, in the lua block.
+	"stylua": true,
+	// A local hook forge itself installs.
 	"prepare-commit-msg": true,
 }
 
@@ -283,6 +309,29 @@ func SafetyCheck(configText string, blocksFS fs.FS, customSections map[string]st
 	}
 	sort.Strings(unknown)
 	return unknown, nil
+}
+
+// Check reports the hook IDs that would abort a real Run: present in the
+// existing config, not provided by a standard block, and not under a custom
+// marker. Empty means a sync would land cleanly.
+func Check(blocksFS fs.FS) ([]string, error) {
+	data, err := os.ReadFile(".pre-commit-config.yaml")
+	if err != nil {
+		return nil, nil // no config yet; nothing to preserve
+	}
+	configText := string(data)
+	return SafetyCheck(configText, blocksFS, ExtractCustomSections(configText))
+}
+
+// DryRun returns what Run would write, without touching the filesystem and
+// without the safety abort — for verifying generation across the portfolio
+// before a rollout.
+func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool) (string, error) {
+	var configText string
+	if data, err := os.ReadFile(".pre-commit-config.yaml"); err == nil {
+		configText = string(data)
+	}
+	return Generate(blocksFS, manifest, detected, ExtractCustomSections(configText))
 }
 
 // Run executes the full generation pipeline: read existing config from CWD,

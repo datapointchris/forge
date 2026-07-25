@@ -529,3 +529,64 @@ func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
 		t.Errorf("config must start with %q, got %q", want, strings.SplitN(config, "\n", 2)[0])
 	}
 }
+
+// Check is what the can-generate die uses to tell a clean sync from one that
+// would abort. A hook no standard block provides must keep failing it — the fix
+// is a marker, not silently dropping the hook's coverage.
+func TestCheckReportsOnlyUnmarkedNonStandardHooks(t *testing.T) {
+	// Absolute before any Chdir — a relative DirFS resolves lazily and would
+	// point at the temp dir instead.
+	blocksDir, err := filepath.Abs("../pre-commit/blocks")
+	if err != nil {
+		t.Fatalf("Abs: %v", err)
+	}
+	blocks := os.DirFS(blocksDir)
+
+	t.Run("aliased hook is not reported", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		writeConfig(t, "repos:\n  - repo: local\n    hooks:\n      - id: eslint\n")
+
+		unknown, err := Check(blocks)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+		if len(unknown) != 0 {
+			t.Errorf("eslint is replaced by vue-eslint and should not abort, got %v", unknown)
+		}
+	})
+
+	t.Run("genuinely custom hook is reported", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		writeConfig(t, "repos:\n  - repo: local\n    hooks:\n      - id: sqlc-diff\n")
+
+		unknown, err := Check(blocks)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+		if len(unknown) != 1 || unknown[0] != "sqlc-diff" {
+			t.Errorf("Check() = %v, want [sqlc-diff]", unknown)
+		}
+	})
+
+	t.Run("marked custom hook is not reported", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		writeConfig(t, "repos:\n  - repo: local\n    hooks:\n      - id: x\n\n# > custom:after:all - project hooks\n  - repo: local\n    hooks:\n      - id: sqlc-diff\n")
+
+		unknown, err := Check(blocks)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+		for _, id := range unknown {
+			if id == "sqlc-diff" {
+				t.Error("a marked hook must not abort")
+			}
+		}
+	})
+}
+
+func writeConfig(t *testing.T, content string) {
+	t.Helper()
+	if err := os.WriteFile(".pre-commit-config.yaml", []byte(content), 0o644); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+}

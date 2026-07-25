@@ -105,6 +105,17 @@ func JobName(component config.Component) string {
 	return component.Stack + "-" + strings.NewReplacer("/", "-", "_", "-").Replace(component.Dir)
 }
 
+// DryRun returns what Run would write, without touching the filesystem and
+// without the hand-written-file abort — for verifying generation across the
+// portfolio before a rollout.
+func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
+	var existing string
+	if data, err := os.ReadFile(WorkflowPath); err == nil && strings.HasPrefix(string(data), "# forge-toolchain:") {
+		existing = string(data)
+	}
+	return Generate(blocksFS, manifest, components, precommit.ExtractCustomSections(existing))
+}
+
 // Run generates the workflow and writes it when changed.
 // Returns a status message.
 func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
