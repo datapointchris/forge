@@ -37,7 +37,15 @@ func init() {
 }
 
 func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
-	blocksFS, err := resolveBlocksFS()
+	assetsFS, err := resolvePreCommitFS()
+	if err != nil {
+		return err
+	}
+	blocksFS, err := fs.Sub(assetsFS, "blocks")
+	if err != nil {
+		return fmt.Errorf("accessing blocks: %w", err)
+	}
+	toolchain, err := precommit.LoadToolchain(assetsFS)
 	if err != nil {
 		return err
 	}
@@ -52,7 +60,7 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	msg, err := precommit.Run(blocksFS, detected)
+	msg, err := precommit.Run(blocksFS, toolchain, detected)
 	if err != nil {
 		return err
 	}
@@ -60,24 +68,25 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveBlocksFS returns an fs.FS rooted at the blocks directory.
+// resolvePreCommitFS returns an fs.FS rooted at the pre-commit asset directory,
+// the parent of both the blocks and the toolchain manifest.
 // Uses filesystem when dies_dir is configured, embedded otherwise.
-func resolveBlocksFS() (fs.FS, error) {
+func resolvePreCommitFS() (fs.FS, error) {
 	if diesDir := os.Getenv("FORGE_DIES_DIR"); diesDir != "" {
-		// Filesystem mode: blocks are sibling to dies dir
+		// Filesystem mode: assets are sibling to dies dir
 		forgeRoot := strings.TrimSuffix(diesDir, "/dies")
 		forgeRoot = strings.TrimSuffix(forgeRoot, "/dies/")
-		blocksDir := forgeRoot + "/pre-commit/blocks"
-		if _, err := os.Stat(blocksDir); err != nil {
-			return nil, fmt.Errorf("blocks directory not found: %s", blocksDir)
+		assetsDir := forgeRoot + "/pre-commit"
+		if _, err := os.Stat(assetsDir + "/blocks"); err != nil {
+			return nil, fmt.Errorf("blocks directory not found: %s/blocks", assetsDir)
 		}
-		return os.DirFS(blocksDir), nil
+		return os.DirFS(assetsDir), nil
 	}
 
 	// Embedded mode
-	blocksFS, err := fs.Sub(embeddedPreCommit, "pre-commit/blocks")
+	assetsFS, err := fs.Sub(embeddedPreCommit, "pre-commit")
 	if err != nil {
-		return nil, fmt.Errorf("accessing embedded blocks: %w", err)
+		return nil, fmt.Errorf("accessing embedded assets: %w", err)
 	}
-	return blocksFS, nil
+	return assetsFS, nil
 }

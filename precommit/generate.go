@@ -158,7 +158,8 @@ type block struct {
 }
 
 // Generate composes a .pre-commit-config.yaml from blocks and custom sections.
-func Generate(blocksFS fs.FS, detected map[string]bool, customSections map[string]string) (string, error) {
+// Tool versions come from the toolchain manifest, not the blocks' own rev lines.
+func Generate(blocksFS fs.FS, toolchain *Toolchain, detected map[string]bool, customSections map[string]string) (string, error) {
 	blocks, err := loadBlocks(blocksFS, detected)
 	if err != nil {
 		return "", err
@@ -167,12 +168,13 @@ func Generate(blocksFS fs.FS, detected map[string]bool, customSections map[strin
 	customIDs := GetCustomHookIDs(customSections)
 
 	var lines []string
+	lines = append(lines, fmt.Sprintf("# forge-toolchain: %d", toolchain.Version))
 	lines = append(lines, "fail_fast: true")
 	lines = append(lines, "default_stages: [pre-commit]")
 	lines = append(lines, "repos:")
 
 	for _, b := range blocks {
-		content := StripHooksFromBlock(b.Content, customIDs)
+		content := toolchain.ApplyRevs(StripHooksFromBlock(b.Content, customIDs))
 		desc := BlockDescription(content)
 
 		// Insert custom hooks that go BEFORE this block
@@ -284,7 +286,7 @@ func SafetyCheck(configText string, blocksFS fs.FS, customSections map[string]st
 // Run executes the full generation pipeline: read existing config from CWD,
 // extract custom sections, run safety check, generate, write if changed.
 // Returns a status message and error.
-func Run(blocksFS fs.FS, detected map[string]bool) (string, error) {
+func Run(blocksFS fs.FS, toolchain *Toolchain, detected map[string]bool) (string, error) {
 	configPath := ".pre-commit-config.yaml"
 
 	var configText string
@@ -307,7 +309,7 @@ func Run(blocksFS fs.FS, detected map[string]bool) (string, error) {
 		}
 	}
 
-	config, err := Generate(blocksFS, detected, customSections)
+	config, err := Generate(blocksFS, toolchain, detected, customSections)
 	if err != nil {
 		return "", err
 	}

@@ -1,6 +1,7 @@
 package precommit
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -124,7 +125,7 @@ func TestShouldIncludeBlock(t *testing.T) {
 
 func TestGenerateSimpleConfig(t *testing.T) {
 	blocks := makeTestBlocks()
-	config, err := Generate(blocks, detected("python"), nil)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestCustomSectionsPreserved(t *testing.T) {
 			"      - id: pytest-results",
 	}
 
-	config, err := Generate(blocks, detected("python"), custom)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), custom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,13 +229,13 @@ func TestRoundtripPreservesCustom(t *testing.T) {
 			"      - id: devstats-capture",
 	}
 
-	config1, err := Generate(blocks, detected("python"), custom)
+	config1, err := Generate(blocks, testToolchain(t), detected("python"), custom)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	extracted := ExtractCustomSections(config1)
-	config2, err := Generate(blocks, detected("python"), extracted)
+	config2, err := Generate(blocks, testToolchain(t), detected("python"), extracted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +306,7 @@ func TestCustomHooksNotDuplicatedInStandard(t *testing.T) {
 			"        entry: custom-ruff",
 	}
 
-	config, err := Generate(blocks, detected("python"), custom)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), custom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +342,7 @@ func realBlocks(t *testing.T) fs.FS {
 
 func TestIntegration_PythonRepo(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, detected("python"), nil)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +368,7 @@ func TestIntegration_PythonRepo(t *testing.T) {
 
 func TestIntegration_GoRepo(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, detected("go"), nil)
+	config, err := Generate(blocks, testToolchain(t), detected("go"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +389,7 @@ func TestIntegration_GoRepo(t *testing.T) {
 
 func TestIntegration_FullStack(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, detected("python", "go", "vue", "docker", "actions", "terraform"), nil)
+	config, err := Generate(blocks, testToolchain(t), detected("python", "go", "vue", "docker", "actions", "terraform"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +404,7 @@ func TestIntegration_FullStack(t *testing.T) {
 
 func TestIntegration_GenericOnly(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, detected(), nil)
+	config, err := Generate(blocks, testToolchain(t), detected(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +436,7 @@ func TestIntegration_NoDuplicateHookIDs(t *testing.T) {
 
 	for _, tc := range stacks {
 		t.Run(tc.name, func(t *testing.T) {
-			config, err := Generate(blocks, tc.det, nil)
+			config, err := Generate(blocks, testToolchain(t), tc.det, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -466,7 +467,7 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 			"        pass_filenames: false",
 	}
 
-	config, err := Generate(blocks, detected("go", "actions"), custom)
+	config, err := Generate(blocks, testToolchain(t), detected("go", "actions"), custom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,11 +492,73 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 
 	// Roundtrip
 	extracted := ExtractCustomSections(config)
-	config2, err := Generate(blocks, detected("go", "actions"), extracted)
+	config2, err := Generate(blocks, testToolchain(t), detected("go", "actions"), extracted)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if config != config2 {
 		t.Error("roundtrip produced different output")
+	}
+}
+
+// testToolchain loads the real manifest. Unit tests using fstest.MapFS blocks
+// carry repo URLs the manifest does not manage, which ApplyRevs leaves alone —
+// exactly the behavior an unmanaged repo should get.
+func testToolchain(t *testing.T) *Toolchain {
+	t.Helper()
+	toolchain, err := LoadToolchain(os.DirFS("../pre-commit"))
+	if err != nil {
+		t.Fatalf("LoadToolchain: %v", err)
+	}
+	return toolchain
+}
+
+// A block that names a remote repo the manifest does not pin would ship a
+// version nothing tracks — the exact drift the manifest exists to prevent.
+func TestToolchainManagesEveryBlockRepo(t *testing.T) {
+	toolchain := testToolchain(t)
+	blocks := os.DirFS("../pre-commit/blocks")
+
+	unmanaged, err := toolchain.UnmanagedRepos(blocks)
+	if err != nil {
+		t.Fatalf("UnmanagedRepos: %v", err)
+	}
+	if len(unmanaged) > 0 {
+		t.Errorf("blocks use repos absent from toolchain.yml: %v", unmanaged)
+	}
+}
+
+func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
+	toolchain := testToolchain(t)
+	blocks := os.DirFS("../pre-commit/blocks")
+
+	config, err := Generate(blocks, toolchain, detected("go"), nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	want := fmt.Sprintf("# forge-toolchain: %d", toolchain.Version)
+	if !strings.HasPrefix(config, want) {
+		t.Errorf("config must start with %q, got %q", want, strings.SplitN(config, "\n", 2)[0])
+	}
+}
+
+// The manifest overrides whatever rev a block declares — that override is the
+// whole point, so verify it actually rewrites rather than passing through.
+func TestApplyRevsOverridesBlockRev(t *testing.T) {
+	toolchain := &Toolchain{Version: 9}
+	toolchain.Hooks = append(toolchain.Hooks, struct {
+		Repo string `yaml:"repo"`
+		Rev  string `yaml:"rev"`
+	}{Repo: "https://github.com/rhysd/actionlint", Rev: "v9.9.9"})
+
+	block := "  - repo: https://github.com/rhysd/actionlint\n    rev: v1.0.0\n    hooks:\n      - id: actionlint\n"
+	got := toolchain.ApplyRevs(block)
+
+	if !strings.Contains(got, "rev: v9.9.9") {
+		t.Errorf("manifest rev not applied: %q", got)
+	}
+	if strings.Contains(got, "rev: v1.0.0") {
+		t.Errorf("block rev survived the override: %q", got)
 	}
 }

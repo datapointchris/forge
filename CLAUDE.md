@@ -84,6 +84,10 @@ Forge includes a composable system for generating standardized `.pre-commit-conf
 - GitHub Actions: actionlint
 - Terraform: validate, tflint, fmt, docs
 
+**`pre-commit/toolchain.yml`** — the single source of truth for every pinned tool version. Blocks keep their own `rev:` lines so each stays readable and valid standalone, but generation overwrites them from the manifest — the manifest wins. `TestToolchainManagesEveryBlockRepo` fails if a block names a remote repo the manifest doesn't pin, so a new block cannot introduce an unmanaged version.
+
+The manifest's `version` is stamped into every generated config as a `# forge-toolchain: N` first line. That stamp is what makes staged rollout possible: bump a tool and the version, resync one repo, verify, then fan out — and `rg '^# forge-toolchain:' ` across the portfolio answers which repos are current. Bump `version` on any rev change.
+
 **`pre-commit/configs/`** — standard tool config templates deployed alongside the pre-commit config:
 
 - `markdownlint.json` — all repos
