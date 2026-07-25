@@ -13,10 +13,11 @@ import (
 const File = "toolchain.yml"
 
 var (
-	repoLineRE  = regexp.MustCompile(`^(\s*-\s*repo:\s*)(\S+)\s*$`)
-	revLineRE   = regexp.MustCompile(`^(\s*rev:\s*)(\S+)\s*$`)
-	usesLineRE  = regexp.MustCompile(`^(\s*-?\s*uses:\s*)([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@\S+(.*)$`)
-	goInstallRE = regexp.MustCompile(`^(.*go install\s+)(\S+?)@\S+(.*)$`)
+	repoLineRE    = regexp.MustCompile(`^(\s*-\s*repo:\s*)(\S+)\s*$`)
+	revLineRE     = regexp.MustCompile(`^(\s*rev:\s*)(\S+)\s*$`)
+	usesLineRE    = regexp.MustCompile(`^(\s*-?\s*uses:\s*)([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@\S+(.*)$`)
+	goInstallRE   = regexp.MustCompile(`^(.*go install\s+)(\S+?)@\S+(.*)$`)
+	runtimeLineRE = regexp.MustCompile(`^(\s*)([a-z]+)-version:\s*\S+\s*$`)
 )
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
@@ -30,6 +31,14 @@ type Toolchain struct {
 	Actions []Action `yaml:"actions"`
 	// Tools pins CLIs that generated CI installs with `go install`.
 	Tools []Tool `yaml:"tools"`
+	// Runtimes pins language runtimes generated CI sets up.
+	Runtimes []Runtime `yaml:"runtimes"`
+}
+
+// Runtime is a language runtime pinned to a version.
+type Runtime struct {
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
 }
 
 // Tool is a Go module installed as a CLI, pinned to a version.
@@ -229,7 +238,35 @@ func (t *Toolchain) ApplyToolVersions(content string) string {
 	return strings.Join(lines, "\n")
 }
 
+// RuntimeVersion returns the pinned version for a runtime, and whether it is managed.
+func (t *Toolchain) RuntimeVersion(name string) (string, bool) {
+	for _, runtime := range t.Runtimes {
+		if runtime.Name == name {
+			return runtime.Version, true
+		}
+	}
+	return "", false
+}
+
+// ApplyRuntimeVersions rewrites `<name>-version: X` inputs to the manifest's
+// pinned version. `<name>-version-file:` does not match — that points at a file
+// in the repo, which is the repo's business, not the manifest's.
+func (t *Toolchain) ApplyRuntimeVersions(content string) string {
+	lines := strings.Split(content, "\n")
+
+	for i, line := range lines {
+		m := runtimeLineRE.FindStringSubmatch(line)
+		if len(m) < 3 {
+			continue
+		}
+		if version, managed := t.RuntimeVersion(m[2]); managed {
+			lines[i] = fmt.Sprintf("%s%s-version: %q", m[1], m[2], version)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ApplyAll runs every substitution a generated file may need.
 func (t *Toolchain) ApplyAll(content string) string {
-	return t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content)))
+	return t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content))))
 }

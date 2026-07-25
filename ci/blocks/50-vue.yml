@@ -1,18 +1,14 @@
 # Vue
       - uses: actions/setup-node@v7
         with:
-          node-version-file: frontend/.nvmrc
+          node-version: "24"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          # Action inputs resolve from the workspace root, not the job's
+          # working-directory, so this needs the component path.
+          cache-dependency-path: "{{dir}}/package-lock.json"
 
-      - name: Install
-        run: npm ci
-        working-directory: frontend
+      - run: npm ci
 
-      - name: Lint
-        run: npm run lint
-        working-directory: frontend
+      - run: npm run lint
 
-      - name: Build
-        run: npm run build
-        working-directory: frontend
+      - run: npm run build

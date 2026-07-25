@@ -77,8 +77,8 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config
 		if section, ok := customSections["before:"+name]; ok {
 			lines = append(lines, "", section)
 		}
-		lines = append(lines, "", indentComment(stripDescription(manifest.ApplyAll(shared))))
-		lines = append(lines, "", fmt.Sprintf("      # generated:%s", name), indentComment(stripDescription(manifest.ApplyAll(block))))
+		lines = append(lines, "", applyDir(indentComment(stripDescription(manifest.ApplyAll(shared))), component.Dir))
+		lines = append(lines, "", fmt.Sprintf("      # generated:%s", name), applyDir(indentComment(stripDescription(manifest.ApplyAll(block))), component.Dir))
 		if section, ok := customSections["after:"+name]; ok {
 			lines = append(lines, "", section)
 		}
@@ -186,4 +186,15 @@ func indentComment(content string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// applyDir resolves the {{dir}} placeholder to the component's directory.
+// Action inputs (go-version-file, cache-dependency-path) resolve from the
+// workspace root regardless of the job's working-directory, so any path in one
+// has to carry the component path explicitly.
+func applyDir(content, dir string) string {
+	if dir == "" {
+		dir = "."
+	}
+	return strings.ReplaceAll(content, "{{dir}}", dir)
 }

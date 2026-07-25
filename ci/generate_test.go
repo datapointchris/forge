@@ -41,10 +41,19 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 			t.Errorf("missing job %q:\n%s", job, workflow)
 		}
 	}
-	for _, dir := range []string{"working-directory: api", "working-directory: cli", "working-directory: web"} {
+	for _, dir := range []string{"        working-directory: api", "        working-directory: cli", "        working-directory: web"} {
 		if !strings.Contains(workflow, dir) {
 			t.Errorf("missing %q", dir)
 		}
+	}
+
+	// Action inputs resolve from the workspace root, not working-directory, so
+	// {{dir}} must have been expanded to the component path.
+	if !strings.Contains(workflow, `go-version-file: "api/go.mod"`) {
+		t.Errorf("{{dir}} not expanded in an action input:\n%s", workflow)
+	}
+	if strings.Contains(workflow, "{{dir}}") {
+		t.Error("unexpanded {{dir}} placeholder left in output")
 	}
 	// Every job needs its own checkout — jobs do not share a workspace.
 	if got := strings.Count(workflow, "actions/checkout@"); got != 3 {
@@ -63,8 +72,9 @@ func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
 	if !strings.Contains(workflow, "  go:") {
 		t.Errorf("root component should produce a bare job name:\n%s", workflow)
 	}
-	if strings.Contains(workflow, "working-directory") {
-		t.Error("root component should not set working-directory")
+	// Match the defaults key, not the word — block comments mention it too.
+	if strings.Contains(workflow, "        working-directory:") {
+		t.Error("root component should not set a defaults working-directory")
 	}
 }
 

@@ -11,7 +11,7 @@
 # ask which repos are on the current standard.
 #
 # Bump `version` on any change below.
-version: 2
+version: 3
 
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -59,3 +59,8 @@ actions:
 tools:
   - module: github.com/golangci/golangci-lint/v2/cmd/golangci-lint
     version: v2.12.2
+
+# Language runtimes pinned for generated CI.
+runtimes:
+  - name: node
+    version: "24"

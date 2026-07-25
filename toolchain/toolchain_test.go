@@ -76,3 +76,18 @@ func TestApplyToolVersionsOverridesGoInstall(t *testing.T) {
 		t.Errorf("block version survived the override: %q", got)
 	}
 }
+
+// A repo's own version file is the repo's business; only the literal
+// `<name>-version:` input is the manifest's to pin.
+func TestApplyRuntimeVersionsLeavesVersionFileAlone(t *testing.T) {
+	manifest := &Toolchain{Version: 9, Runtimes: []Runtime{{Name: "node", Version: "24"}}}
+
+	got := manifest.ApplyRuntimeVersions("          node-version: \"18\"\n          go-version-file: api/go.mod\n")
+
+	if !strings.Contains(got, `node-version: "24"`) {
+		t.Errorf("runtime version not applied: %q", got)
+	}
+	if !strings.Contains(got, "go-version-file: api/go.mod") {
+		t.Errorf("version-file input was rewritten: %q", got)
+	}
+}
