@@ -1,0 +1,8 @@
+# Lua
+      # --check, not the formatting run the pre-commit hook does: CI reports,
+      # it does not rewrite the tree.
+      - uses: JohnnyMorganz/stylua-action@v4
+        with:
+          token: ${{ github.token }}
+          version: latest
+          args: --check {{dir}}

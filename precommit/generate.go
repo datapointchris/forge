@@ -31,6 +31,7 @@ var categoryMap = map[string]string{
 	"rust":           "rust",
 	"lua":            "lua",
 	"docker":         "docker",
+	"sql":            "sql",
 	"github-actions": "actions",
 	"terraform":      "terraform",
 }
@@ -352,8 +353,14 @@ type block struct {
 // directory it was declared in. A repo whose frontend is in web/ and one whose
 // frontend is in frontend/ get hooks that enter the right directory — the block
 // itself names neither.
-func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component, customSections map[string]string) (string, error) {
-	dirs := dirsByCategory(components)
+func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.Toolchain, customSections map[string]string) (string, error) {
+	dirs := dirsByCategory(declared.Components)
+	// The SQL block is gated by a declared dialect rather than by a component:
+	// a repo's .sql files are not a build surface with a directory of their own,
+	// and no probe can tell postgres from sqlite by looking at them.
+	if declared.SQLDialect != "" {
+		dirs["sql"] = []string{"."}
+	}
 	blocks, err := loadBlocks(blocksFS, dirs)
 	if err != nil {
 		return "", err
@@ -368,7 +375,8 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config
 	lines = append(lines, "repos:")
 
 	for _, b := range blocks {
-		content := manifest.ApplyRevs(StripHooksFromBlock(renderForDirs(b, dirs[categoryMap[b.Name]]), customIDs))
+		rendered := strings.ReplaceAll(renderForDirs(b, dirs[categoryMap[b.Name]]), "{{dialect}}", declared.SQLDialect)
+		content := manifest.ApplyRevs(StripHooksFromBlock(rendered, customIDs))
 		content = dropEmptyRepoEntries(content)
 		desc := BlockDescription(content)
 
@@ -498,18 +506,18 @@ func Check(blocksFS fs.FS) ([]string, error) {
 // DryRun returns what Run would write, without touching the filesystem and
 // without the safety abort — for verifying generation across the portfolio
 // before a rollout.
-func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
+func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.Toolchain) (string, error) {
 	var configText string
 	if data, err := os.ReadFile(".pre-commit-config.yaml"); err == nil {
 		configText = string(data)
 	}
-	return Generate(blocksFS, manifest, components, ExtractCustomSections(configText))
+	return Generate(blocksFS, manifest, declared, ExtractCustomSections(configText))
 }
 
 // Run executes the full generation pipeline: read existing config from CWD,
 // extract custom sections, run safety check, generate, write if changed.
 // Returns a status message and error.
-func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
+func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.Toolchain) (string, error) {
 	configPath := ".pre-commit-config.yaml"
 
 	var configText string
@@ -532,7 +540,7 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Comp
 		}
 	}
 
-	generated, err := Generate(blocksFS, manifest, components, customSections)
+	generated, err := Generate(blocksFS, manifest, declared, customSections)
 	if err != nil {
 		return "", err
 	}

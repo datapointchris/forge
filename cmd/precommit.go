@@ -87,13 +87,13 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	components, err := resolveComponents()
+	declared, err := resolveToolchain()
 	if err != nil {
 		return err
 	}
 
 	if precommitDryRun {
-		generated, err := precommit.DryRun(blocksFS, manifest, components)
+		generated, err := precommit.DryRun(blocksFS, manifest, declared)
 		if err != nil {
 			return err
 		}
@@ -101,7 +101,7 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	msg, err := precommit.Run(blocksFS, manifest, components)
+	msg, err := precommit.Run(blocksFS, manifest, declared)
 	if err != nil {
 		return err
 	}
@@ -109,23 +109,24 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveComponents returns the repo's declared components, or synthesizes
-// root-level ones from --detected. The override exists for a repo not yet in the
-// registry; it cannot express where a stack lives, so everything lands at root.
-func resolveComponents() ([]config.Component, error) {
+// resolveToolchain returns the repo's declared build surface, or synthesizes one
+// from --detected. The override exists for a repo not yet in the registry; it
+// cannot express where a stack lives or which SQL dialect the repo speaks, so
+// everything lands at root and SQL is left out.
+func resolveToolchain() (*config.Toolchain, error) {
 	if detectedStack == "" {
 		// Same declared source as CI: the registry, never a filesystem probe.
-		return declaredComponents()
+		return declaredToolchain()
 	}
 
-	var components []config.Component
+	declared := &config.Toolchain{}
 	for _, stack := range strings.Split(detectedStack, ",") {
 		stack = strings.TrimSpace(stack)
 		if stack != "" {
-			components = append(components, config.Component{Stack: stack, Dir: "."})
+			declared.Components = append(declared.Components, config.Component{Stack: stack, Dir: "."})
 		}
 	}
-	return components, nil
+	return declared, nil
 }
 
 var precommitStacksCmd = &cobra.Command{
@@ -138,17 +139,22 @@ var precommitStacksCmd = &cobra.Command{
 // from the same declared source the generator reads, rather than re-probing the
 // filesystem and disagreeing with it.
 func runPrecommitStacks(_ *cobra.Command, _ []string) error {
-	components, err := resolveComponents()
+	declared, err := resolveToolchain()
 	if err != nil {
 		return err
 	}
 
 	var categories []string
-	for _, component := range components {
+	for _, component := range declared.Components {
 		category := precommit.StackToCategory(component.Stack)
 		if !slices.Contains(categories, category) {
 			categories = append(categories, category)
 		}
+	}
+	// Not a component — a declared dialect is what pulls in the SQL block, and
+	// the die deploys its ruleset on the same signal.
+	if declared.SQLDialect != "" {
+		categories = append(categories, "sql")
 	}
 	sort.Strings(categories)
 	for _, category := range categories {

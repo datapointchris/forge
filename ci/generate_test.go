@@ -78,16 +78,17 @@ func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
 	}
 }
 
-// The map may declare stacks CI has no block for yet (docker, terraform are
-// pre-commit concerns today). Those must not produce empty jobs.
+// The registry may declare a stack CI has no block for yet — docker is one:
+// the image build is bespoke per repo and hadolint is a pre-commit concern, so
+// there is no baseline job to run. Those must not produce empty jobs.
 func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", ".", "docker", ".", "terraform", "."), nil)
+		comps("go", ".", "docker", "."), nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
 
-	if strings.Contains(workflow, "  docker:") || strings.Contains(workflow, "  terraform:") {
+	if strings.Contains(workflow, "  docker:") {
 		t.Errorf("stack without a block produced a job:\n%s", workflow)
 	}
 }

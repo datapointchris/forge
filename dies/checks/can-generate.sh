@@ -15,7 +15,9 @@ notes=""
 # --- CI ---
 if ci_err=$(forge ci generate --dry-run 2>&1 >"$tmp/validate.yml"); then
   if [ -s "$tmp/validate.yml" ]; then
-    if grep -q '{{' "$tmp/validate.yml"; then
+    # A generator placeholder, not a GitHub Actions expression — ${{ ... }} is
+    # ordinary workflow syntax and must not read as a failed substitution.
+    if grep -qE '(^|[^$])\{\{' "$tmp/validate.yml"; then
       problems="${problems}ci: unexpanded placeholder; "
     fi
     if command -v actionlint > /dev/null 2>&1; then

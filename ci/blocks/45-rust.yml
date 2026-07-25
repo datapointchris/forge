@@ -1,0 +1,10 @@
+# Rust
+      # The toolchain ships with the runner image; rust-toolchain.toml, if the
+      # repo has one, still decides the version.
+      - run: cargo fmt --check
+
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - run: cargo build --all-targets
+
+      - run: cargo test

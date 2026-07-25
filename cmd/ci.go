@@ -46,10 +46,11 @@ func runCIGenerate(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	components, err := declaredComponents()
+	declared, err := declaredToolchain()
 	if err != nil {
 		return err
 	}
+	components := declared.Components
 	// A repo with nothing declared has nothing to build. Pre-commit still has a
 	// generic baseline to give it; CI does not.
 	if len(components) == 0 {
@@ -92,11 +93,12 @@ func resolveCIBlocksFS() (fs.FS, error) {
 	return blocksFS, nil
 }
 
-// declaredComponents resolves the current directory to its registry entry and
-// returns its declared components. Declared, never detected: the portfolio has
-// five different conventions for where a Go service lives, and no probe
-// survives all of them.
-func declaredComponents() ([]config.Component, error) {
+// declaredToolchain resolves the current directory to its registry entry and
+// returns its declared build surface. Declared, never detected: the portfolio
+// has five different conventions for where a Go service lives, no probe
+// survives all of them, and a fact like the SQL dialect is not derivable from a
+// layout at any level of tidiness.
+func declaredToolchain() (*config.Toolchain, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -112,7 +114,7 @@ func declaredComponents() ([]config.Component, error) {
 		return nil, fmt.Errorf("%s is not in the repo registry", cwd)
 	}
 	if repo.Toolchain == nil {
-		return nil, nil
+		return &config.Toolchain{}, nil
 	}
-	return repo.Toolchain.Components, nil
+	return repo.Toolchain, nil
 }

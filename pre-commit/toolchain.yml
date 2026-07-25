@@ -13,7 +13,7 @@
 # Bump `version` on any change below, or on any change to the set of blocks —
 # the stamp answers "is this repo on the current standard", which a new block
 # changes just as much as a new rev does.
-version: 4
+version: 5
 
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -34,6 +34,8 @@ hooks:
     rev: v0.12.5
   - repo: https://github.com/tekwizely/pre-commit-golang
     rev: v1.0.0-rc.1
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 4.2.2
   - repo: https://github.com/JohnnyMorganz/StyLua
     rev: v2.5.2
   - repo: https://github.com/hadolint/hadolint
@@ -56,6 +58,10 @@ actions:
     version: v6
   - uses: astral-sh/setup-uv
     version: v7
+  - uses: JohnnyMorganz/stylua-action
+    version: v4
+  - uses: hashicorp/setup-terraform
+    version: v3
 
 # CLIs generated CI installs with `go install <module>@<version>`.
 tools:

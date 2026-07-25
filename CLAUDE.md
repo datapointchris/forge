@@ -88,6 +88,7 @@ Forge includes a composable system for generating standardized `.pre-commit-conf
 - Docker: hadolint
 - GitHub Actions: actionlint
 - Terraform: validate, tflint, fmt, docs
+- SQL: sqlfluff-lint, with the dialect taken from the registry's `sql_dialect`
 
 **`pre-commit/toolchain.yml`** — the single source of truth for every pinned tool version. Blocks keep their own `rev:` lines so each stays readable and valid standalone, but generation overwrites them from the manifest — the manifest wins. `TestToolchainManagesEveryBlockRepo` fails if a block names a remote repo the manifest doesn't pin, so a new block cannot introduce an unmanaged version.
 
@@ -98,13 +99,14 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 - `markdownlint.json` — all repos
 - `golangci.yml` — Go repos
 - `prettierrc.json` — Vue repos
+- `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. Rules are narrowed to `ambiguous, references, structure, convention.terminator`: sqlfluff's defaults are mostly layout and capitalisation opinions, which failed every `.sql` file in the portfolio and would have taught everyone to skip the hook. The narrowed set passes clean across all seven repos while still catching unparsable SQL and unused CTEs
 - `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, pyright, codespell, pytest)
 
 **Config generation** — a Go function in `precommit/generate.go`, invoked as `forge precommit generate`. Handles block composition, custom section preservation, hook deduplication, and safety checks.
 
 Which blocks apply, and **where each one runs**, come from the repo's declared `toolchain.components` — the same source CI reads, never a filesystem probe. Stack blocks carry `{{dir}}` (a `cd` target) and `{{dirprefix}}` (a `files:` anchor, empty at the root since `^\./` matches nothing pre-commit passes). Renders that come out identical collapse, so a repo with `api/` and `cli/` gets one Go block; renders that differ have their hook ids and names suffixed with the directory. `--detected <stack>` remains as an override for a repo not yet in the registry, and places everything at the root. `forge precommit stacks` prints the declared categories so the die deploys tool configs from that same answer.
 
-A block must appear in `categoryMap` (stack-gated) or `genericBlocks` (every repo); one in neither is an error rather than a silent default.
+A block must appear in `categoryMap` (stack-gated) or `genericBlocks` (every repo); one in neither is an error rather than a silent default. The `sql` category is the one gated by something other than a component — a declared `sql_dialect` pulls it in and fills `{{dialect}}`, because `.sql` files have no build directory of their own and nothing in them says postgres rather than sqlite.
 
 **`pre-commit/scripts/`** — Python helper scripts (embedded in binary):
 
@@ -131,8 +133,8 @@ on `pull_request` and exposed via `workflow_call` so a release workflow can `nee
 **One job per declared component**, named `<stack>` at the root or `<stack>-<dir>` below it, each
 with a `working-directory`. nomad generates `go-api`, `go-cli`, and `vue-web` running in parallel —
 a single serial job would hide which module failed and force them to share one setup step. A
-declared stack with no CI block yet (docker, terraform are pre-commit concerns today) is skipped
-rather than emitting an empty job, so the registry stays free to declare more than CI can build.
+declared stack with no CI block is skipped rather than emitting an empty job, so the registry stays
+free to declare more than CI can build.
 
 The output is **`validate.yml`, not `ci.yml`** — several repos hand-wrote a `ci.yml` long before this
 existed (nomad's is a multi-job pipeline with working directories and image env), and generating over
@@ -144,14 +146,21 @@ the generated one is additive.
 validates the workflow with actionlint and the config with `pre-commit validate-config`, and reports
 what would block a real sync: unmarked custom hooks, or a hand-written `ci.yml`. Writes nothing.
 **Run it across the portfolio before bumping the manifest** — a version bump fans out to every repo,
-so the rollout is only as safe as its worst one. Current state: 52 ok, 13 needing custom markers,
-zero CI generation failures.
+so the rollout is only as safe as its worst one. Current state: **65 ok, zero failures.**
 
-Two classes of finding came out of the first sweep and are worth knowing, because `actionlint` cannot
-see either. `defaults.run.working-directory` does not apply to action inputs, so any path in one needs
-`{{dir}}`. And a valid workflow can still fail at runtime: the python block guards mypy behind a
-config check and tolerates pytest's exit 5 (no tests collected), because `docs`, `homelab` and
-`refcheck` would otherwise fail on a baseline they never opted into.
+The findings worth knowing are the ones no schema validator can reach. `defaults.run.working-directory`
+does not apply to action inputs, so any path in one needs `{{dir}}`. A valid workflow can still fail at
+runtime: the python block guards mypy behind a config check and tolerates pytest's exit 5 (no tests
+collected), because `docs`, `homelab` and `refcheck` would otherwise fail on a baseline they never
+opted into. And a schema-valid pre-commit config can fail on first use, so the gate resolves every
+`npm run X` it emits against that component's `package.json` — which is how nomad's missing `typecheck`
+script and the workspace repos' missing `lint:fix` surfaced. `${{ ... }}` is workflow syntax, not an
+unexpanded generator placeholder; the placeholder check has to exclude it.
+
+CI blocks exist for go, python, vue, rust, lua and terraform. **docker deliberately has none**: the
+image build is bespoke per repo (each app builds and pushes its own in its own pipeline) and hadolint
+is a pre-commit concern, so there is no baseline job left to run. A declared stack with no block is
+skipped rather than emitting an empty job.
 
 **`dies/maintenance/sync-ci.sh`** — generates the workflow, exits SKIP when current or when no
 declared component has a CI block.

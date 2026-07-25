@@ -1,0 +1,12 @@
+# Terraform
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - run: terraform fmt -check -recursive
+
+      # init without a backend: validate needs the providers resolved, and no
+      # PR check should be touching real state.
+      - run: terraform init -backend=false
+
+      - run: terraform validate

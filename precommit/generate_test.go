@@ -44,12 +44,21 @@ func makeTestBlocks() fstest.MapFS {
 	}
 }
 
-func detected(techs ...string) []config.Component {
-	var components []config.Component
+func detected(techs ...string) *config.Toolchain {
+	declared := &config.Toolchain{}
 	for _, tech := range techs {
-		components = append(components, config.Component{Stack: tech, Dir: "."})
+		declared.Components = append(declared.Components, config.Component{Stack: tech, Dir: "."})
 	}
-	return components
+	return declared
+}
+
+// at builds a toolchain from stack/dir pairs.
+func at(pairs ...string) *config.Toolchain {
+	declared := &config.Toolchain{}
+	for i := 0; i < len(pairs); i += 2 {
+		declared.Components = append(declared.Components, config.Component{Stack: pairs[i], Dir: pairs[i+1]})
+	}
+	return declared
 }
 
 func getHookIDs(config string) []string {
@@ -107,7 +116,7 @@ func TestBlockName(t *testing.T) {
 }
 
 func TestShouldIncludeBlock(t *testing.T) {
-	dirs := dirsByCategory(detected("python", "actions"))
+	dirs := dirsByCategory(detected("python", "actions").Components)
 
 	mustInclude := func(name string, want bool) {
 		t.Helper()
@@ -491,7 +500,7 @@ func TestIntegration_GoRepo(t *testing.T) {
 // in web/ must get hooks that enter web/, not the block author's frontend/.
 func TestIntegration_VueHooksEnterTheDeclaredDirectory(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), []config.Component{{Stack: "vue", Dir: "web"}}, nil)
+	config, err := Generate(blocks, testToolchain(t), at("vue", "web"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,10 +540,7 @@ func TestIntegration_RootComponentDropsThePathAnchor(t *testing.T) {
 // failures by hook name, and two called vue-eslint name nothing.
 func TestIntegration_MultipleComponentsGetSuffixedHooks(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), []config.Component{
-		{Stack: "vue", Dir: "client"},
-		{Stack: "node", Dir: "server"},
-	}, nil)
+	config, err := Generate(blocks, testToolchain(t), at("vue", "client", "node", "server"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,10 +560,7 @@ func TestIntegration_MultipleComponentsGetSuffixedHooks(t *testing.T) {
 // two identical copies of the block.
 func TestIntegration_IdenticalRendersCollapse(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), []config.Component{
-		{Stack: "go", Dir: "api"},
-		{Stack: "go", Dir: "cli"},
-	}, nil)
+	config, err := Generate(blocks, testToolchain(t), at("go", "api", "go", "cli"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,6 +574,33 @@ func TestIntegration_IdenticalRendersCollapse(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("go-vet-repo-mod appears %d times, want 1: %v", count, hooks)
+	}
+}
+
+// The SQL block is gated by a declared dialect, not by a component — a repo's
+// .sql files have no build directory of their own, and nothing about them says
+// postgres rather than sqlite.
+func TestIntegration_SQLBlockFollowsTheDeclaredDialect(t *testing.T) {
+	blocks := realBlocks(t)
+
+	withDialect := &config.Toolchain{SQLDialect: "postgres"}
+	config, err := Generate(blocks, testToolchain(t), withDialect, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(getHookIDs(config), "sqlfluff-lint") {
+		t.Error("a declared dialect should pull in the SQL block")
+	}
+	if !strings.Contains(config, "--dialect, \"postgres\"") {
+		t.Errorf("the declared dialect should reach the hook args:\n%s", config)
+	}
+
+	without, err := Generate(blocks, testToolchain(t), detected("python"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(getHookIDs(without), "sqlfluff-lint") {
+		t.Error("no declared dialect should mean no SQL block")
 	}
 }
 
@@ -613,12 +643,12 @@ func TestIntegration_NoDuplicateHookIDs(t *testing.T) {
 	blocks := realBlocks(t)
 	stacks := []struct {
 		name       string
-		components []config.Component
+		components *config.Toolchain
 	}{
 		{"python", detected("python")},
 		{"go", detected("go")},
 		{"full", detected("python", "go", "vue", "rust", "lua", "docker", "actions", "terraform")},
-		{"multi-vue", []config.Component{{Stack: "vue", Dir: "client"}, {Stack: "node", Dir: "server"}}},
+		{"multi-vue", at("vue", "client", "node", "server")},
 		{"empty", detected()},
 	}
 

@@ -63,6 +63,15 @@ if echo "$declared" | grep -q "vue"; then
   fi
 fi
 
+# SQL lint config — deployed wherever a dialect is declared, since the block
+# passes the dialect but the ruleset lives in the config.
+if echo "$declared" | grep -q "sql"; then
+  if [ ! -f .sqlfluff ] || ! diff -q "$configs_dir/sqlfluff.ini" .sqlfluff > /dev/null 2>&1; then
+    cp "$configs_dir/sqlfluff.ini" .sqlfluff
+    configs_deployed="$configs_deployed sqlfluff"
+  fi
+fi
+
 # Python tool configs — merge standard sections into pyproject.toml
 if echo "$declared" | grep -q "python" && [ -f pyproject.toml ]; then
   merge_script="$scripts_dir/merge_pyproject_tools.py"
