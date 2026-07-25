@@ -28,6 +28,7 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`
 - `precommit generate` — generate `.pre-commit-config.yaml` from standard blocks (Go implementation)
+- `ci generate` — generate `.github/workflows/validate.yml` from standard CI blocks
 - `version` — print version, commit, and build date (set via ldflags)
 - `update` — self-update from GitHub releases (downloads pre-built binary, atomic swap)
 
@@ -49,6 +50,8 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 - `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection
 - `assets` — extracts embedded assets to temp directories for shell execution, manages cleanup
 - `precommit` — Go implementation of config generation (block composition, custom section preservation, hook deduplication, safety checks)
+- `ci` — generates the baseline validation workflow, reusing `precommit`'s block composition and custom-section markers
+- `toolchain` — the version manifest shared by both generators
 
 **Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns the active portfolio and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides that, so a clone stays reachable on purpose. Retired repos are excluded either way.
 
@@ -67,7 +70,7 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 **Categories:**
 
 - `checks/` — scorecard dies (has-pre-commit, has-claude-md, has-clean-gitignore, has-planning-dir, planning-docs)
-- `maintenance/` — golden path enforcement (sync-pre-commit, sync-planning, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
+- `maintenance/` — golden path enforcement (sync-pre-commit, sync-ci, sync-planning, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
 - `onetime/` — one-shot migrations
 
 ## Pre-commit Standardization System
@@ -112,6 +115,23 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 ```
 
 The generator preserves these across re-runs. A safety check aborts if unrecognized hooks exist without markers.
+
+## CI Standardization System
+
+`ci/blocks/` holds per-stack step fragments composed into `.github/workflows/validate.yml` — one
+`validate` job running the checks every repo should run, triggered on `pull_request` and exposed via
+`workflow_call` so a release workflow can `needs:` it. Action and `go install` versions come from the
+same `toolchain.yml` as the pre-commit hooks, and the same `# > custom:` markers preserve
+repo-specific steps.
+
+The output is **`validate.yml`, not `ci.yml`** — several repos hand-wrote a `ci.yml` long before this
+existed (nomad's is a multi-job pipeline with working directories and image env), and generating over
+one would destroy work nothing could recover. `ci.Run` aborts on any `validate.yml` lacking the
+`# forge-toolchain:` header for the same reason. Bespoke pipelines stay as separate workflow files;
+the generated one is additive.
+
+**`dies/maintenance/sync-ci.sh`** — generates the workflow, exits SKIP when current or when no
+supported stack is detected.
 
 **`dies/maintenance/sync-pre-commit.sh`** — the main die that orchestrates everything. Detects tech stack, generates config, deploys tool configs, merges pyproject.toml. Idempotent — exits with SKIP when nothing changed.
 

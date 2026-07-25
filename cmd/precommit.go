@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/datapointchris/forge/toolchain"
+
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/precommit"
@@ -45,7 +47,7 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("accessing blocks: %w", err)
 	}
-	toolchain, err := precommit.LoadToolchain(assetsFS)
+	manifest, err := toolchain.Load(assetsFS)
 	if err != nil {
 		return err
 	}
@@ -60,7 +62,7 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	msg, err := precommit.Run(blocksFS, toolchain, detected)
+	msg, err := precommit.Run(blocksFS, manifest, detected)
 	if err != nil {
 		return err
 	}

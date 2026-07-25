@@ -26,6 +26,9 @@ dies:
   maintenance/add-planning-to-gitignore.sh:
     description: "Add .planning to .gitignore if not already present, then commit the change."
     tags: [gitignore, planning, setup]
+  maintenance/sync-ci.sh:
+    description: "Generate .github/workflows/validate.yml from standard CI blocks based on detected tech stack. Aborts on a hand-written validate.yml."
+    tags: [ci, standardization, golden-path]
   maintenance/sync-pre-commit.sh:
     description: "Sync .pre-commit-config.yaml from standard blocks based on detected tech stack. Preserves project hooks."
     tags: [pre-commit, standardization, golden-path]

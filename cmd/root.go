@@ -16,12 +16,14 @@ var cfgPath string
 var (
 	embeddedDies      fs.FS
 	embeddedPreCommit fs.FS
+	embeddedCI        fs.FS
 )
 
 // SetEmbeddedAssets stores the embedded filesystems for use by subcommands.
-func SetEmbeddedAssets(dies, preCommit fs.FS) {
+func SetEmbeddedAssets(dies, preCommit, ciBlocks fs.FS) {
 	embeddedDies = dies
 	embeddedPreCommit = preCommit
+	embeddedCI = ciBlocks
 }
 
 var rootCmd = &cobra.Command{

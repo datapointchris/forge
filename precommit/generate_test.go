@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/datapointchris/forge/toolchain"
 )
 
 func makeTestBlocks() fstest.MapFS {
@@ -504,61 +506,26 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 // testToolchain loads the real manifest. Unit tests using fstest.MapFS blocks
 // carry repo URLs the manifest does not manage, which ApplyRevs leaves alone —
 // exactly the behavior an unmanaged repo should get.
-func testToolchain(t *testing.T) *Toolchain {
+func testToolchain(t *testing.T) *toolchain.Toolchain {
 	t.Helper()
-	toolchain, err := LoadToolchain(os.DirFS("../pre-commit"))
+	manifest, err := toolchain.Load(os.DirFS("../pre-commit"))
 	if err != nil {
-		t.Fatalf("LoadToolchain: %v", err)
+		t.Fatalf("toolchain.Load: %v", err)
 	}
-	return toolchain
-}
-
-// A block that names a remote repo the manifest does not pin would ship a
-// version nothing tracks — the exact drift the manifest exists to prevent.
-func TestToolchainManagesEveryBlockRepo(t *testing.T) {
-	toolchain := testToolchain(t)
-	blocks := os.DirFS("../pre-commit/blocks")
-
-	unmanaged, err := toolchain.UnmanagedRepos(blocks)
-	if err != nil {
-		t.Fatalf("UnmanagedRepos: %v", err)
-	}
-	if len(unmanaged) > 0 {
-		t.Errorf("blocks use repos absent from toolchain.yml: %v", unmanaged)
-	}
+	return manifest
 }
 
 func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
-	toolchain := testToolchain(t)
+	manifest := testToolchain(t)
 	blocks := os.DirFS("../pre-commit/blocks")
 
-	config, err := Generate(blocks, toolchain, detected("go"), nil)
+	config, err := Generate(blocks, manifest, detected("go"), nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
 
-	want := fmt.Sprintf("# forge-toolchain: %d", toolchain.Version)
+	want := fmt.Sprintf("# forge-toolchain: %d", manifest.Version)
 	if !strings.HasPrefix(config, want) {
 		t.Errorf("config must start with %q, got %q", want, strings.SplitN(config, "\n", 2)[0])
-	}
-}
-
-// The manifest overrides whatever rev a block declares — that override is the
-// whole point, so verify it actually rewrites rather than passing through.
-func TestApplyRevsOverridesBlockRev(t *testing.T) {
-	toolchain := &Toolchain{Version: 9}
-	toolchain.Hooks = append(toolchain.Hooks, struct {
-		Repo string `yaml:"repo"`
-		Rev  string `yaml:"rev"`
-	}{Repo: "https://github.com/rhysd/actionlint", Rev: "v9.9.9"})
-
-	block := "  - repo: https://github.com/rhysd/actionlint\n    rev: v1.0.0\n    hooks:\n      - id: actionlint\n"
-	got := toolchain.ApplyRevs(block)
-
-	if !strings.Contains(got, "rev: v9.9.9") {
-		t.Errorf("manifest rev not applied: %q", got)
-	}
-	if strings.Contains(got, "rev: v1.0.0") {
-		t.Errorf("block rev survived the override: %q", got)
 	}
 }
