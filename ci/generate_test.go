@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/toolchain"
 )
 
@@ -18,44 +19,83 @@ func testManifest(t *testing.T) *toolchain.Toolchain {
 	return manifest
 }
 
-func detected(stacks ...string) map[string]bool {
-	d := make(map[string]bool)
-	for _, s := range stacks {
-		d[s] = true
+func comps(pairs ...string) []config.Component {
+	var components []config.Component
+	for i := 0; i < len(pairs); i += 2 {
+		components = append(components, config.Component{Stack: pairs[i], Dir: pairs[i+1]})
 	}
-	return d
+	return components
 }
 
-func TestGenerateIncludesOnlyDetectedStacks(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), detected("go"), nil)
+// nomad holds api/ and cli/ as separate Go modules. One serial job would hide
+// which failed and make them share a setup step.
+func TestGenerateEmitsAJobPerComponent(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
+		comps("go", "api", "go", "cli", "vue", "web"), nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
 
-	if !strings.Contains(workflow, "go-version-file: go.mod") {
-		t.Error("go block missing for a go repo")
+	for _, job := range []string{"  go-api:", "  go-cli:", "  vue-web:"} {
+		if !strings.Contains(workflow, job) {
+			t.Errorf("missing job %q:\n%s", job, workflow)
+		}
 	}
-	if strings.Contains(workflow, "uv run pytest") {
-		t.Error("python block included for a go-only repo")
+	for _, dir := range []string{"working-directory: api", "working-directory: cli", "working-directory: web"} {
+		if !strings.Contains(workflow, dir) {
+			t.Errorf("missing %q", dir)
+		}
 	}
-	if strings.Contains(workflow, "npm ci") {
-		t.Error("vue block included for a go-only repo")
-	}
-	// Uncategorized blocks apply everywhere.
-	if !strings.Contains(workflow, "actions/checkout@") {
-		t.Error("checkout block missing")
+	// Every job needs its own checkout — jobs do not share a workspace.
+	if got := strings.Count(workflow, "actions/checkout@"); got != 3 {
+		t.Errorf("checkout appears %d times, want 3 (one per job)", got)
 	}
 }
 
-// The manifest, not the block file, decides the action version — otherwise the
-// CI blocks become a second place versions drift.
+// A root component is the common case and should not carry a redundant
+// working-directory or a directory suffix in its job name.
+func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if !strings.Contains(workflow, "  go:") {
+		t.Errorf("root component should produce a bare job name:\n%s", workflow)
+	}
+	if strings.Contains(workflow, "working-directory") {
+		t.Error("root component should not set working-directory")
+	}
+}
+
+// The map may declare stacks CI has no block for yet (docker, terraform are
+// pre-commit concerns today). Those must not produce empty jobs.
+func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
+		comps("go", ".", "docker", ".", "terraform", "."), nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if strings.Contains(workflow, "  docker:") || strings.Contains(workflow, "  terraform:") {
+		t.Errorf("stack without a block produced a job:\n%s", workflow)
+	}
+}
+
+func TestGenerateFailsWhenNoComponentHasABlock(t *testing.T) {
+	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), nil); err == nil {
+		t.Fatal("expected an error rather than a workflow with zero jobs")
+	}
+}
+
+// The manifest, not the block file, decides the action version.
 func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 	manifest := &toolchain.Toolchain{
 		Version: 42,
 		Actions: []toolchain.Action{{Uses: "actions/checkout", Version: "v99"}},
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), manifest, detected(), nil)
+	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -69,7 +109,7 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 }
 
 // Several repos hand-wrote a workflow before generation existed. Overwriting
-// one would destroy work with no way back, so an unstamped file must abort.
+// one would destroy work with no way back.
 func TestRunAbortsOnHandWrittenWorkflow(t *testing.T) {
 	blocksDir := filepath.Join(originalDir(t), "blocks")
 	manifest := testManifest(t)
@@ -84,7 +124,7 @@ func TestRunAbortsOnHandWrittenWorkflow(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	if _, err := Run(os.DirFS(blocksDir), manifest, detected("go")); err == nil {
+	if _, err := Run(os.DirFS(blocksDir), manifest, comps("go", ".")); err == nil {
 		t.Fatal("expected abort on a workflow with no forge-toolchain header")
 	}
 
@@ -103,7 +143,7 @@ func TestRunIsIdempotent(t *testing.T) {
 
 	t.Chdir(t.TempDir())
 
-	first, err := Run(os.DirFS(blocksDir), manifest, detected("go"))
+	first, err := Run(os.DirFS(blocksDir), manifest, comps("go", "."))
 	if err != nil {
 		t.Fatalf("first Run: %v", err)
 	}
@@ -111,7 +151,7 @@ func TestRunIsIdempotent(t *testing.T) {
 		t.Errorf("first run = %q, want generated", first)
 	}
 
-	second, err := Run(os.DirFS(blocksDir), manifest, detected("go"))
+	second, err := Run(os.DirFS(blocksDir), manifest, comps("go", "."))
 	if err != nil {
 		t.Fatalf("second Run: %v", err)
 	}

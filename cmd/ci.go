@@ -9,10 +9,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/ci"
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/toolchain"
 )
-
-var ciDetectedStack string
 
 var ciCmd = &cobra.Command{
 	Use:   "ci",
@@ -26,7 +25,6 @@ var ciGenerateCmd = &cobra.Command{
 }
 
 func init() {
-	ciGenerateCmd.Flags().StringVar(&ciDetectedStack, "detected", "", "comma-separated detected stack (go,python,vue)")
 	ciCmd.AddCommand(ciGenerateCmd)
 	rootCmd.AddCommand(ciCmd)
 }
@@ -45,14 +43,12 @@ func runCIGenerate(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	detected := make(map[string]bool)
-	for _, tech := range strings.Split(ciDetectedStack, ",") {
-		if tech = strings.TrimSpace(tech); tech != "" {
-			detected[tech] = true
-		}
+	components, err := declaredComponents()
+	if err != nil {
+		return err
 	}
 
-	msg, err := ci.Run(blocksFS, manifest, detected)
+	msg, err := ci.Run(blocksFS, manifest, components)
 	if err != nil {
 		return err
 	}
@@ -77,4 +73,29 @@ func resolveCIBlocksFS() (fs.FS, error) {
 		return nil, fmt.Errorf("accessing embedded CI blocks: %w", err)
 	}
 	return blocksFS, nil
+}
+
+// declaredComponents resolves the current directory to its registry entry and
+// returns its declared components. Declared, never detected: the portfolio has
+// five different conventions for where a Go service lives, and no probe
+// survives all of them.
+func declaredComponents() ([]config.Component, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	syncerCfg, err := loadRepos()
+	if err != nil {
+		return nil, fmt.Errorf("loading repo registry: %w", err)
+	}
+
+	repo := config.FindRepoByPath(syncerCfg.Repos, cwd)
+	if repo == nil {
+		return nil, fmt.Errorf("%s is not in the repo registry", cwd)
+	}
+	if repo.Toolchain == nil || len(repo.Toolchain.Components) == 0 {
+		return nil, fmt.Errorf("%s declares no toolchain.components in the registry", repo.Name)
+	}
+	return repo.Toolchain.Components, nil
 }

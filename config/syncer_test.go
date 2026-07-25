@@ -116,3 +116,38 @@ func TestExpandTilde(t *testing.T) {
 		}
 	}
 }
+
+func TestFindRepoByPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	repos := []Repo{
+		{Name: "todoui", Path: "~/tools/todoui"},
+		{Name: "forge", Path: "~/tools/forge"},
+	}
+
+	// A subdirectory resolves to its repo — dies run from wherever the user is.
+	got := FindRepoByPath(repos, filepath.Join(home, "tools", "todoui", "db"))
+	if got == nil || got.Name != "todoui" {
+		t.Errorf("subdirectory did not resolve to todoui: %+v", got)
+	}
+
+	if got := FindRepoByPath(repos, filepath.Join(home, "tools")); got != nil {
+		t.Errorf("a parent of several repos must not match one: %+v", got)
+	}
+}
+
+func TestToolchainStacksDeduplicates(t *testing.T) {
+	// nomad holds two Go modules; the stack list must report go once.
+	toolchain := &Toolchain{Components: []Component{
+		{Stack: "go", Dir: "api"},
+		{Stack: "go", Dir: "cli"},
+		{Stack: "vue", Dir: "web"},
+	}}
+
+	got := toolchain.Stacks()
+	if len(got) != 2 || got[0] != "go" || got[1] != "vue" {
+		t.Errorf("Stacks() = %v, want [go vue]", got)
+	}
+}

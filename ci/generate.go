@@ -1,10 +1,11 @@
 // Package ci generates a baseline validation workflow from per-stack blocks,
 // reusing the pre-commit system's block composition and custom-section markers.
 //
-// The generated workflow is deliberately one job doing the checks every repo
-// should run. Repos with elaborate pipelines (matrix builds, deploys, image
-// publishing) keep those as their own workflow files — this one is additive,
-// and callable via workflow_call so a release workflow can gate on it.
+// One job per declared component, so a repo's separate modules validate in
+// parallel and a failure names which one broke. Repos with elaborate pipelines
+// (matrix builds, deploys, image publishing) keep those as their own workflow
+// files — this one is additive, and callable via workflow_call so a release
+// workflow can gate on it.
 package ci
 
 import (
@@ -12,9 +13,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/toolchain"
 )
@@ -24,17 +25,14 @@ import (
 // over one would destroy work nothing could recover.
 const WorkflowPath = ".github/workflows/validate.yml"
 
-// categoryMap maps block names to the stack that must be detected for the block
-// to be included. Blocks not listed are always included.
-var categoryMap = map[string]string{
-	"go":     "go",
-	"python": "python",
-	"vue":    "vue",
-}
-
-// Generate composes the workflow from blocks, custom sections, and the manifest.
-func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool, customSections map[string]string) (string, error) {
-	blocks, err := loadBlocks(blocksFS, detected)
+// Generate composes the workflow from the repo's declared components.
+//
+// Each component becomes its own job with a working-directory, because a repo
+// can hold several of the same stack in different places — nomad's api/ and
+// cli/ are both Go modules, deliberately isolated. One serial job would hide
+// which one failed and force them to share a setup step.
+func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component, customSections map[string]string) (string, error) {
+	shared, err := loadBlock(blocksFS, "checkout")
 	if err != nil {
 		return "", err
 	}
@@ -53,32 +51,41 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string
 		"  contents: read",
 		"",
 		"jobs:",
-		"  validate:",
-		"    runs-on: ubuntu-latest",
-		"    steps:",
 	)
 
-	for _, b := range blocks {
-		content := manifest.ApplyAll(b.Content)
-		desc := precommit.BlockDescription(content)
+	jobs := 0
+	for _, component := range components {
+		block, err := loadBlock(blocksFS, component.Stack)
+		if err != nil {
+			return "", err
+		}
+		// A declared stack forge has no CI block for yet — docker and terraform
+		// are pre-commit concerns today. Silently skipping keeps the map free to
+		// declare more than CI currently knows how to build.
+		if block == "" {
+			continue
+		}
+		jobs++
 
-		if section, ok := customSections["before:"+b.Name]; ok {
+		name := JobName(component)
+		lines = append(lines, "", fmt.Sprintf("  %s:", name), "    runs-on: ubuntu-latest")
+		if component.Dir != "" && component.Dir != "." {
+			lines = append(lines, "    defaults:", "      run:", fmt.Sprintf("        working-directory: %s", component.Dir))
+		}
+		lines = append(lines, "    steps:")
+
+		if section, ok := customSections["before:"+name]; ok {
 			lines = append(lines, "", section)
 		}
-
-		stripped := content
-		if desc != "" {
-			contentLines := strings.Split(content, "\n")
-			if len(contentLines) > 0 && strings.TrimSpace(contentLines[0]) == "# "+desc {
-				stripped = strings.Join(contentLines[1:], "\n")
-			}
-		}
-
-		lines = append(lines, "", fmt.Sprintf("# generated:%s - %s", b.Name, desc), strings.TrimRight(stripped, "\n"))
-
-		if section, ok := customSections["after:"+b.Name]; ok {
+		lines = append(lines, "", indentComment(stripDescription(manifest.ApplyAll(shared))))
+		lines = append(lines, "", fmt.Sprintf("      # generated:%s", name), indentComment(stripDescription(manifest.ApplyAll(block))))
+		if section, ok := customSections["after:"+name]; ok {
 			lines = append(lines, "", section)
 		}
+	}
+
+	if jobs == 0 {
+		return "", fmt.Errorf("no components with a CI block: nothing to generate")
 	}
 
 	if section, ok := customSections["after:all"]; ok {
@@ -89,9 +96,18 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string
 	return strings.Join(lines, "\n"), nil
 }
 
+// JobName is the workflow job id for a component: the stack, plus the directory
+// when the repo holds more than one component of that stack.
+func JobName(component config.Component) string {
+	if component.Dir == "" || component.Dir == "." {
+		return component.Stack
+	}
+	return component.Stack + "-" + strings.NewReplacer("/", "-", "_", "-").Replace(component.Dir)
+}
+
 // Run generates the workflow and writes it when changed.
 // Returns a status message.
-func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool) (string, error) {
+func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
 	var existing string
 	if data, err := os.ReadFile(WorkflowPath); err == nil {
 		existing = string(data)
@@ -105,7 +121,7 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool
 
 	customSections := precommit.ExtractCustomSections(existing)
 
-	workflow, err := Generate(blocksFS, manifest, detected, customSections)
+	workflow, err := Generate(blocksFS, manifest, components, customSections)
 	if err != nil {
 		return "", err
 	}
@@ -127,43 +143,47 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool
 	return "generated", nil
 }
 
-type block struct {
-	Name    string
-	Content string
-}
-
-func loadBlocks(blocksFS fs.FS, detected map[string]bool) ([]block, error) {
-	var names []string
+// loadBlock returns the block whose name matches, or "" when none does.
+func loadBlock(blocksFS fs.FS, name string) (string, error) {
+	var found string
 	err := fs.WalkDir(blocksFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
+		if d.IsDir() || precommit.BlockName(path) != name {
 			return nil
 		}
-		name := d.Name()
-		if len(name) == 0 || name[0] < '0' || name[0] > '9' {
-			return nil
+		data, readErr := fs.ReadFile(blocksFS, path)
+		if readErr != nil {
+			return readErr
 		}
-		names = append(names, path)
+		found = strings.TrimRight(string(data), "\n")
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	sort.Strings(names)
+	return found, nil
+}
 
-	var blocks []block
-	for _, path := range names {
-		name := precommit.BlockName(path)
-		if required, ok := categoryMap[name]; ok && !detected[required] {
-			continue
-		}
-		data, err := fs.ReadFile(blocksFS, path)
-		if err != nil {
-			return nil, err
-		}
-		blocks = append(blocks, block{Name: name, Content: strings.TrimRight(string(data), "\n")})
+// stripDescription drops a block's leading description comment, which the
+// generated: marker replaces.
+func stripDescription(content string) string {
+	lines := strings.Split(content, "\n")
+	if len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[0]), "# ") {
+		return strings.Join(lines[1:], "\n")
 	}
-	return blocks, nil
+	return content
+}
+
+// indentComment aligns a block's own comments with the steps they annotate.
+// Column-zero comments are valid YAML but read as if they escaped the job.
+func indentComment(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "#") {
+			lines[i] = "      " + line
+		}
+	}
+	return strings.Join(lines, "\n")
 }

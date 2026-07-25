@@ -19,6 +19,43 @@ type Repo struct {
 	// Owner marks a third-party reference clone (the upstream GitHub owner).
 	// Empty for repos in the portfolio.
 	Owner string `json:"owner,omitempty"`
+	// Toolchain declares what forge's generators need to know about the repo.
+	// Declared rather than detected: five different conventions for "where the
+	// Go service lives" exist across the portfolio, and facts like the SQL
+	// dialect are not derivable from the layout at all.
+	Toolchain *Toolchain `json:"toolchain,omitempty"`
+}
+
+// Toolchain is a repo's declared build surface.
+type Toolchain struct {
+	Components []Component `json:"components,omitempty"`
+	// SQLDialect is the sqlfluff dialect for the repo's .sql files.
+	// Empty means the repo has no SQL worth linting.
+	SQLDialect string `json:"sql_dialect,omitempty"`
+}
+
+// Component is one buildable unit: a stack and the directory it lives in.
+// A repo can hold several of the same stack — nomad's api/ and cli/ are both
+// Go modules, deliberately isolated from each other.
+type Component struct {
+	Stack string `json:"stack"`
+	Dir   string `json:"dir"`
+}
+
+// Stacks returns the distinct stacks across a repo's components.
+func (t *Toolchain) Stacks() []string {
+	if t == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var stacks []string
+	for _, component := range t.Components {
+		if !seen[component.Stack] {
+			seen[component.Stack] = true
+			stacks = append(stacks, component.Stack)
+		}
+	}
+	return stacks
 }
 
 type SyncerConfig struct {
@@ -94,4 +131,28 @@ func LoadReposFromForgeConfig() (*SyncerConfig, error) {
 	}
 
 	return LoadSyncerConfig(defaultReposFileFallback)
+}
+
+// FindRepoByPath returns the repo whose path contains dir, preferring the
+// longest match so a repo nested inside another resolves to the inner one.
+func FindRepoByPath(repos []Repo, dir string) *Repo {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil
+	}
+
+	var best *Repo
+	for i := range repos {
+		expanded, err := ExpandTilde(repos[i].Path)
+		if err != nil {
+			continue
+		}
+		if abs != expanded && !strings.HasPrefix(abs, expanded+string(filepath.Separator)) {
+			continue
+		}
+		if best == nil || len(expanded) > len(best.Path) {
+			best = &repos[i]
+		}
+	}
+	return best
 }

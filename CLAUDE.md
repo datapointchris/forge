@@ -44,6 +44,7 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 - `config` — loads two config files:
   - **Forge config** (`~/.config/forge/config.toml`, TOML): `repos_file` pointing to the repo registry
   - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone — a repo cloned for reading, never for cross-repo work.
+  - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: nomad's `api/` and `cli/` are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
 
   - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
 - `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`). Also contains the bash die scripts in category subdirectories.
@@ -118,11 +119,16 @@ The generator preserves these across re-runs. A safety check aborts if unrecogni
 
 ## CI Standardization System
 
-`ci/blocks/` holds per-stack step fragments composed into `.github/workflows/validate.yml` — one
-`validate` job running the checks every repo should run, triggered on `pull_request` and exposed via
-`workflow_call` so a release workflow can `needs:` it. Action and `go install` versions come from the
-same `toolchain.yml` as the pre-commit hooks, and the same `# > custom:` markers preserve
-repo-specific steps.
+`ci/blocks/` holds per-stack step fragments composed into `.github/workflows/validate.yml`, triggered
+on `pull_request` and exposed via `workflow_call` so a release workflow can `needs:` it. Action and
+`go install` versions come from the same `toolchain.yml` as the pre-commit hooks, and the same
+`# > custom:` markers preserve repo-specific steps.
+
+**One job per declared component**, named `<stack>` at the root or `<stack>-<dir>` below it, each
+with a `working-directory`. nomad generates `go-api`, `go-cli`, and `vue-web` running in parallel —
+a single serial job would hide which module failed and force them to share one setup step. A
+declared stack with no CI block yet (docker, terraform are pre-commit concerns today) is skipped
+rather than emitting an empty job, so the registry stays free to declare more than CI can build.
 
 The output is **`validate.yml`, not `ci.yml`** — several repos hand-wrote a `ci.yml` long before this
 existed (nomad's is a multi-job pipeline with working directories and image env), and generating over
