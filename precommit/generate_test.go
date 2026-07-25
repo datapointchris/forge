@@ -10,6 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/toolchain"
 )
 
@@ -43,12 +44,12 @@ func makeTestBlocks() fstest.MapFS {
 	}
 }
 
-func detected(techs ...string) map[string]bool {
-	m := make(map[string]bool)
-	for _, t := range techs {
-		m[t] = true
+func detected(techs ...string) []config.Component {
+	var components []config.Component
+	for _, tech := range techs {
+		components = append(components, config.Component{Stack: tech, Dir: "."})
 	}
-	return m
+	return components
 }
 
 func getHookIDs(config string) []string {
@@ -106,22 +107,45 @@ func TestBlockName(t *testing.T) {
 }
 
 func TestShouldIncludeBlock(t *testing.T) {
-	det := detected("python", "actions")
+	dirs := dirsByCategory(detected("python", "actions"))
 
-	if !ShouldIncludeBlock("conventional-commits", det) {
-		t.Error("generic blocks should always be included")
+	mustInclude := func(name string, want bool) {
+		t.Helper()
+		got, err := ShouldIncludeBlock(name, dirs)
+		if err != nil {
+			t.Fatalf("ShouldIncludeBlock(%q): %v", name, err)
+		}
+		if got != want {
+			t.Errorf("ShouldIncludeBlock(%q) = %v, want %v", name, got, want)
+		}
 	}
-	if !ShouldIncludeBlock("file-checks", det) {
-		t.Error("file-checks should always be included")
+
+	mustInclude("conventional-commits", true)
+	mustInclude("file-checks", true)
+	mustInclude("python-format", true)
+	mustInclude("go", false)
+	mustInclude("vue", false)
+}
+
+// A block in neither table used to read as generic, which silently shipped
+// cargo and stylua hooks to every Go and Python repo.
+func TestShouldIncludeBlockRejectsUnclassified(t *testing.T) {
+	if _, err := ShouldIncludeBlock("brand-new-stack", nil); err == nil {
+		t.Error("an unclassified block should be an error, not a default")
 	}
-	if !ShouldIncludeBlock("python-format", det) {
-		t.Error("python-format should be included for python")
+}
+
+// Every real block must be classified, so adding one cannot repeat the leak.
+func TestEveryRealBlockIsClassified(t *testing.T) {
+	entries, err := os.ReadDir("../pre-commit/blocks")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if ShouldIncludeBlock("go", det) {
-		t.Error("go should not be included without go detected")
-	}
-	if ShouldIncludeBlock("vue", det) {
-		t.Error("vue should not be included without vue detected")
+	for _, entry := range entries {
+		name := BlockName(entry.Name())
+		if _, err := ShouldIncludeBlock(name, nil); err != nil {
+			t.Errorf("block %s: %v", name, err)
+		}
 	}
 }
 
@@ -247,6 +271,59 @@ func TestRoundtripPreservesCustom(t *testing.T) {
 	}
 }
 
+// A comment inside a hook is not the end of it — stripping used to stop there
+// and leave the hook's remaining keys behind as invalid YAML.
+func TestStripHooksKeepsCommentedHookWhole(t *testing.T) {
+	content := strings.Join([]string{
+		"  - repo: local",
+		"    hooks:",
+		"      - id: doomed",
+		"        name: doomed",
+		"        # why this entry is written the odd way",
+		"        entry: echo hi",
+		"        language: system",
+		"      - id: survivor",
+		"        entry: echo bye",
+	}, "\n")
+
+	got := StripHooksFromBlock(content, map[string]bool{"doomed": true})
+
+	for _, gone := range []string{"doomed", "echo hi", "why this entry"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("%q should have been stripped:\n%s", gone, got)
+		}
+	}
+	if !strings.Contains(got, "id: survivor") || !strings.Contains(got, "echo bye") {
+		t.Errorf("survivor hook damaged:\n%s", got)
+	}
+}
+
+// A marker that is not the last thing in the file absorbs everything below it,
+// hooks included, leaving the standard block with a bare `hooks:` key that
+// pre-commit rejects.
+func TestGenerateDropsRepoEntriesLeftWithoutHooks(t *testing.T) {
+	blocks := makeTestBlocks()
+	custom := map[string]string{
+		"after:python-format": strings.Join([]string{
+			"# > custom:after:python-format - Swallowed the block below it",
+			"  - repo: local",
+			"    hooks:",
+			"      - id: ruff-format",
+			"      - id: check-yaml",
+			"      - id: check-toml",
+		}, "\n"),
+	}
+
+	config, err := Generate(blocks, testToolchain(t), detected("python"), custom)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if regexp.MustCompile(`hooks:\n(\s*\n)*(#|\s*- repo:|$)`).MatchString(config) {
+		t.Errorf("a repo entry was left with no hooks:\n%s", config)
+	}
+}
+
 func TestSafetyCheckBlocksUnknownHooks(t *testing.T) {
 	blocks := makeTestBlocks()
 	configText := "repos:\n" +
@@ -277,7 +354,7 @@ func TestSafetyCheckBlocksUnknownHooks(t *testing.T) {
 	}
 }
 
-func TestSafetyCheckSkipsWithCustomMarkers(t *testing.T) {
+func TestSafetyCheckAllowsMarkedHooks(t *testing.T) {
 	blocks := makeTestBlocks()
 	configText := "repos:\n" +
 		"  - repo: local\n" +
@@ -293,7 +370,28 @@ func TestSafetyCheckSkipsWithCustomMarkers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(unknown) > 0 {
-		t.Error("safety check should be skipped when custom markers exist")
+		t.Errorf("a marked hook should be recognized, got %v", unknown)
+	}
+}
+
+func TestSafetyCheckStillCatchesUnmarkedSiblings(t *testing.T) {
+	blocks := makeTestBlocks()
+	configText := "repos:\n" +
+		"  - repo: local\n" +
+		"    hooks:\n" +
+		"      - id: marked-hook\n" +
+		"      - id: forgotten-hook\n"
+
+	customSections := map[string]string{
+		"after:all": "# > custom:after:all - Stuff\n  - repo: local\n    hooks:\n      - id: marked-hook",
+	}
+
+	unknown, err := SafetyCheck(configText, blocks, customSections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unknown) != 1 || unknown[0] != "forgotten-hook" {
+		t.Errorf("want [forgotten-hook], got %v", unknown)
 	}
 }
 
@@ -389,6 +487,93 @@ func TestIntegration_GoRepo(t *testing.T) {
 	}
 }
 
+// The block names no directory; the declaration does. A repo with its frontend
+// in web/ must get hooks that enter web/, not the block author's frontend/.
+func TestIntegration_VueHooksEnterTheDeclaredDirectory(t *testing.T) {
+	blocks := realBlocks(t)
+	config, err := Generate(blocks, testToolchain(t), []config.Component{{Stack: "vue", Dir: "web"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(config, "cd web &&") {
+		t.Error("vue hooks should cd into the declared directory")
+	}
+	if strings.Contains(config, "cd frontend &&") {
+		t.Error("vue hooks should not reference the block's example directory")
+	}
+	if !strings.Contains(config, `'^web/.*\.(vue|js|ts|jsx|tsx)$'`) {
+		t.Errorf("files: pattern should be anchored to the declared directory:\n%s", config)
+	}
+	if strings.Contains(config, "{{") {
+		t.Error("unexpanded placeholder in generated config")
+	}
+}
+
+// A root component has no path prefix to anchor with: "^\./" matches nothing
+// pre-commit ever passes.
+func TestIntegration_RootComponentDropsThePathAnchor(t *testing.T) {
+	blocks := realBlocks(t)
+	config, err := Generate(blocks, testToolchain(t), detected("vue"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(config, `'^./`) {
+		t.Errorf("root component should not anchor on ./:\n%s", config)
+	}
+	if !strings.Contains(config, `'^.*\.(vue|js|ts|jsx|tsx)$'`) {
+		t.Errorf("root component should match unanchored:\n%s", config)
+	}
+}
+
+// Two frontends in one repo need distinguishable hooks — pre-commit reports
+// failures by hook name, and two called vue-eslint name nothing.
+func TestIntegration_MultipleComponentsGetSuffixedHooks(t *testing.T) {
+	blocks := realBlocks(t)
+	config, err := Generate(blocks, testToolchain(t), []config.Component{
+		{Stack: "vue", Dir: "client"},
+		{Stack: "node", Dir: "server"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hooks := getHookIDs(config)
+	for _, id := range []string{"vue-eslint-client", "vue-eslint-server"} {
+		if !contains(hooks, id) {
+			t.Errorf("missing hook %s, got %v", id, hooks)
+		}
+	}
+	if contains(hooks, "vue-eslint") {
+		t.Error("unsuffixed hook should not survive alongside suffixed ones")
+	}
+}
+
+// The Go hooks walk every go.mod in the repo, so two modules must not produce
+// two identical copies of the block.
+func TestIntegration_IdenticalRendersCollapse(t *testing.T) {
+	blocks := realBlocks(t)
+	config, err := Generate(blocks, testToolchain(t), []config.Component{
+		{Stack: "go", Dir: "api"},
+		{Stack: "go", Dir: "cli"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hooks := getHookIDs(config)
+	count := 0
+	for _, id := range hooks {
+		if id == "go-vet-repo-mod" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("go-vet-repo-mod appears %d times, want 1: %v", count, hooks)
+	}
+}
+
 func TestIntegration_FullStack(t *testing.T) {
 	blocks := realBlocks(t)
 	config, err := Generate(blocks, testToolchain(t), detected("python", "go", "vue", "docker", "actions", "terraform"), nil)
@@ -427,18 +612,19 @@ func TestIntegration_GenericOnly(t *testing.T) {
 func TestIntegration_NoDuplicateHookIDs(t *testing.T) {
 	blocks := realBlocks(t)
 	stacks := []struct {
-		name string
-		det  map[string]bool
+		name       string
+		components []config.Component
 	}{
 		{"python", detected("python")},
 		{"go", detected("go")},
-		{"full", detected("python", "go", "vue", "docker", "actions", "terraform")},
+		{"full", detected("python", "go", "vue", "rust", "lua", "docker", "actions", "terraform")},
+		{"multi-vue", []config.Component{{Stack: "vue", Dir: "client"}, {Stack: "node", Dir: "server"}}},
 		{"empty", detected()},
 	}
 
 	for _, tc := range stacks {
 		t.Run(tc.name, func(t *testing.T) {
-			config, err := Generate(blocks, testToolchain(t), tc.det, nil)
+			config, err := Generate(blocks, testToolchain(t), tc.components, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

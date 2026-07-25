@@ -1,12 +1,15 @@
 package dies
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/datapointchris/forge/config"
 )
 
 // forgeRoot returns the root of the forge repo (one level up from dies/).
@@ -20,10 +23,13 @@ func forgeRoot(t *testing.T) string {
 	return filepath.Join(wd, "..")
 }
 
-// makeTempRepo creates a temp directory with a .git dir and optional marker files.
-func makeTempRepo(t *testing.T, files map[string]string) string {
+// makeTempRepo creates a temp git repo declaring the given components, next to
+// a registry naming it. Generation reads the registry, so a test declares its
+// stacks the same way a real repo does rather than planting marker files.
+func makeTempRepo(t *testing.T, components []config.Component, files map[string]string) string {
 	t.Helper()
-	dir := t.TempDir()
+	root := t.TempDir()
+	dir := filepath.Join(root, "repo")
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +42,30 @@ func makeTempRepo(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 	}
+
+	registry := config.SyncerConfig{Repos: []config.Repo{{
+		Name:      "repo",
+		Path:      dir,
+		Status:    "active",
+		Toolchain: &config.Toolchain{Components: components},
+	}}}
+	data, err := json.Marshal(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "repos.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return dir
+}
+
+// stacksAt declares one root-level component per stack.
+func stacksAt(stacks ...string) []config.Component {
+	var components []config.Component
+	for _, stack := range stacks {
+		components = append(components, config.Component{Stack: stack, Dir: "."})
+	}
+	return components
 }
 
 // runSyncDie runs the sync-pre-commit die in the given repo directory.
@@ -49,7 +78,9 @@ func runSyncDie(t *testing.T, repoDir string) string {
 	cmd := exec.Command("bash", script)
 	cmd.Dir = repoDir
 	// pre-commit install will fail in temp repos, that's fine
-	cmd.Env = append(os.Environ(), "PATH="+os.Getenv("PATH"))
+	cmd.Env = append(os.Environ(),
+		"PATH="+os.Getenv("PATH"),
+		"FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(repoDir), "repos.json"))
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -105,7 +136,7 @@ func indexOf(slice []string, item string) int {
 }
 
 func TestSyncDie_PythonRepo(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, stacksAt("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"test\"\n",
 	})
 
@@ -138,7 +169,7 @@ func TestSyncDie_PythonRepo(t *testing.T) {
 }
 
 func TestSyncDie_GoRepo(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, stacksAt("go"), map[string]string{
 		"go.mod":  "module example.com/test\n\ngo 1.23\n",
 		"main.go": "package main\n",
 	})
@@ -159,7 +190,7 @@ func TestSyncDie_GoRepo(t *testing.T) {
 }
 
 func TestSyncDie_GenericOnly(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, nil, map[string]string{
 		"README.md": "# Test\n",
 	})
 
@@ -183,12 +214,13 @@ func TestSyncDie_GenericOnly(t *testing.T) {
 
 func TestSyncDie_NoDuplicateHookIDs(t *testing.T) {
 	stacks := []struct {
-		name  string
-		files map[string]string
+		name       string
+		components []config.Component
+		files      map[string]string
 	}{
-		{"python", map[string]string{"pyproject.toml": "[project]\nname = \"t\"\n"}},
-		{"go", map[string]string{"go.mod": "module t\n\ngo 1.23\n", "main.go": "package main\n"}},
-		{"full", map[string]string{
+		{"python", stacksAt("python"), map[string]string{"pyproject.toml": "[project]\nname = \"t\"\n"}},
+		{"go", stacksAt("go"), map[string]string{"go.mod": "module t\n\ngo 1.23\n", "main.go": "package main\n"}},
+		{"full", stacksAt("python", "go", "vue", "docker", "actions"), map[string]string{
 			"pyproject.toml":           "[project]\nname = \"t\"\n",
 			"go.mod":                   "module t\n\ngo 1.23\n",
 			"main.go":                  "package main\n",
@@ -200,7 +232,7 @@ func TestSyncDie_NoDuplicateHookIDs(t *testing.T) {
 
 	for _, tc := range stacks {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := makeTempRepo(t, tc.files)
+			dir := makeTempRepo(t, tc.components, tc.files)
 			config := runSyncDie(t, dir)
 			hooks := getHookIDs(config)
 
@@ -218,7 +250,7 @@ func TestSyncDie_NoDuplicateHookIDs(t *testing.T) {
 }
 
 func TestSyncDie_CustomHooksPreserved(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, stacksAt("go", "actions"), map[string]string{
 		"go.mod":                   "module t\n\ngo 1.23\n",
 		"main.go":                  "package main\n",
 		".github/workflows/ci.yml": "on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n",
@@ -285,7 +317,7 @@ func TestSyncDie_CustomHooksPreserved(t *testing.T) {
 }
 
 func TestSyncDie_CustomHookDedupsStandard(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, stacksAt("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"t\"\n",
 		".pre-commit-config.yaml": strings.Join([]string{
 			"# > custom:after:python-lint - Custom mypy",
@@ -317,7 +349,7 @@ func TestSyncDie_CustomHookDedupsStandard(t *testing.T) {
 }
 
 func TestSyncDie_SafetyAbortsOnUnknownHooks(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, stacksAt("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"t\"\n",
 		".pre-commit-config.yaml": strings.Join([]string{
 			"repos:",
@@ -334,6 +366,7 @@ func TestSyncDie_SafetyAbortsOnUnknownHooks(t *testing.T) {
 
 	cmd := exec.Command("bash", script)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(dir), "repos.json"))
 	out, err := cmd.CombinedOutput()
 
 	if err == nil {
@@ -348,7 +381,7 @@ func TestSyncDie_SafetyAbortsOnUnknownHooks(t *testing.T) {
 }
 
 func TestSyncDie_DeploysMarkdownlintConfig(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, nil, map[string]string{
 		"README.md": "# Test\n",
 	})
 
@@ -361,7 +394,7 @@ func TestSyncDie_DeploysMarkdownlintConfig(t *testing.T) {
 }
 
 func TestSyncDie_DeploysGolangciConfig(t *testing.T) {
-	dir := makeTempRepo(t, map[string]string{
+	dir := makeTempRepo(t, stacksAt("go"), map[string]string{
 		"go.mod":  "module t\n\ngo 1.23\n",
 		"main.go": "package main\n",
 	})

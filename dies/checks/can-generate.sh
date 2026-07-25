@@ -65,6 +65,24 @@ else
   esac
 fi
 
+# A config can be schema-valid and still fail on the first commit. Every
+# `npm run X` the generator emits has to exist in that component's package.json
+# — `pre-commit validate-config` has no idea whether it does.
+if [ -s "$tmp/pre-commit.yaml" ] && command -v jq > /dev/null 2>&1; then
+  missing=""
+  while read -r dir script; do
+    [ -n "$dir" ] || continue
+    manifest="$dir/package.json"
+    if [ ! -f "$manifest" ]; then
+      missing="${missing}${dir}:no-package.json "
+    elif ! jq -e --arg s "$script" '.scripts[$s]' "$manifest" > /dev/null 2>&1; then
+      missing="${missing}${dir}:${script} "
+    fi
+    # --if-present invocations are deliberately optional; only strict ones count.
+  done < <(sed -n "s/.*cd \([^ ]*\) && npm run \([a-z][a-z:._-]*\).*/\1 \2/p" "$tmp/pre-commit.yaml" | sort -u)
+  [ -n "$missing" ] && problems="${problems}pre-commit: missing npm scripts: ${missing%% }; "
+fi
+
 # Custom hooks with no marker abort a real sync. Surfacing them here is the
 # whole point: the fix is adding markers, not letting the sync destroy them.
 if [ -f .pre-commit-config.yaml ]; then

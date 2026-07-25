@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/toolchain"
 )
 
@@ -16,18 +18,34 @@ var (
 	markerRE    = regexp.MustCompile(`^# > custom:(before|after):(\S+)`)
 	generatedRE = regexp.MustCompile(`^# generated:(\S+)`)
 	hookIDRE    = regexp.MustCompile(`^\s+-\s*id:\s*(\S+)`)
+	hookNameRE  = regexp.MustCompile(`^(\s+name:\s*)(.+)$`)
+	repoLineRE  = regexp.MustCompile(`^\s*-\s*repo:\s*(\S+)`)
 )
 
-// categoryMap maps block names to the tech stack category that must be detected
-// for the block to be included. Blocks not in this map are always included.
+// categoryMap maps a block to the declared stack category that pulls it in.
 var categoryMap = map[string]string{
 	"python-format":  "python",
 	"python-lint":    "python",
 	"go":             "go",
 	"vue":            "vue",
+	"rust":           "rust",
+	"lua":            "lua",
 	"docker":         "docker",
 	"github-actions": "actions",
 	"terraform":      "terraform",
+}
+
+// genericBlocks apply to every repo regardless of stack. Membership is declared
+// rather than inferred from categoryMap's gaps: rust and lua were absent from
+// both for months, which read as generic, and every Go repo was being handed
+// cargo-clippy and stylua hooks.
+var genericBlocks = map[string]bool{
+	"conventional-commits": true,
+	"commit-branding":      true,
+	"file-checks":          true,
+	"markdown":             true,
+	"shell":                true,
+	"codespell":            true,
 }
 
 // knownAliases are hook IDs that standard blocks intentionally replace, listed
@@ -39,6 +57,7 @@ var categoryMap = map[string]string{
 // # > custom: marker instead.
 var knownAliases = map[string]bool{
 	// Superseded by ruff's rule sets.
+	"flake8":       true,
 	"bandit":       true,
 	"pyupgrade":    true,
 	"refurb":       true,
@@ -61,8 +80,6 @@ var knownAliases = map[string]bool{
 	"gofumpt": true,
 	// Same tool, different id, in the lua block.
 	"stylua": true,
-	// A local hook forge itself installs.
-	"prepare-commit-msg": true,
 }
 
 // BlockName extracts the block name from a numbered filename.
@@ -87,10 +104,106 @@ func BlockDescription(content string) string {
 	return ""
 }
 
-// ShouldIncludeBlock returns true if a block should be included for the detected stack.
-func ShouldIncludeBlock(blockName string, detected map[string]bool) bool {
+// ShouldIncludeBlock reports whether a block applies to the declared components.
+// A block belonging to neither table is an error, not a default.
+func ShouldIncludeBlock(blockName string, dirs map[string][]string) (bool, error) {
+	if genericBlocks[blockName] {
+		return true, nil
+	}
 	required, ok := categoryMap[blockName]
-	return !ok || detected[required]
+	if !ok {
+		return false, fmt.Errorf("block %q is in neither categoryMap nor genericBlocks", blockName)
+	}
+	return len(dirs[required]) > 0, nil
+}
+
+// StackToCategory maps a declared stack to the block category that lints it.
+// Most are identity; the registry names the technology, the block names the
+// toolchain.
+// A bespoke Astro blog keeps its own prettier and eslint setup in its
+// package.json; it is deliberately not held to the shared frontend block, so it
+// maps to a category no block claims and gets the generic hooks only.
+func StackToCategory(stack string) string {
+	switch stack {
+	case "node":
+		return "vue"
+	default:
+		return stack
+	}
+}
+
+// dirsByCategory groups the declared component directories under the block
+// category that lints them, preserving declaration order and dropping repeats.
+func dirsByCategory(components []config.Component) map[string][]string {
+	dirs := make(map[string][]string)
+	for _, component := range components {
+		category := StackToCategory(component.Stack)
+		dir := component.Dir
+		if dir == "" {
+			dir = "."
+		}
+		if slices.Contains(dirs[category], dir) {
+			continue
+		}
+		dirs[category] = append(dirs[category], dir)
+	}
+	return dirs
+}
+
+// renderForDirs resolves a block's directory placeholders, once per directory the
+// stack was declared in. Identical renders collapse: the Go hooks walk every
+// go.mod in the repo already, so api/ and cli/ produce one copy, not two.
+//
+// When a category genuinely renders more than once, hook ids and names take the
+// directory as a suffix — pre-commit reports failures by hook, and two hooks
+// called vue-eslint would leave no way to tell which app broke.
+func renderForDirs(b block, dirs []string) string {
+	if len(dirs) == 0 {
+		return b.Content
+	}
+
+	var renders []string
+	for _, dir := range dirs {
+		render := applyDir(b.Content, dir)
+		if !slices.Contains(renders, render) {
+			renders = append(renders, render)
+		}
+	}
+	if len(renders) == 1 {
+		return renders[0]
+	}
+
+	var suffixed []string
+	for index, render := range renders {
+		suffix := "-" + strings.NewReplacer("/", "-", "_", "-").Replace(dirs[index])
+		suffixed = append(suffixed, suffixHookNames(render, suffix))
+	}
+	return strings.Join(suffixed, "\n")
+}
+
+// applyDir resolves {{dir}} for a `cd` target and {{dirprefix}} for a path
+// anchor in a files: pattern. A root component needs "." for the first and an
+// empty string for the second — "^\./" matches nothing pre-commit ever passes.
+func applyDir(content, dir string) string {
+	prefix := dir + "/"
+	if dir == "." {
+		prefix = ""
+	}
+	return strings.NewReplacer("{{dir}}", dir, "{{dirprefix}}", prefix).Replace(content)
+}
+
+func suffixHookNames(content, suffix string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if m := hookIDRE.FindStringSubmatch(line); m != nil {
+			lines[i] = line + suffix
+			continue
+		}
+		if m := hookNameRE.FindStringSubmatch(line); m != nil {
+			lines[i] = m[1] + strings.TrimSpace(m[2]) + suffix
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ExtractCustomSections parses an existing config for custom marker sections.
@@ -141,39 +254,86 @@ func GetCustomHookIDs(customSections map[string]string) map[string]bool {
 	return ids
 }
 
-// StripHooksFromBlock removes hooks with the given IDs from a block's YAML content.
+// StripHooksFromBlock removes hooks with the given IDs from a block's YAML
+// content.
+//
+// A hook's extent is decided by indentation, not by what its lines look like.
+// Treating any comment as the end of a hook left the body of a stripped hook
+// behind as orphaned keys, which is invalid YAML — and a hook is exactly where
+// a comment explaining a non-obvious entry belongs.
 func StripHooksFromBlock(content string, hookIDs map[string]bool) string {
 	if len(hookIDs) == 0 {
 		return content
 	}
 
 	var result []string
-	skip := false
+	stripping := -1
 
 	for _, line := range strings.Split(content, "\n") {
-		if m := hookIDRE.FindStringSubmatch(line); m != nil {
-			skip = hookIDs[m[1]]
-		} else if skip {
-			trimmed := strings.TrimSpace(line)
-			isNewHook := regexp.MustCompile(`^\s+-\s*id:`).MatchString(line)
-			isNewRepo := regexp.MustCompile(`^\s+-\s*repo:`).MatchString(line)
-			isComment := strings.HasPrefix(trimmed, "#")
-
-			if isNewHook {
-				if m := hookIDRE.FindStringSubmatch(line); m != nil {
-					skip = hookIDs[m[1]]
-				} else {
-					skip = false
-				}
-			} else if isNewRepo || isComment || trimmed == "" {
-				skip = false
+		if stripping >= 0 {
+			if strings.TrimSpace(line) == "" || indentOf(line) > stripping {
+				continue
 			}
+			stripping = -1
 		}
+		if m := hookIDRE.FindStringSubmatch(line); len(m) > 1 && hookIDs[m[1]] {
+			stripping = indentOf(line)
+			continue
+		}
+		result = append(result, line)
+	}
 
-		if !skip {
-			result = append(result, line)
+	return strings.Join(result, "\n")
+}
+
+// containsHook reports whether any line declares a hook. hookIDRE anchors at
+// the start of a line, so it only ever matches one line at a time.
+func containsHook(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if hookIDRE.MatchString(line) {
+			return true
 		}
 	}
+	return false
+}
+
+func indentOf(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " "))
+}
+
+// dropEmptyRepoEntries removes repo entries left with no hooks, which pre-commit
+// rejects outright. Two things produce one: a custom section overriding the only
+// hook a repo provides, and a marker placed mid-file — a section runs to the next
+// marker or EOF, so it absorbs whatever sits below it, hooks included.
+func dropEmptyRepoEntries(content string) string {
+	var result []string
+	var entry []string
+	hasHook := false
+
+	flush := func() {
+		if hasHook {
+			result = append(result, entry...)
+		}
+		entry = nil
+		hasHook = false
+	}
+
+	for _, line := range strings.Split(content, "\n") {
+		if repoLineRE.MatchString(line) {
+			flush()
+			entry = []string{line}
+			continue
+		}
+		if entry == nil {
+			result = append(result, line)
+			continue
+		}
+		entry = append(entry, line)
+		if hookIDRE.MatchString(line) {
+			hasHook = true
+		}
+	}
+	flush()
 
 	return strings.Join(result, "\n")
 }
@@ -187,8 +347,14 @@ type block struct {
 
 // Generate composes a .pre-commit-config.yaml from blocks and custom sections.
 // Tool versions come from the toolchain manifest, not the blocks' own rev lines.
-func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool, customSections map[string]string) (string, error) {
-	blocks, err := loadBlocks(blocksFS, detected)
+//
+// Components carry where each stack lives, so a stack block is rendered once per
+// directory it was declared in. A repo whose frontend is in web/ and one whose
+// frontend is in frontend/ get hooks that enter the right directory — the block
+// itself names neither.
+func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component, customSections map[string]string) (string, error) {
+	dirs := dirsByCategory(components)
+	blocks, err := loadBlocks(blocksFS, dirs)
 	if err != nil {
 		return "", err
 	}
@@ -202,7 +368,8 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string
 	lines = append(lines, "repos:")
 
 	for _, b := range blocks {
-		content := manifest.ApplyRevs(StripHooksFromBlock(b.Content, customIDs))
+		content := manifest.ApplyRevs(StripHooksFromBlock(renderForDirs(b, dirs[categoryMap[b.Name]]), customIDs))
+		content = dropEmptyRepoEntries(content)
 		desc := BlockDescription(content)
 
 		// Insert custom hooks that go BEFORE this block
@@ -220,9 +387,13 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string
 			}
 		}
 
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("# generated:%s - %s", b.Name, desc))
-		lines = append(lines, stripped)
+		// A block every one of whose hooks the repo overrides contributes nothing
+		// but its header, which reads as if generation dropped the hooks.
+		if containsHook(stripped) {
+			lines = append(lines, "")
+			lines = append(lines, fmt.Sprintf("# generated:%s - %s", b.Name, desc))
+			lines = append(lines, stripped)
+		}
 
 		// Insert custom hooks that go AFTER this block
 		if section, ok := customSections["after:"+b.Name]; ok {
@@ -290,12 +461,13 @@ func GetStandardHookIDs(blocksFS fs.FS) (map[string]bool, error) {
 
 // SafetyCheck returns unknown hook IDs that exist in the current config but aren't
 // in standard blocks and have no custom markers. Non-empty result means abort.
+//
+// Marking one hook must not disarm the check for the rest of the file: a repo is
+// marked up incrementally, and the first marker added is exactly when an unmarked
+// sibling is most likely to be sitting one block away.
 func SafetyCheck(configText string, blocksFS fs.FS, customSections map[string]string) ([]string, error) {
-	if len(customSections) > 0 {
-		return nil, nil
-	}
-
 	existing := GetExistingHookIDs(configText)
+	marked := GetCustomHookIDs(customSections)
 	standard, err := GetStandardHookIDs(blocksFS)
 	if err != nil {
 		return nil, err
@@ -303,7 +475,7 @@ func SafetyCheck(configText string, blocksFS fs.FS, customSections map[string]st
 
 	var unknown []string
 	for id := range existing {
-		if !standard[id] {
+		if !standard[id] && !marked[id] {
 			unknown = append(unknown, id)
 		}
 	}
@@ -326,18 +498,18 @@ func Check(blocksFS fs.FS) ([]string, error) {
 // DryRun returns what Run would write, without touching the filesystem and
 // without the safety abort — for verifying generation across the portfolio
 // before a rollout.
-func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool) (string, error) {
+func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
 	var configText string
 	if data, err := os.ReadFile(".pre-commit-config.yaml"); err == nil {
 		configText = string(data)
 	}
-	return Generate(blocksFS, manifest, detected, ExtractCustomSections(configText))
+	return Generate(blocksFS, manifest, components, ExtractCustomSections(configText))
 }
 
 // Run executes the full generation pipeline: read existing config from CWD,
 // extract custom sections, run safety check, generate, write if changed.
 // Returns a status message and error.
-func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool) (string, error) {
+func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
 	configPath := ".pre-commit-config.yaml"
 
 	var configText string
@@ -360,16 +532,16 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool
 		}
 	}
 
-	config, err := Generate(blocksFS, manifest, detected, customSections)
+	generated, err := Generate(blocksFS, manifest, components, customSections)
 	if err != nil {
 		return "", err
 	}
 
-	if configText == config {
+	if configText == generated {
 		return "no changes", nil
 	}
 
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte(generated), 0o644); err != nil {
 		return "", fmt.Errorf("writing config: %w", err)
 	}
 
@@ -380,7 +552,7 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, detected map[string]bool
 }
 
 // loadBlocks reads and filters block files from the filesystem.
-func loadBlocks(blocksFS fs.FS, detected map[string]bool) ([]block, error) {
+func loadBlocks(blocksFS fs.FS, dirs map[string][]string) ([]block, error) {
 	var names []string
 	err := fs.WalkDir(blocksFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -404,7 +576,11 @@ func loadBlocks(blocksFS fs.FS, detected map[string]bool) ([]block, error) {
 	var blocks []block
 	for _, name := range names {
 		blockName := BlockName(name)
-		if !ShouldIncludeBlock(blockName, detected) {
+		include, err := ShouldIncludeBlock(blockName, dirs)
+		if err != nil {
+			return nil, err
+		}
+		if !include {
 			continue
 		}
 		data, err := fs.ReadFile(blocksFS, name)

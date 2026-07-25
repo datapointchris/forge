@@ -50,6 +50,11 @@ func runCIGenerate(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	// A repo with nothing declared has nothing to build. Pre-commit still has a
+	// generic baseline to give it; CI does not.
+	if len(components) == 0 {
+		return fmt.Errorf("declares no toolchain.components in the registry")
+	}
 
 	if ciDryRun {
 		workflow, err := ci.DryRun(blocksFS, manifest, components)
@@ -106,8 +111,8 @@ func declaredComponents() ([]config.Component, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("%s is not in the repo registry", cwd)
 	}
-	if repo.Toolchain == nil || len(repo.Toolchain.Components) == 0 {
-		return nil, fmt.Errorf("%s declares no toolchain.components in the registry", repo.Name)
+	if repo.Toolchain == nil {
+		return nil, nil
 	}
 	return repo.Toolchain.Components, nil
 }

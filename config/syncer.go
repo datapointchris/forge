@@ -120,6 +120,12 @@ func ExpandTilde(path string) (string, error) {
 // LoadReposFromForgeConfig loads repos using the path from ForgeConfig.ReposFile,
 // falling back to the default syncer config path if not configured.
 func LoadReposFromForgeConfig() (*SyncerConfig, error) {
+	// Env override, matching FORGE_DIES_DIR: a die shells out to forge, so a
+	// caller pointing at a different registry has no other way to say so.
+	if reposFile := os.Getenv("FORGE_REPOS_FILE"); reposFile != "" {
+		return LoadSyncerConfig(reposFile)
+	}
+
 	forgeCfg, err := LoadForgeConfig(DefaultForgeConfigPath)
 	if err != nil {
 		// Config file missing or unreadable — use fallback
@@ -140,6 +146,7 @@ func FindRepoByPath(repos []Repo, dir string) *Repo {
 	if err != nil {
 		return nil
 	}
+	abs = resolveSymlinks(abs)
 
 	var best *Repo
 	for i := range repos {
@@ -147,6 +154,7 @@ func FindRepoByPath(repos []Repo, dir string) *Repo {
 		if err != nil {
 			continue
 		}
+		expanded = resolveSymlinks(expanded)
 		if abs != expanded && !strings.HasPrefix(abs, expanded+string(filepath.Separator)) {
 			continue
 		}
@@ -155,4 +163,16 @@ func FindRepoByPath(repos []Repo, dir string) *Repo {
 		}
 	}
 	return best
+}
+
+// resolveSymlinks canonicalizes a path so a repo reached through a link still
+// matches its registry entry — on macOS /var is itself a link to /private/var,
+// which is enough to make a working directory unrecognizable. Unresolvable
+// paths pass through: a registry entry may name a repo not present here.
+func resolveSymlinks(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+	return resolved
 }

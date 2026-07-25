@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
+	"sort"
 	"strings"
-
-	"github.com/datapointchris/forge/toolchain"
 
 	"github.com/spf13/cobra"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/precommit"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 var precommitCmd = &cobra.Command{
@@ -38,8 +40,6 @@ var precommitCheckCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Report hooks that would abort a sync (exit 1 if any)",
 	RunE:  runPrecommitCheck,
-	// Failure is the command's normal signal, not a misuse of it.
-	SilenceUsage: true,
 }
 
 func runPrecommitCheck(_ *cobra.Command, _ []string) error {
@@ -69,6 +69,7 @@ func init() {
 
 	precommitCmd.AddCommand(precommitGenerateCmd)
 	precommitCmd.AddCommand(precommitCheckCmd)
+	precommitCmd.AddCommand(precommitStacksCmd)
 	rootCmd.AddCommand(precommitCmd)
 }
 
@@ -86,39 +87,73 @@ func runPrecommitGenerate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	detected := make(map[string]bool)
-	if detectedStack != "" {
-		for _, tech := range strings.Split(detectedStack, ",") {
-			tech = strings.TrimSpace(tech)
-			if tech != "" {
-				detected[tech] = true
-			}
-		}
-	} else {
-		// Same declared source as CI: the registry, never a filesystem probe.
-		components, err := declaredComponents()
-		if err != nil {
-			return err
-		}
-		for _, component := range components {
-			detected[stackToCategory(component.Stack)] = true
-		}
+	components, err := resolveComponents()
+	if err != nil {
+		return err
 	}
 
 	if precommitDryRun {
-		config, err := precommit.DryRun(blocksFS, manifest, detected)
+		generated, err := precommit.DryRun(blocksFS, manifest, components)
 		if err != nil {
 			return err
 		}
-		fmt.Print(config)
+		fmt.Print(generated)
 		return nil
 	}
 
-	msg, err := precommit.Run(blocksFS, manifest, detected)
+	msg, err := precommit.Run(blocksFS, manifest, components)
 	if err != nil {
 		return err
 	}
 	fmt.Println(msg)
+	return nil
+}
+
+// resolveComponents returns the repo's declared components, or synthesizes
+// root-level ones from --detected. The override exists for a repo not yet in the
+// registry; it cannot express where a stack lives, so everything lands at root.
+func resolveComponents() ([]config.Component, error) {
+	if detectedStack == "" {
+		// Same declared source as CI: the registry, never a filesystem probe.
+		return declaredComponents()
+	}
+
+	var components []config.Component
+	for _, stack := range strings.Split(detectedStack, ",") {
+		stack = strings.TrimSpace(stack)
+		if stack != "" {
+			components = append(components, config.Component{Stack: stack, Dir: "."})
+		}
+	}
+	return components, nil
+}
+
+var precommitStacksCmd = &cobra.Command{
+	Use:   "stacks",
+	Short: "Print the block categories this repo declares, one per line",
+	RunE:  runPrecommitStacks,
+}
+
+// runPrecommitStacks exists so the sync die can deploy the right tool configs
+// from the same declared source the generator reads, rather than re-probing the
+// filesystem and disagreeing with it.
+func runPrecommitStacks(_ *cobra.Command, _ []string) error {
+	components, err := resolveComponents()
+	if err != nil {
+		return err
+	}
+
+	var categories []string
+	for _, component := range components {
+		category := precommit.StackToCategory(component.Stack)
+		if !slices.Contains(categories, category) {
+			categories = append(categories, category)
+		}
+	}
+	sort.Strings(categories)
+	for _, category := range categories {
+		fmt.Println(category)
+	}
 	return nil
 }
 
@@ -143,18 +178,4 @@ func resolvePreCommitFS() (fs.FS, error) {
 		return nil, fmt.Errorf("accessing embedded assets: %w", err)
 	}
 	return assetsFS, nil
-}
-
-// stackToCategory maps a declared stack to the pre-commit block category it
-// enables. Most are identity; the registry names the technology, while the
-// block category names the toolchain that lints it.
-func stackToCategory(stack string) string {
-	switch stack {
-	case "actions":
-		return "actions"
-	case "node", "astro":
-		return "vue"
-	default:
-		return stack
-	}
 }

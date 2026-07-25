@@ -1,7 +1,7 @@
 #!/bin/bash
 # Synchronize .pre-commit-config.yaml and tool configs from standard templates.
-# Detects the repo's tech stack, composes standard blocks, and preserves
-# project-specific hooks via >>> project:POSITION / <<< project markers.
+# Composes standard blocks for the repo's declared components and preserves
+# project-specific hooks via # > custom:POSITION markers.
 
 # Resolve asset directories: FORGE_DATA_DIR (embedded binary) or script-relative (dev)
 if [ -n "${FORGE_DATA_DIR:-}" ]; then
@@ -20,23 +20,18 @@ if [ ! -d "$blocks_dir" ]; then
   exit 1
 fi
 
-# --- Detect tech stack ---
-detected=""
-
-{ [ -f pyproject.toml ] || [ -f setup.py ] || [ -f requirements.txt ] || [ -f Pipfile ]; } && detected="$detected,python"
-[ -f go.mod ] && detected="$detected,go"
-[ -f Cargo.toml ] && detected="$detected,rust"
-{ [ -d lua ] || [ -f stylua.toml ] || [ -f .stylua.toml ] || compgen -G "*.lua" > /dev/null 2>&1; } && detected="$detected,lua"
-[ -f frontend/package.json ] && detected="$detected,vue"
-{ [ -f Dockerfile ] || compgen -G "docker-compose*.yml" > /dev/null 2>&1; } && detected="$detected,docker"
-[ -d .github/workflows ] && detected="$detected,actions"
-{ compgen -G "*.tf" > /dev/null 2>&1 || [ -d terraform ]; } && detected="$detected,terraform"
-
-# Strip leading comma
-detected="${detected#,}"
+# --- Declared stacks ---
+# Read from the registry, never probed. Detection was wrong in both directions:
+# `-f frontend/package.json` missed every repo whose frontend is in web/ or
+# client/, and it cannot say which directory a stack lives in.
+if ! stacks=$(forge precommit stacks 2>&1); then
+  echo "$stacks"
+  exit 1
+fi
+declared=$(echo "$stacks" | tr '\n' ',' | sed 's/,$//')
 
 # --- Generate pre-commit config ---
-gen_output=$(forge precommit generate --detected "$detected" 2>&1)
+gen_output=$(forge precommit generate 2>&1)
 gen_rc=$?
 if [ $gen_rc -ne 0 ]; then
   echo "$gen_output"
@@ -53,7 +48,7 @@ if [ ! -f .markdownlint.json ] || ! diff -q "$configs_dir/markdownlint.json" .ma
 fi
 
 # Go lint config
-if echo "$detected" | grep -q "go"; then
+if echo "$declared" | grep -q "go"; then
   if [ ! -f .golangci.yml ] || ! diff -q "$configs_dir/golangci.yml" .golangci.yml > /dev/null 2>&1; then
     cp "$configs_dir/golangci.yml" .golangci.yml
     configs_deployed="$configs_deployed golangci"
@@ -61,19 +56,15 @@ if echo "$detected" | grep -q "go"; then
 fi
 
 # Vue/Frontend configs
-if echo "$detected" | grep -q "vue"; then
+if echo "$declared" | grep -q "vue"; then
   if [ ! -f .prettierrc.json ] || ! diff -q "$configs_dir/prettierrc.json" .prettierrc.json > /dev/null 2>&1; then
     cp "$configs_dir/prettierrc.json" .prettierrc.json
     configs_deployed="$configs_deployed prettier"
   fi
-  if [ ! -f .stylelintrc.json ] || ! diff -q "$configs_dir/stylelintrc.json" .stylelintrc.json > /dev/null 2>&1; then
-    cp "$configs_dir/stylelintrc.json" .stylelintrc.json
-    configs_deployed="$configs_deployed stylelint"
-  fi
 fi
 
 # Python tool configs — merge standard sections into pyproject.toml
-if echo "$detected" | grep -q "python" && [ -f pyproject.toml ]; then
+if echo "$declared" | grep -q "python" && [ -f pyproject.toml ]; then
   merge_script="$scripts_dir/merge_pyproject_tools.py"
   standard_tools="$configs_dir/pyproject-tools.toml"
   if merge_out=$(uv run --with tomlkit python "$merge_script" "$standard_tools" pyproject.toml 2>/dev/null); then
@@ -84,8 +75,11 @@ if echo "$detected" | grep -q "python" && [ -f pyproject.toml ]; then
 fi
 
 # --- Install hooks ---
+# Every stage any block uses has to be installed, or its hooks silently never
+# run — a config that declares prepare-commit-msg without the git hook in place
+# looks correct and does nothing.
 if command -v pre-commit &> /dev/null; then
-  pre-commit install --install-hooks -t pre-commit -t commit-msg 2>&1 | tail -1
+  pre-commit install --install-hooks -t pre-commit -t commit-msg -t prepare-commit-msg -t post-commit 2>&1 | tail -1
 fi
 
 # --- Summary ---
@@ -94,6 +88,6 @@ if [ "$gen_output" = "no changes" ] && [ -z "$configs_deployed" ]; then
   exit 2
 fi
 
-summary="synced: ${detected:-generic-only}"
+summary="synced: ${declared:-generic-only}"
 [ -n "$configs_deployed" ] && summary="$summary |$configs_deployed"
 echo "$summary"

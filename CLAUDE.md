@@ -79,12 +79,12 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 
 Forge includes a composable system for generating standardized `.pre-commit-config.yaml` across all repos.
 
-**`pre-commit/blocks/`** — numbered YAML fragments composed based on detected tech stack:
+**`pre-commit/blocks/`** — numbered YAML fragments composed from the repo's declared components:
 
-- Generic (all repos): conventional-commits, file-checks, markdown, shell, codespell
+- Generic (all repos): conventional-commits, commit-branding, file-checks, markdown, shell, codespell
 - Python: python-format (uv-lock, ruff-format), python-lint (ruff-check with 20 rule sets replacing bandit/pyupgrade/refurb, mypy via uv run)
 - Go: gofumpt, go-vet, go-build, go-mod-tidy, go-test, golangci-lint
-- Vue: eslint, prettier, stylelint, typecheck
+- Vue: eslint, prettier, typecheck (each entering the component's own directory)
 - Docker: hadolint
 - GitHub Actions: actionlint
 - Terraform: validate, tflint, fmt, docs
@@ -98,10 +98,13 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 - `markdownlint.json` — all repos
 - `golangci.yml` — Go repos
 - `prettierrc.json` — Vue repos
-- `stylelintrc.json` — Vue repos
 - `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, pyright, codespell, pytest)
 
-**Config generation** — now a Go function in `precommit/generate.go`, invoked via `forge precommit generate --detected <stack>`. The `sync-pre-commit.sh` die calls this instead of the Python script. Handles block composition, custom section preservation, hook deduplication, and safety checks.
+**Config generation** — a Go function in `precommit/generate.go`, invoked as `forge precommit generate`. Handles block composition, custom section preservation, hook deduplication, and safety checks.
+
+Which blocks apply, and **where each one runs**, come from the repo's declared `toolchain.components` — the same source CI reads, never a filesystem probe. Stack blocks carry `{{dir}}` (a `cd` target) and `{{dirprefix}}` (a `files:` anchor, empty at the root since `^\./` matches nothing pre-commit passes). Renders that come out identical collapse, so a repo with `api/` and `cli/` gets one Go block; renders that differ have their hook ids and names suffixed with the directory. `--detected <stack>` remains as an override for a repo not yet in the registry, and places everything at the root. `forge precommit stacks` prints the declared categories so the die deploys tool configs from that same answer.
+
+A block must appear in `categoryMap` (stack-gated) or `genericBlocks` (every repo); one in neither is an error rather than a silent default.
 
 **`pre-commit/scripts/`** — Python helper scripts (embedded in binary):
 
@@ -153,14 +156,14 @@ config check and tolerates pytest's exit 5 (no tests collected), because `docs`,
 **`dies/maintenance/sync-ci.sh`** — generates the workflow, exits SKIP when current or when no
 declared component has a CI block.
 
-**`dies/maintenance/sync-pre-commit.sh`** — the main die that orchestrates everything. Detects tech stack, generates config, deploys tool configs, merges pyproject.toml. Idempotent — exits with SKIP when nothing changed.
+**`dies/maintenance/sync-pre-commit.sh`** — the main die that orchestrates everything. Generates the config, deploys tool configs, merges pyproject.toml, and installs the git hooks for **every stage a block uses** (`pre-commit`, `commit-msg`, `prepare-commit-msg`, `post-commit`) — an uninstalled stage means those hooks silently never run. Idempotent — exits with SKIP when nothing changed.
 
 ## Testing
 
 **Go tests** (`go test ./...`):
 
 - `config/` — forge and syncer config loading
-- `dies/` — registry and stats, plus integration tests for sync-pre-commit die (9 tests covering tech detection, dedup, custom preservation, safety, config deployment)
+- `dies/` — registry and stats, plus integration tests for the sync-pre-commit die (declared stacks, dedup, custom preservation, safety, config deployment). Each test writes a temp registry naming its temp repo and points the die at it with `FORGE_REPOS_FILE`, so a test declares its stacks the same way a real repo does.
 - `precommit/` — config generator: 9 unit tests (using `fstest.MapFS`) + 7 integration tests against real blocks
 - `runner/` — repo filtering, execution
 

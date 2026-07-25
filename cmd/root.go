@@ -30,6 +30,12 @@ var rootCmd = &cobra.Command{
 	Use:   "forge",
 	Short: "Run commands across all your git repos",
 	Long:  "forge reads your syncer config and executes commands across all (or a subset of) repos.",
+	// Execute prints the error itself; cobra's own printer would double every line.
+	SilenceErrors: true,
+	// A command that fails at runtime — no registry entry, an aborting safety
+	// check — is not a misuse of its flags, and burying the reason under a usage
+	// dump is how the die's output became unreadable.
+	SilenceUsage: true,
 }
 
 func Execute() {

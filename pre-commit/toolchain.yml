@@ -10,8 +10,10 @@
 # version, resync one repo, verify, then fan out. Without it there is no way to
 # ask which repos are on the current standard.
 #
-# Bump `version` on any change below.
-version: 3
+# Bump `version` on any change below, or on any change to the set of blocks —
+# the stamp answers "is this repo on the current standard", which a new block
+# changes just as much as a new rev does.
+version: 4
 
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
