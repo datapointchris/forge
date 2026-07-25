@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -80,6 +81,7 @@ type icbProjectItem struct {
 	ID        string  `json:"id"`
 	Title     string  `json:"title"`
 	Notes     *string `json:"notes"`
+	Repo      *string `json:"repo"`
 	Completed bool    `json:"completed"`
 	Archived  bool    `json:"archived"`
 	Position  int     `json:"position"`
@@ -114,7 +116,20 @@ type brief struct {
 	Repos    []repoBrief      `json:"repos"`
 	Roadmap  []roadmapProject `json:"roadmap,omitempty"`
 	Inbox    []icbTask        `json:"inbox,omitempty"`
+	Stale    []staleItem      `json:"stale,omitempty"`
 	Warnings []string         `json:"warnings,omitempty"`
+}
+
+// staleItem is an open roadmap item whose repo already reports the work done.
+// This is the failure the repo link exists to catch: an audit found 4 of 6 items
+// in one project were finished work still listed as next actions, every one of
+// them contradicted by a status.md printed on the same page.
+type staleItem struct {
+	Project string `json:"project"`
+	Title   string `json:"title"`
+	ID      string `json:"id"`
+	Repo    string `json:"repo"`
+	Reason  string `json:"reason"`
 }
 
 func runBrief(cmd *cobra.Command, _ []string) error {
@@ -165,6 +180,7 @@ func runBrief(cmd *cobra.Command, _ []string) error {
 			b.Roadmap = roadmap
 			b.Inbox = todos
 			b.Warnings = append(b.Warnings, warns...)
+			b.Stale = detectStaleItems(b.Repos, b.Roadmap)
 		}
 	}
 
@@ -342,6 +358,15 @@ func renderBrief(b brief) {
 		}
 	}
 
+	if len(b.Stale) > 0 {
+		cyan.Printf("\n## Possibly done — open items their repo already calls finished\n\n")
+		for _, st := range b.Stale {
+			fmt.Printf("  %s → %s\n", st.Project, st.Title)
+			dim.Printf("     %s says: %s\n", st.Repo, st.Reason)
+			dim.Printf("     close with: icb items complete %s\n", st.ID)
+		}
+	}
+
 	if len(b.Inbox) > 0 {
 		cyan.Printf("\n## Inbox — Computer tasks to triage into a project\n\n")
 		for _, t := range b.Inbox {
@@ -392,4 +417,140 @@ func firstLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// completionMarkers are the phrases a status.md uses when it is reporting work
+// as finished. Kept narrow on purpose: a false "this is stale" flag on real
+// work is worse than a miss, because it trains you to ignore the section.
+var completionMarkers = []string{
+	"done end-to-end", "shipped", "is retired", "are retired", "was retired",
+	"live in production", "complete", "completed", "implemented", "fully replaced",
+	"removed", "deleted, not archived", "dropped, not deferred",
+}
+
+// minTermMatches is how many of an item's distinctive words must appear on the
+// same status line before it counts as evidence. One is not enough: a single
+// common word like "mobile" collided with an unrelated decision that happened
+// to contain a completion phrase.
+const minTermMatches = 2
+
+// titleStopWords are too common to indicate that a status line is about a
+// particular item. The list carries the weight that a length cutoff cannot:
+// the distinctive token in this domain is often three characters (icb, cli,
+// api, mcp, k3s), so filtering by length alone discards exactly the words that
+// identify the work.
+var titleStopWords = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "into": true, "from": true,
+	"then": true, "that": true, "this": true, "add": true, "new": true, "make": true,
+	"work": true, "item": true, "repo": true, "task": true, "plus": true, "via": true,
+	"not": true, "use": true, "its": true, "was": true, "are": true, "per": true,
+	"all": true, "out": true, "own": true, "get": true, "set": true, "run": true,
+}
+
+// markerWords are the words that make up completionMarkers. A title containing
+// one of them cannot be distinguished by it — "Pi wall + recently-done" matched
+// every status line reporting anything as done, purely on the word "done".
+// Derived from the markers so the two can never drift apart.
+var markerWords = func() map[string]bool {
+	words := map[string]bool{}
+	for _, marker := range completionMarkers {
+		for _, word := range strings.FieldsFunc(marker, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+		}) {
+			words[word] = true
+		}
+	}
+	return words
+}()
+
+// significantTerms reduces an item title to the words worth matching against a
+// status doc: not a stop word, and at least three characters.
+func significantTerms(title string) []string {
+	var terms []string
+	for _, word := range strings.FieldsFunc(strings.ToLower(title), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
+		if len(word) >= 3 && !titleStopWords[word] && !markerWords[word] {
+			terms = append(terms, word)
+		}
+	}
+	return terms
+}
+
+// detectStaleItems finds open roadmap items whose linked repo already describes
+// the work as finished. It reports the status.md line as the reason rather than
+// asserting a verdict: the check is a heuristic, so the evidence has to travel
+// with the claim for it to be actionable.
+func detectStaleItems(repos []repoBrief, roadmap []roadmapProject) []staleItem {
+	statusByRepo := make(map[string]string, len(repos))
+	for _, r := range repos {
+		if r.StatusMD != "" {
+			statusByRepo[r.Name] = r.StatusMD
+		}
+	}
+
+	var stale []staleItem
+	for _, project := range roadmap {
+		for _, item := range project.Items {
+			if item.Repo == nil || *item.Repo == "" {
+				continue
+			}
+			statusMD, ok := statusByRepo[*item.Repo]
+			if !ok {
+				continue
+			}
+			terms := significantTerms(item.Title)
+			if len(terms) == 0 {
+				continue
+			}
+			if line, found := findCompletionEvidence(statusMD, terms); found {
+				stale = append(stale, staleItem{
+					Project: project.Name,
+					Title:   item.Title,
+					ID:      item.ID,
+					Repo:    *item.Repo,
+					Reason:  line,
+				})
+			}
+		}
+	}
+	return stale
+}
+
+// findCompletionEvidence returns the first status.md line that reports
+// completion and names at least minTermMatches of the item's distinctive words.
+func findCompletionEvidence(statusMD string, terms []string) (string, bool) {
+	for _, line := range strings.Split(statusMD, "\n") {
+		lower := strings.ToLower(line)
+		if !containsAny(lower, completionMarkers) {
+			continue
+		}
+		matched := map[string]bool{}
+		for _, term := range terms {
+			if strings.Contains(lower, term) {
+				matched[term] = true
+			}
+		}
+		if len(matched) >= minTermMatches {
+			return truncateLine(strings.TrimSpace(line), 140), true
+		}
+	}
+	return "", false
+}
+
+func containsAny(haystack string, needles []string) bool {
+	for _, n := range needles {
+		if strings.Contains(haystack, n) {
+			return true
+		}
+	}
+	return false
+}
+
+func truncateLine(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
 }
