@@ -1,0 +1,35 @@
+# forge-toolchain: 5
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+
+      - uses: actions/checkout@v7
+
+      # generated:go
+      - uses: actions/setup-go@v7
+        with:
+          # Action inputs resolve from the workspace root, not the job's
+          # working-directory, so this needs the component path.
+          go-version-file: "./go.mod"
+
+      - run: go build ./...
+
+      - run: go vet ./...
+
+      - run: go test ./...
+
+      - name: Lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          golangci-lint run
