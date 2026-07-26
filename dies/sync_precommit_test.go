@@ -2,15 +2,52 @@ package dies
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/datapointchris/forge/config"
 )
+
+// The die scripts shell out to `forge`, so the tests need one on PATH. Taking
+// whatever is installed makes the result depend on the developer's machine and
+// tests nothing about the current tree — on a runner with no install, every
+// die test failed with "forge: command not found". This builds the binary
+// under test instead.
+var (
+	testBinaryOnce sync.Once
+	testBinaryDir  string
+	testBinaryErr  error
+)
+
+func forgeOnPath(t *testing.T) string {
+	t.Helper()
+
+	testBinaryOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "forge-test-bin-")
+		if err != nil {
+			testBinaryErr = err
+			return
+		}
+		build := exec.Command("go", "build", "-o", filepath.Join(dir, "forge"), ".")
+		build.Dir = forgeRoot(t)
+		if out, err := build.CombinedOutput(); err != nil {
+			testBinaryErr = fmt.Errorf("building forge for tests: %w\n%s", err, out)
+			return
+		}
+		testBinaryDir = dir
+	})
+
+	if testBinaryErr != nil {
+		t.Fatal(testBinaryErr)
+	}
+	return testBinaryDir
+}
 
 // forgeRoot returns the root of the forge repo (one level up from dies/).
 func forgeRoot(t *testing.T) string {
@@ -79,7 +116,7 @@ func runSyncDie(t *testing.T, repoDir string) string {
 	cmd.Dir = repoDir
 	// pre-commit install will fail in temp repos, that's fine
 	cmd.Env = append(os.Environ(),
-		"PATH="+os.Getenv("PATH"),
+		"PATH="+forgeOnPath(t)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(repoDir), "repos.json"))
 
 	out, err := cmd.CombinedOutput()
@@ -366,7 +403,9 @@ func TestSyncDie_SafetyAbortsOnUnknownHooks(t *testing.T) {
 
 	cmd := exec.Command("bash", script)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(dir), "repos.json"))
+	cmd.Env = append(os.Environ(),
+		"PATH="+forgeOnPath(t)+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(dir), "repos.json"))
 	out, err := cmd.CombinedOutput()
 
 	if err == nil {
