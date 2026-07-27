@@ -1,0 +1,24 @@
+# Shell
+      # ubuntu-latest ships shellcheck, so there is nothing to install or pin
+      # here — the version tracks the runner image rather than the toolchain
+      # manifest, unlike the pre-commit hook which pins v0.10.0.
+      #
+      # Discovery is by extension *and* shebang: these repos keep their
+      # executables in bin/ with no .sh suffix, so an extension glob alone
+      # misses most of the tree. The shebang pattern anchors on a slash or
+      # space before the interpreter so that zsh does not match on "sh".
+      - name: ShellCheck
+        run: |
+          files=$(git ls-files | while read -r f; do
+            case "$f" in
+              *.sh|*.bash) echo "$f"; continue ;;
+            esac
+            if [ -f "$f" ] && head -n1 "$f" | grep -qE '^#!.*[/ ](bash|sh)( |$)'; then
+              echo "$f"
+            fi
+          done)
+          if [ -z "$files" ]; then
+            echo "no shell files found"
+            exit 0
+          fi
+          echo "$files" | xargs shellcheck -S warning
