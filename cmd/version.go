@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"regexp"
 	"runtime/debug"
 	"strings"
 
+	"github.com/datapointchris/goselfupdate"
 	"github.com/spf13/cobra"
 )
 
@@ -15,11 +15,6 @@ var (
 	commit  = "unknown"
 	date    = "unknown"
 )
-
-// Only a plain vX.Y.Z from build info counts as a real release. Go stamps a VCS-derived
-// pseudo-version (v1.6.1-0.20260724161156-2c04703+dirty) onto local `go build` output,
-// which must keep reporting itself as a dev build.
-var releaseVersionPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 
 // buildVersion reports the running binary's version. `go install pkg@latest` — how the
 // dotfiles installer deploys forge — applies no ldflags but does stamp the module version
@@ -37,7 +32,12 @@ func resolveVersion(ldflagsVersion, moduleVersion string) string {
 	if ldflagsVersion != "dev" && ldflagsVersion != "" {
 		return ldflagsVersion
 	}
-	if !releaseVersionPattern.MatchString(moduleVersion) {
+	// Only a plain vX.Y.Z counts. Go stamps a VCS-derived pseudo-version
+	// (v1.6.1-0.20260724161156-2c04703+dirty) onto local `go build` output, and
+	// that string is valid semver — which is exactly why goselfupdate separates
+	// this check from IsValidVersion rather than leaving every consumer to
+	// rewrite the regex.
+	if !goselfupdate.IsReleaseVersion(moduleVersion) {
 		return ldflagsVersion
 	}
 	return strings.TrimPrefix(moduleVersion, "v")

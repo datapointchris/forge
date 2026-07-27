@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 
+	"github.com/datapointchris/goselfupdate/autoupdate"
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
@@ -41,7 +43,8 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	autoConfig := autoupdate.Config{Update: updateConfig()}
+	if err := cobracmd.Execute(context.Background(), rootCmd, autoConfig); err != nil {
 		// The update command writes its own ✗ line; printing here too would
 		// report the same failure twice.
 		if !errors.Is(err, cobracmd.ErrReported) {
