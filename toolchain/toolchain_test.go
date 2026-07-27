@@ -77,6 +77,34 @@ func TestApplyToolVersionsOverridesGoInstall(t *testing.T) {
 	}
 }
 
+func TestApplyBinaryVersionsOverridesBlockPin(t *testing.T) {
+	manifest := &Toolchain{
+		Version:  9,
+		Binaries: []Binary{{Name: "shellcheck", Version: "9.9.9"}},
+	}
+
+	got := manifest.ApplyBinaryVersions("          shellcheck_version=\"0.0.1\"\n")
+
+	if !strings.Contains(got, `shellcheck_version="9.9.9"`) {
+		t.Errorf("manifest binary version not applied: %q", got)
+	}
+	if strings.Contains(got, "0.0.1") {
+		t.Errorf("block version survived the override: %q", got)
+	}
+}
+
+// A block may pin a version the manifest does not own; only managed names are
+// rewritten, so an unrelated assignment of the same shape is left intact.
+func TestApplyBinaryVersionsLeavesUnmanagedNameAlone(t *testing.T) {
+	manifest := &Toolchain{Version: 9, Binaries: []Binary{{Name: "shellcheck", Version: "9.9.9"}}}
+
+	got := manifest.ApplyBinaryVersions("          hadolint_version=\"1.2.3\"\n")
+
+	if !strings.Contains(got, `hadolint_version="1.2.3"`) {
+		t.Errorf("unmanaged binary version was rewritten: %q", got)
+	}
+}
+
 // A repo's own version file is the repo's business; only the literal
 // `<name>-version:` input is the manifest's to pin.
 func TestApplyRuntimeVersionsLeavesVersionFileAlone(t *testing.T) {

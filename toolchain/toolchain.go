@@ -18,6 +18,7 @@ var (
 	usesLineRE    = regexp.MustCompile(`^(\s*-?\s*uses:\s*)([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@\S+(.*)$`)
 	goInstallRE   = regexp.MustCompile(`^(.*go install\s+)(\S+?)@\S+(.*)$`)
 	runtimeLineRE = regexp.MustCompile(`^(\s*)([a-z]+)-version:\s*\S+\s*$`)
+	binaryLineRE  = regexp.MustCompile(`^(\s*)([a-z0-9]+)_version="\S+"\s*$`)
 )
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
@@ -33,6 +34,17 @@ type Toolchain struct {
 	Tools []Tool `yaml:"tools"`
 	// Runtimes pins language runtimes generated CI sets up.
 	Runtimes []Runtime `yaml:"runtimes"`
+	// Binaries pins tools generated CI downloads from a release, for tools with
+	// no module ecosystem to install from. Without this they would resolve to
+	// whatever the runner image happens to ship, which is the floating-version
+	// problem the rest of this manifest exists to prevent.
+	Binaries []Binary `yaml:"binaries"`
+}
+
+// Binary is a released executable pinned to a version.
+type Binary struct {
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
 }
 
 // Runtime is a language runtime pinned to a version.
@@ -268,5 +280,34 @@ func (t *Toolchain) ApplyRuntimeVersions(content string) string {
 
 // ApplyAll runs every substitution a generated file may need.
 func (t *Toolchain) ApplyAll(content string) string {
-	return t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content))))
+	return t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content)))))
+}
+
+// BinaryVersion returns the pinned version for a released binary, and whether
+// it is managed.
+func (t *Toolchain) BinaryVersion(name string) (string, bool) {
+	for _, binary := range t.Binaries {
+		if binary.Name == name {
+			return binary.Version, true
+		}
+	}
+	return "", false
+}
+
+// ApplyBinaryVersions rewrites `<name>_version="X"` shell assignments in a
+// block to the manifest's pinned version. An unmanaged name is left alone, so a
+// block can still use the same shape for a version the manifest does not own.
+func (t *Toolchain) ApplyBinaryVersions(content string) string {
+	lines := strings.Split(content, "\n")
+
+	for i, line := range lines {
+		m := binaryLineRE.FindStringSubmatch(line)
+		if len(m) < 3 {
+			continue
+		}
+		if version, managed := t.BinaryVersion(m[2]); managed {
+			lines[i] = fmt.Sprintf("%s%s_version=%q", m[1], m[2], version)
+		}
+	}
+	return strings.Join(lines, "\n")
 }

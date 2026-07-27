@@ -1,7 +1,13 @@
 # Shell
-      # ubuntu-latest ships shellcheck, so there is nothing to install or pin
-      # here — the version tracks the runner image rather than the toolchain
-      # manifest, unlike the pre-commit hook which pins v0.10.0.
+      # The runner image ships a shellcheck, but which one drifts with the
+      # image, and style-level findings are exactly what moves between
+      # versions. Pinning to the same release the pre-commit hook uses is what
+      # lets CI run at the hook's severity without a runner bump breaking a
+      # release. Version comes from the toolchain manifest.
+      #
+      # Unpacked into RUNNER_TEMP and called by path rather than dropped in
+      # /usr/local/bin, so the step makes no assumption about what the runner
+      # image lets us write to.
       #
       # Discovery is by extension *and* shebang: these repos keep their
       # executables in bin/ with no .sh suffix, so an extension glob alone
@@ -9,6 +15,13 @@
       # space before the interpreter so that zsh does not match on "sh".
       - name: ShellCheck
         run: |
+          shellcheck_version="0.10.0"
+          mkdir -p "$RUNNER_TEMP/shellcheck"
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/shellcheck-v${shellcheck_version}.linux.x86_64.tar.xz" \
+            | tar -xJf - --strip-components=1 -C "$RUNNER_TEMP/shellcheck" "shellcheck-v${shellcheck_version}/shellcheck"
+          shellcheck_bin="$RUNNER_TEMP/shellcheck/shellcheck"
+          "$shellcheck_bin" --version
+
           files=$(git ls-files | while read -r f; do
             case "$f" in
               *.sh|*.bash) echo "$f"; continue ;;
@@ -21,4 +34,4 @@
             echo "no shell files found"
             exit 0
           fi
-          echo "$files" | xargs shellcheck -S warning
+          echo "$files" | xargs "$shellcheck_bin"
