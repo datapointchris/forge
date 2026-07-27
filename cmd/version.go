@@ -61,4 +61,19 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
+
+	// `forge version` alone made this the one tool in the fleet where --version
+	// was an "unknown flag" error, which is the reflex reach for a version and
+	// what a script tries first. The subcommand stays: it prints commit and
+	// build date, which the flag's one line does not.
+	rootCmd.Version = buildVersion()
+	rootCmd.SetVersionTemplate("forge {{.Version}}\n")
+
+	// Free -v for a future --verbose flag, matching nomad and meso: cobra's
+	// auto version flag claims the shorthand, but the convention reserves -v
+	// for verbose and -V/--version for version.
+	rootCmd.InitDefaultVersionFlag()
+	if f := rootCmd.Flags().Lookup("version"); f != nil {
+		f.Shorthand = ""
+	}
 }
