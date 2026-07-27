@@ -212,3 +212,28 @@ func TestDetectStaleItems(t *testing.T) {
 		}
 	})
 }
+
+func TestNotePreview(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"bold run", "Manifest is at **version 6**: adds a `binaries` section.", "Manifest is at version 6: adds a `binaries` section."},
+		{"italic run", "markdownlint v0.47, which *added* MD060.", "markdownlint v0.47, which added MD060."},
+		{"leading blank lines", "\n\n**No repo in the fleet uses it**\nsecond line", "No repo in the fleet uses it"},
+		// A lone glob must not pair with an unrelated asterisk later in the line.
+		{"unpaired globs", "Triggered by `tags: [cli/v*]`; pass both `--max-*` flags.", "Triggered by `tags: [cli/v*]`; pass both `--max-*` flags."},
+		// Identifiers carry underscores far more often than these notes carry italics.
+		{"underscored identifiers", "`__complete` skips the pull when content_hash is unchanged.", "`__complete` skips the pull when content_hash is unchanged."},
+		{"bold before a closing quote", `Standard says "**No manual tagging ever.**" (release.md).`, `Standard says "No manual tagging ever." (release.md).`},
+		{"empty", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := notePreview(tc.in); got != tc.want {
+				t.Errorf("notePreview(%q)\n got: %q\nwant: %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

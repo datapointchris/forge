@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -351,7 +352,7 @@ func renderBrief(b brief) {
 				fmt.Printf("  %d. %s\n", i+1, it.Title)
 				if it.Notes != nil {
 					if note := strings.TrimSpace(*it.Notes); note != "" {
-						dim.Printf("     %s\n", firstLine(note))
+						dim.Printf("     %s\n", notePreview(note))
 					}
 				}
 			}
@@ -373,7 +374,7 @@ func renderBrief(b brief) {
 			fmt.Printf("  [#%d] %s\n", t.ID, t.Name)
 			if t.Notes != nil {
 				if note := strings.TrimSpace(*t.Notes); note != "" {
-					dim.Printf("        %s\n", firstLine(note))
+					dim.Printf("        %s\n", notePreview(note))
 				}
 			}
 		}
@@ -417,6 +418,26 @@ func firstLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// notePreview renders an item's notes as a single terminal line. Notes are
+// authored as markdown for the todoui detail pane, so emphasis markers reach a
+// terminal verbatim and read as noise.
+func notePreview(s string) string {
+	return stripEmphasis(firstLine(s))
+}
+
+// emphasis matches a paired **bold** or *italic* run. The delimiters must sit
+// on a word boundary — opener at line start or after whitespace or an opening
+// bracket, closer at line end or before whitespace or punctuation — because
+// these notes are full of globs, and two unrelated ones on a line (`[cli/v*]`
+// … `--max-*`) otherwise pair with each other and both asterisks vanish.
+// Underscore emphasis is deliberately not matched at all: identifiers like
+// content_hash and __complete appear here far more often than italics do.
+var emphasis = regexp.MustCompile(`(^|[\s("'\[])\*{1,2}([^*\s](?:[^*]*[^*\s])?)\*{1,2}([\s"'),.;:!?\]]|$)`)
+
+func stripEmphasis(s string) string {
+	return emphasis.ReplaceAllString(s, "${1}${2}${3}")
 }
 
 // completionMarkers are the phrases a status.md uses when it is reporting work
