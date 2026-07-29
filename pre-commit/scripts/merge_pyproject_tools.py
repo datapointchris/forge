@@ -19,9 +19,12 @@ import tomlkit
 
 # These [tool.*] sections get fully replaced by the standard.
 # Everything else is deep-merged (project extras preserved).
+# `ruff` itself is deliberately absent: replacing the top-level table drops a
+# repo's `exclude`/`extend-exclude`, which is project-specific in the same way
+# codespell's skip patterns are. Merging still forces `line-length` from the
+# standard, while `ruff.lint` below is what standardizes the rule set.
 REPLACE_SECTIONS = {
     'pyright',
-    'ruff',
     'ruff.format',
     'ruff.lint',
     'ruff.lint.isort',

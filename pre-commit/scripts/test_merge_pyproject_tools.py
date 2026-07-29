@@ -57,6 +57,24 @@ def test_merges_non_replace_sections():
     assert codespell['ignore-words-list'] == 'colour'
 
 
+def test_ruff_table_merges_while_its_lint_subtable_replaces():
+    """A repo's ruff `exclude` survives, but its rule set is standardized."""
+    assert 'ruff' not in REPLACE_SECTIONS
+    assert 'ruff.lint' in REPLACE_SECTIONS
+
+    standard = tomlkit.parse('[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E", "F"]\n')
+    target = tomlkit.parse(
+        '[ruff]\nline-length = 120\nexclude = ["migrations"]\n\n'
+        '[ruff.lint]\nselect = ["ALL"]\nignore = ["D100"]\n'
+    )
+    deep_merge(standard, target)
+
+    assert target['ruff']['line-length'] == 140
+    assert target['ruff']['exclude'] == ['migrations']
+    assert target['ruff']['lint']['select'] == ['E', 'F']
+    assert 'ignore' not in target['ruff']['lint']
+
+
 def test_preserves_unrelated_sections():
     """Sections not in standard are left untouched."""
     standard = tomlkit.parse('[mypy]\npretty = true\n')
@@ -114,6 +132,7 @@ if __name__ == '__main__':
     test_adds_missing_sections()
     test_replaces_replace_sections()
     test_merges_non_replace_sections()
+    test_ruff_table_merges_while_its_lint_subtable_replaces()
     test_preserves_unrelated_sections()
     test_full_pyproject_roundtrip()
     print('all tests passed')
