@@ -82,7 +82,7 @@ Forge includes a composable system for generating standardized `.pre-commit-conf
 **`pre-commit/blocks/`** — numbered YAML fragments composed from the repo's declared components:
 
 - Generic (all repos): conventional-commits, commit-branding, file-checks, markdown, shell, codespell
-- Python: python-format (uv-lock, ruff-format), python-lint (ruff-check with 20 rule sets replacing bandit/pyupgrade/refurb, mypy via uv run)
+- Python: python-format (uv-lock, ruff-format), python-lint (ruff-check, mypy via uv run)
 - Go: gofumpt, go-vet, go-build, go-mod-tidy, go-test, golangci-lint
 - Vue: eslint, prettier, typecheck (each entering the component's own directory)
 - Docker: hadolint
@@ -100,7 +100,7 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 - `golangci.yml` — Go repos
 - `prettierrc.json` — Vue repos
 - `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. Rules are narrowed to `ambiguous, references, structure, convention.terminator`: sqlfluff's defaults are mostly layout and capitalisation opinions, which failed every `.sql` file in the portfolio and would have taught everyone to skip the hook. The narrowed set passes clean across all seven repos while still catching unparsable SQL and unused CTEs
-- `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, pyright, codespell, pytest)
+- `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, codespell, pytest). The ruff `select` is the six rules every repo already runs, not an aspirational set: a template nothing conforms to reads as the standard while being unable to measure drift. `merge_pyproject_tools.py` still knows how to REPLACE a `[tool.pyright]` section, but the template no longer carries one — pyright is an editor concern, mypy is the type checker the hook enforces
 
 **Config generation** — a Go function in `precommit/generate.go`, invoked as `forge precommit generate`. Handles block composition, custom section preservation, hook deduplication, and safety checks.
 

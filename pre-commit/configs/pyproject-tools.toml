@@ -1,11 +1,14 @@
 # Standard tool configuration for Python repos.
 # Append to pyproject.toml or merge into existing [tool.*] sections.
-# Project-specific overrides (extra bandit skips, codespell skip patterns,
-# mypy plugins, etc.) should be added after these base settings.
+# Project-specific overrides (codespell skip patterns, mypy plugins, extra
+# per-file-ignores, etc.) should be added after these base settings.
+#
+# The rule set is deliberately the six every repo already runs. Widening it is
+# a deliberate piece of work with fallout to fix, not something a config sync
+# should carry along.
 
 [tool.ruff]
 line-length = 140
-target-version = "py313"
 
 [tool.ruff.format]
 quote-style = "single"
@@ -16,31 +19,15 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = [
-    "E",     # pycodestyle errors
-    "F",     # pyflakes
-    "UP",    # pyupgrade
-    "B",     # flake8-bugbear
-    "SIM",   # flake8-simplify
-    "I",     # isort
-    "S",     # flake8-bandit (security)
-    "FURB",  # refurb
-    "C4",    # flake8-comprehensions
-    "PT",    # flake8-pytest-style
-    "RET",   # flake8-return
-    "PIE",   # flake8-pie
-    "RUF",   # ruff-specific
-    "PERF",  # perflint
-    "DTZ",   # flake8-datetimez
-    "FLY",   # flynt
-    "N",     # pep8-naming
-    "PLC",   # pylint convention
-    "PLE",   # pylint errors
-    "PLW",   # pylint warnings
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "I",    # isort
 ]
 ignore = [
     "SIM108",  # ternary operator — often less readable
-    "S113",    # request without timeout
-    "S311",    # non-cryptographic random
 ]
 
 [tool.ruff.lint.isort]
@@ -48,17 +35,12 @@ force-single-line = true
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**" = ["S101"]
 
 [tool.mypy]
 pretty = true
 ignore_missing_imports = true
 check_untyped_defs = false
 warn_return_any = false
-
-[tool.pyright]
-typeCheckingMode = "basic"
-reportPossiblyUnboundVariable = false
 
 [tool.codespell]
 check-filenames = true
