@@ -76,7 +76,8 @@ fi
 if echo "$declared" | grep -q "python" && [ -f pyproject.toml ]; then
   merge_script="$scripts_dir/merge_pyproject_tools.py"
   standard_tools="$configs_dir/pyproject-tools.toml"
-  if merge_out=$(uv run --with tomlkit python "$merge_script" "$standard_tools" pyproject.toml 2>/dev/null); then
+  # --no-project or uv builds the repo being edited just to run a stdlib script
+  if merge_out=$(uv run --no-project --with tomlkit python "$merge_script" "$standard_tools" pyproject.toml 2>/dev/null); then
     [ "$merge_out" = "updated" ] && configs_deployed="$configs_deployed pyproject"
   else
     configs_deployed="$configs_deployed WARN:pyproject-merge-failed"

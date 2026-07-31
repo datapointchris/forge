@@ -72,7 +72,7 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 **Categories:**
 
 - `checks/` — scorecard dies (has-pre-commit, has-claude-md, has-clean-gitignore, has-planning-dir, planning-docs, can-generate)
-- `maintenance/` — golden path enforcement (sync-pre-commit, sync-ci, sync-planning, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
+- `maintenance/` — golden path enforcement (sync-pre-commit, sync-pyproject, sync-ci, sync-planning, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
 - `onetime/` — one-shot migrations
 
 ## Pre-commit Standardization System
@@ -161,6 +161,17 @@ CI blocks exist for go, python, vue, rust, lua and terraform. **docker deliberat
 image build is bespoke per repo (each app builds and pushes its own in its own pipeline) and hadolint
 is a pre-commit concern, so there is no baseline job left to run. A declared stack with no block is
 skipped rather than emitting an empty job.
+
+**`dies/maintenance/sync-pyproject.sh`** — the pyproject merge alone, without the config
+regeneration. Adopting one better setting through the full sync die means also fanning out whatever
+`toolchain.yml` currently pins, to every Python repo at once; most carry no `# forge-toolchain:`
+stamp yet, so that is a first-time rewrite rather than a bump. Coupling a cheap change to an
+expensive one is why the cheap change stopped being made and the settings drifted instead. Running
+it across the portfolio is also the drift report — OK means drifted, SKIP means current.
+
+Both this and the sync die pass `uv run --no-project`: without it uv builds the repo being edited
+just to run a stdlib script, and the build chatter on stderr is long enough to swallow the one word
+the die reads back to decide OK versus SKIP.
 
 **`dies/maintenance/sync-ci.sh`** — generates the workflow, exits SKIP when current or when no
 declared component has a CI block.
