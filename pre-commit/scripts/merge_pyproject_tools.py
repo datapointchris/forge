@@ -3,9 +3,11 @@
 
 Two merge strategies per section:
 - MERGE (default): standard keys overwrite, but project-specific keys are preserved.
-  Good for codespell (keep project skip patterns), pytest (keep markers), etc.
+  Good for codespell (keep project skip patterns), mypy (keep plugins), ruff.lint
+  (force select/ignore, keep a framework's bugbear exemptions).
 - REPLACE: section is fully replaced by the standard version.
-  Good for pyright (collapse 12 verbose keys into typeCheckingMode), ruff (standardize rules).
+  Good for pyright, where collapsing the hand-disabled rules into typeCheckingMode
+  depends on the ones the standard does not name being removed.
 
 Sections listed in REPLACE_SECTIONS get replaced. Everything else merges.
 Sections that only exist in the target (like [tool.coverage]) are left untouched.
@@ -17,19 +19,19 @@ import sys
 
 import tomlkit
 
-# These [tool.*] sections get fully replaced by the standard.
-# Everything else is deep-merged (project extras preserved).
-# `ruff` itself is deliberately absent: replacing the top-level table drops a
-# repo's `exclude`/`extend-exclude`, which is project-specific in the same way
-# codespell's skip patterns are. Merging still forces `line-length` from the
-# standard, while `ruff.lint` below is what standardizes the rule set.
+# Sections the standard OWNS: unknown keys are deleted, not kept. Everything
+# else is a floor -- the standard's keys win, the project's extras survive.
+#
+# The split is which job a section is doing, and they are incompatible. Owning
+# is what collapses pyright's twelve hand-disabled rules into typeCheckingMode,
+# because the eleven the standard does not name have to disappear. Flooring is
+# what lets a repo keep mypy `plugins` or a flake8-bugbear exemption its
+# framework requires. Listing a floor section here deletes that silently, and
+# the failure surfaces much later on an unrelated commit.
 REPLACE_SECTIONS = {
     'pyright',
     'ruff.format',
-    'ruff.lint',
     'ruff.lint.isort',
-    'ruff.lint.per-file-ignores',
-    'mypy',
 }
 
 

@@ -43,6 +43,50 @@ def test_replaces_replace_sections():
     assert 'reportAny' not in pyright
 
 
+def test_preserves_project_config_inside_floor_sections():
+    """A framework's own settings survive a sync; the standard's keys still win.
+
+    Regression: listing ruff.lint and mypy as REPLACE deleted a FastAPI repo's
+    bugbear exemptions and its pydantic mypy plugin, and nothing failed until a
+    later, unrelated commit touched one of the affected files.
+    """
+    assert 'ruff.lint' not in REPLACE_SECTIONS
+    assert 'mypy' not in REPLACE_SECTIONS
+
+    standard = tomlkit.parse(
+        '[ruff.lint]\nselect = ["E", "F"]\nignore = ["SIM108"]\n\n[mypy]\npretty = true\n'
+    )
+    target = tomlkit.parse(
+        '[ruff.lint]\n'
+        'select = ["E"]\n'
+        '\n'
+        '[ruff.lint.flake8-bugbear]\n'
+        'extend-immutable-calls = ["fastapi.Depends"]\n'
+        '\n'
+        '[mypy]\n'
+        'plugins = ["pydantic.mypy"]\n'
+    )
+    deep_merge(standard, target)
+
+    assert target['ruff']['lint']['select'] == ['E', 'F']
+    assert target['ruff']['lint']['ignore'] == ['SIM108']
+    assert target['ruff']['lint']['flake8-bugbear']['extend-immutable-calls'] == ['fastapi.Depends']
+    assert target['mypy']['pretty'] is True
+    assert target['mypy']['plugins'] == ['pydantic.mypy']
+
+
+def test_isort_is_replaced_through_a_merged_parent():
+    """ruff.lint.isort is only reachable now that ruff.lint merges instead of replacing."""
+    assert 'ruff.lint.isort' in REPLACE_SECTIONS
+
+    standard = tomlkit.parse('[ruff.lint.isort]\nforce-single-line = true\n')
+    target = tomlkit.parse('[ruff.lint.isort]\nforce-single-line = false\nknown-first-party = ["app"]\n')
+    deep_merge(standard, target)
+
+    assert target['ruff']['lint']['isort']['force-single-line'] is True
+    assert 'known-first-party' not in target['ruff']['lint']['isort']
+
+
 def test_merges_non_replace_sections():
     """Sections NOT in REPLACE_SECTIONS preserve target-specific keys."""
     assert 'codespell' not in REPLACE_SECTIONS
@@ -57,12 +101,14 @@ def test_merges_non_replace_sections():
     assert codespell['ignore-words-list'] == 'colour'
 
 
-def test_ruff_table_merges_while_its_lint_subtable_replaces():
-    """A repo's ruff `exclude` survives, but its rule set is standardized."""
+def test_ruff_exclude_survives_while_the_rule_set_is_standardized():
+    """A repo's ruff `exclude` survives; every key the standard names is forced."""
     assert 'ruff' not in REPLACE_SECTIONS
-    assert 'ruff.lint' in REPLACE_SECTIONS
+    assert 'ruff.lint' not in REPLACE_SECTIONS
 
-    standard = tomlkit.parse('[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E", "F"]\n')
+    standard = tomlkit.parse(
+        '[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E", "F"]\nignore = ["SIM108"]\n'
+    )
     target = tomlkit.parse(
         '[ruff]\nline-length = 120\nexclude = ["migrations"]\n\n'
         '[ruff.lint]\nselect = ["ALL"]\nignore = ["D100"]\n'
@@ -72,7 +118,7 @@ def test_ruff_table_merges_while_its_lint_subtable_replaces():
     assert target['ruff']['line-length'] == 140
     assert target['ruff']['exclude'] == ['migrations']
     assert target['ruff']['lint']['select'] == ['E', 'F']
-    assert 'ignore' not in target['ruff']['lint']
+    assert target['ruff']['lint']['ignore'] == ['SIM108']
 
 
 def test_preserves_unrelated_sections():
@@ -131,8 +177,10 @@ def test_full_pyproject_roundtrip():
 if __name__ == '__main__':
     test_adds_missing_sections()
     test_replaces_replace_sections()
+    test_preserves_project_config_inside_floor_sections()
+    test_isort_is_replaced_through_a_merged_parent()
     test_merges_non_replace_sections()
-    test_ruff_table_merges_while_its_lint_subtable_replaces()
+    test_ruff_exclude_survives_while_the_rule_set_is_standardized()
     test_preserves_unrelated_sections()
     test_full_pyproject_roundtrip()
     print('all tests passed')
