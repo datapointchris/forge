@@ -15,6 +15,11 @@ type Die struct {
 	Description string   `yaml:"description"`
 	Tags        []string `yaml:"tags"`
 	Registered  bool     // true if present in registry.yml
+	// SupportsCheck means the script honors FORGE_CHECK by reporting what it
+	// would do instead of doing it. Declared per die rather than assumed,
+	// because a die that ignores the variable would write while the operator
+	// believed they were previewing — the one failure mode a preview must not have.
+	SupportsCheck bool `yaml:"supports_check"`
 }
 
 type registryFile struct {
@@ -80,6 +85,7 @@ func (r *Registry) mergeMetadata(fsys fs.FS) error {
 		if onDisk {
 			existing.Description = meta.Description
 			existing.Tags = meta.Tags
+			existing.SupportsCheck = meta.SupportsCheck
 			existing.Registered = true
 			r.Dies[name] = existing
 		}

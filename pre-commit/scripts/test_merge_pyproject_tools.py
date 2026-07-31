@@ -4,183 +4,177 @@
 import tempfile
 from pathlib import Path
 
-from merge_pyproject_tools import REPLACE_SECTIONS, deep_merge
+from merge_pyproject_tools import apply_standard, flatten, main, read_managed_paths
 
 import tomlkit
 
 
+def sync(standard_toml, target_toml):
+    """Apply the standard to a target, returning (target, retracted)."""
+    standard = tomlkit.parse(standard_toml)
+    target = tomlkit.parse(target_toml)
+    retracted = apply_standard(standard, target)
+    return target, retracted
+
+
 def test_adds_missing_sections():
     """Standard sections are added when target has none."""
-    standard = tomlkit.parse('[ruff]\nline-length = 140\n')
-    target = tomlkit.parse('')
-    deep_merge(standard, target)
+    target, _ = sync('[ruff]\nline-length = 140\n', '')
 
     assert target['ruff']['line-length'] == 140
 
 
-def test_replaces_replace_sections():
-    """Sections in REPLACE_SECTIONS are fully replaced, not merged."""
-    assert 'pyright' in REPLACE_SECTIONS
-
-    standard = tomlkit.parse(
-        '[pyright]\ntypeCheckingMode = "basic"\nreportPossiblyUnboundVariable = false\n'
+def test_forces_every_key_the_standard_names():
+    """A repo cannot hold a weaker value for a key the standard sets."""
+    target, _ = sync(
+        '[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E", "F"]\nignore = ["SIM108"]\n',
+        '[ruff]\nline-length = 120\n\n[ruff.lint]\nselect = ["ALL"]\nignore = ["D100"]\n',
     )
-    target = tomlkit.parse(
-        '[pyright]\n'
-        'analyzeUnannotatedFunctions = true\n'
-        'reportAny = false\n'
-        'reportImplicitOverride = false\n'
-        'reportMissingParameterType = false\n'
-        'reportUnknownArgumentType = false\n'
-    )
-    deep_merge(standard, target)
 
-    pyright = target['pyright']
-    assert pyright['typeCheckingMode'] == 'basic'
-    assert pyright['reportPossiblyUnboundVariable'] is False
-    # Old verbose keys should be gone
-    assert 'analyzeUnannotatedFunctions' not in pyright
-    assert 'reportAny' not in pyright
-
-
-def test_preserves_project_config_inside_floor_sections():
-    """A framework's own settings survive a sync; the standard's keys still win.
-
-    Regression: listing ruff.lint and mypy as REPLACE deleted a FastAPI repo's
-    bugbear exemptions and its pydantic mypy plugin, and nothing failed until a
-    later, unrelated commit touched one of the affected files.
-    """
-    assert 'ruff.lint' not in REPLACE_SECTIONS
-    assert 'mypy' not in REPLACE_SECTIONS
-
-    standard = tomlkit.parse(
-        '[ruff.lint]\nselect = ["E", "F"]\nignore = ["SIM108"]\n\n[mypy]\npretty = true\n'
-    )
-    target = tomlkit.parse(
-        '[ruff.lint]\n'
-        'select = ["E"]\n'
-        '\n'
-        '[ruff.lint.flake8-bugbear]\n'
-        'extend-immutable-calls = ["fastapi.Depends"]\n'
-        '\n'
-        '[mypy]\n'
-        'plugins = ["pydantic.mypy"]\n'
-    )
-    deep_merge(standard, target)
-
+    assert target['ruff']['line-length'] == 140
     assert target['ruff']['lint']['select'] == ['E', 'F']
     assert target['ruff']['lint']['ignore'] == ['SIM108']
+
+
+def test_never_deletes_a_key_it_did_not_write():
+    """Project config survives, whatever section it sits in.
+
+    Regression for the two incidents REPLACE_SECTIONS caused: a repo's ruff
+    `exclude`, then a FastAPI repo's bugbear exemptions, its pydantic mypy
+    plugin and an alembic per-file-ignore. Nothing failed at sync time; the
+    bugbear loss surfaced as 57 B008 errors in CI on the next push.
+    """
+    target, retracted = sync(
+        '[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E"]\n\n[mypy]\npretty = true\n',
+        '[ruff]\nline-length = 120\nexclude = ["migrations"]\n\n'
+        '[ruff.lint]\nselect = ["ALL"]\n\n'
+        '[ruff.lint.flake8-bugbear]\nextend-immutable-calls = ["fastapi.Depends"]\n\n'
+        '[mypy]\nplugins = ["pydantic.mypy"]\n',
+    )
+
+    assert retracted == []
+    assert target['ruff']['exclude'] == ['migrations']
     assert target['ruff']['lint']['flake8-bugbear']['extend-immutable-calls'] == ['fastapi.Depends']
-    assert target['mypy']['pretty'] is True
     assert target['mypy']['plugins'] == ['pydantic.mypy']
 
 
-def test_isort_is_replaced_through_a_merged_parent():
-    """ruff.lint.isort is only reachable now that ruff.lint merges instead of replacing."""
-    assert 'ruff.lint.isort' in REPLACE_SECTIONS
+def test_retracts_a_key_dropped_from_the_standard():
+    """A key forge wrote and the template no longer names is removed."""
+    standard = '[ruff.lint.flake8-bugbear]\nextend-immutable-calls = ["fastapi.Depends"]\n'
+    target, _ = sync(standard, '')
+    assert read_managed_paths(target) == [('ruff', 'lint', 'flake8-bugbear', 'extend-immutable-calls')]
 
-    standard = tomlkit.parse('[ruff.lint.isort]\nforce-single-line = true\n')
-    target = tomlkit.parse('[ruff.lint.isort]\nforce-single-line = false\nknown-first-party = ["app"]\n')
-    deep_merge(standard, target)
+    # The template drops the section entirely on a later run.
+    retracted = apply_standard(tomlkit.parse('[ruff]\nline-length = 140\n'), target)
 
-    assert target['ruff']['lint']['isort']['force-single-line'] is True
-    assert 'known-first-party' not in target['ruff']['lint']['isort']
-
-
-def test_merges_non_replace_sections():
-    """Sections NOT in REPLACE_SECTIONS preserve target-specific keys."""
-    assert 'codespell' not in REPLACE_SECTIONS
-
-    standard = tomlkit.parse('[codespell]\ncheck-filenames = true\n')
-    target = tomlkit.parse('[codespell]\nskip = "*.css.map"\nignore-words-list = "colour"\n')
-    deep_merge(standard, target)
-
-    codespell = target['codespell']
-    assert codespell['check-filenames'] is True
-    assert codespell['skip'] == '*.css.map'
-    assert codespell['ignore-words-list'] == 'colour'
-
-
-def test_ruff_exclude_survives_while_the_rule_set_is_standardized():
-    """A repo's ruff `exclude` survives; every key the standard names is forced."""
-    assert 'ruff' not in REPLACE_SECTIONS
-    assert 'ruff.lint' not in REPLACE_SECTIONS
-
-    standard = tomlkit.parse(
-        '[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E", "F"]\nignore = ["SIM108"]\n'
-    )
-    target = tomlkit.parse(
-        '[ruff]\nline-length = 120\nexclude = ["migrations"]\n\n'
-        '[ruff.lint]\nselect = ["ALL"]\nignore = ["D100"]\n'
-    )
-    deep_merge(standard, target)
-
+    assert retracted == [('ruff', 'lint', 'flake8-bugbear', 'extend-immutable-calls')]
+    # Pruning cascades: the empty flake8-bugbear table takes `lint` with it,
+    # leaving only what the new standard writes.
+    assert 'lint' not in target['ruff']
     assert target['ruff']['line-length'] == 140
-    assert target['ruff']['exclude'] == ['migrations']
-    assert target['ruff']['lint']['select'] == ['E', 'F']
-    assert target['ruff']['lint']['ignore'] == ['SIM108']
+
+
+def test_retraction_is_scoped_to_what_forge_recorded():
+    """The same key survives when the record does not claim it.
+
+    This is the whole guarantee. ichrisbirch's bugbear exemptions look exactly
+    like the ones the template used to inject; only the record distinguishes
+    a key forge wrote from one the project added.
+    """
+    target = tomlkit.parse(
+        '[ruff.lint.flake8-bugbear]\nextend-immutable-calls = ["fastapi.Depends"]\n'
+    )
+    retracted = apply_standard(tomlkit.parse('[ruff]\nline-length = 140\n'), target)
+
+    assert retracted == []
+    assert target['ruff']['lint']['flake8-bugbear']['extend-immutable-calls'] == ['fastapi.Depends']
+
+
+def test_records_every_leaf_the_standard_writes():
+    """The record is the flattened standard, including keys holding dots."""
+    target, _ = sync(
+        '[ruff.lint.per-file-ignores]\n"__init__.py" = ["F401"]\n\n[mypy]\npretty = true\n', ''
+    )
+
+    assert read_managed_paths(target) == [
+        ('ruff', 'lint', 'per-file-ignores', '__init__.py'),
+        ('mypy', 'pretty'),
+    ]
 
 
 def test_preserves_unrelated_sections():
     """Sections not in standard are left untouched."""
-    standard = tomlkit.parse('[mypy]\npretty = true\n')
-    target = tomlkit.parse('[mypy]\npretty = false\n[coverage]\nbranch = true\n')
-    deep_merge(standard, target)
+    target, _ = sync('[mypy]\npretty = true\n', '[mypy]\npretty = false\n[coverage]\nbranch = true\n')
 
     assert target['mypy']['pretty'] is True
     assert target['coverage']['branch'] is True
 
 
-def test_full_pyproject_roundtrip():
-    """Merge into a realistic pyproject.toml preserves project metadata."""
+def test_flatten_descends_to_leaves_only():
+    leaves = flatten(tomlkit.parse('[a]\nx = 1\n\n[a.b]\ny = 2\n'))
+
+    assert leaves == {('a', 'x'): 1, ('a', 'b', 'y'): 2}
+
+
+def test_second_sync_is_a_no_op():
+    """Idempotence is what the die's SKIP status depends on."""
     with tempfile.TemporaryDirectory() as tmp:
         standard_path = Path(tmp) / 'standard.toml'
         target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.ruff]\nline-length = 140\n')
+        target_path.write_text('[project]\nname = "myapp"\n')
 
-        standard_path.write_text(
-            '[ruff]\nline-length = 140\n\n'
-            '[pyright]\ntypeCheckingMode = "basic"\n\n'
-            '[codespell]\ncheck-filenames = true\n'
-        )
-        target_path.write_text(
-            '[project]\nname = "myapp"\nversion = "1.0.0"\n\n'
-            '[project.dependencies]\nfastapi = ">=0.100"\n\n'
-            '[pyright]\nreportAny = false\nreportUnknownArgumentType = false\n\n'
-            '[codespell]\nskip = "*.lock"\n\n'
-            '[build-system]\nrequires = ["uv-build"]\n'
-        )
+        assert main([str(standard_path), str(target_path)]) == 0
+        after_first = target_path.read_text()
+        assert main([str(standard_path), str(target_path)]) == 0
 
-        with open(standard_path) as f:
-            standard = tomlkit.parse(f.read())
-        with open(target_path) as f:
-            target = tomlkit.parse(f.read())
+        assert target_path.read_text() == after_first
 
-        deep_merge(standard, target)
 
-        # Project metadata untouched
-        assert target['project']['name'] == 'myapp'
-        assert target['project']['version'] == '1.0.0'
-        assert target['build-system']['requires'] == ['uv-build']
+def test_check_reports_without_writing():
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.ruff]\nline-length = 140\n')
+        target_path.write_text('[project]\nname = "myapp"\n')
+        before = target_path.read_text()
 
-        # Ruff added
-        assert target['ruff']['line-length'] == 140
+        assert main(['--check', str(standard_path), str(target_path)]) == 0
 
-        # Pyright replaced (old keys gone)
-        assert target['pyright']['typeCheckingMode'] == 'basic'
-        assert 'reportAny' not in target['pyright']
+        assert target_path.read_text() == before
 
-        # Codespell merged (project skip preserved)
-        assert target['codespell']['check-filenames'] is True
-        assert target['codespell']['skip'] == '*.lock'
+
+def test_full_pyproject_roundtrip():
+    """Merge into a realistic pyproject.toml preserves project metadata."""
+    target, _ = sync(
+        '[ruff]\nline-length = 140\n\n[pyright]\ntypeCheckingMode = "standard"\n\n'
+        '[codespell]\ncheck-filenames = true\n',
+        '[project]\nname = "myapp"\nversion = "1.0.0"\n\n'
+        '[pyright]\nreportAny = false\n\n'
+        '[codespell]\nskip = "*.lock"\n\n'
+        '[build-system]\nrequires = ["uv-build"]\n',
+    )
+
+    assert target['project']['name'] == 'myapp'
+    assert target['build-system']['requires'] == ['uv-build']
+    assert target['ruff']['line-length'] == 140
+    assert target['codespell']['check-filenames'] is True
+    assert target['codespell']['skip'] == '*.lock'
+    # A hand-added pyright rule is the project's until a migration removes it.
+    assert target['pyright']['typeCheckingMode'] == 'standard'
+    assert target['pyright']['reportAny'] is False
 
 
 if __name__ == '__main__':
     test_adds_missing_sections()
-    test_replaces_replace_sections()
-    test_preserves_project_config_inside_floor_sections()
-    test_isort_is_replaced_through_a_merged_parent()
-    test_merges_non_replace_sections()
-    test_ruff_exclude_survives_while_the_rule_set_is_standardized()
+    test_forces_every_key_the_standard_names()
+    test_never_deletes_a_key_it_did_not_write()
+    test_retracts_a_key_dropped_from_the_standard()
+    test_retraction_is_scoped_to_what_forge_recorded()
+    test_records_every_leaf_the_standard_writes()
     test_preserves_unrelated_sections()
+    test_flatten_descends_to_leaves_only()
+    test_second_sync_is_a_no_op()
+    test_check_reports_without_writing()
     test_full_pyproject_roundtrip()
     print('all tests passed')

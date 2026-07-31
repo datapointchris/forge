@@ -76,6 +76,35 @@ func TestLoadRegistry(t *testing.T) {
 		}
 	})
 
+	t.Run("check support defaults off and is opt-in", func(t *testing.T) {
+		// --check is refused for a die that does not declare support, so the
+		// default matters: a die silently gaining it would write while the
+		// operator believed they were previewing.
+		dir := setupTestDies(t)
+		registry := `dies:
+  maintenance/fix.sh:
+    description: "Fix broken things"
+    supports_check: true
+  checks/lint.sh:
+    description: "Lint things"
+`
+		if err := os.WriteFile(filepath.Join(dir, "registry.yml"), []byte(registry), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		reg, err := LoadRegistry(os.DirFS(dir))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !reg.Dies["maintenance/fix.sh"].SupportsCheck {
+			t.Error("declared die should support --check")
+		}
+		if reg.Dies["checks/lint.sh"].SupportsCheck {
+			t.Error("die without supports_check should not support --check")
+		}
+	})
+
 	t.Run("no registry file is ok", func(t *testing.T) {
 		dir := setupTestDies(t)
 

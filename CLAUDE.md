@@ -27,6 +27,7 @@ Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellche
 - `exec` — run an inline command or script file across repos
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`
+  - `run` takes two different previews. `--dry-run`/`-n` names the repos the die would visit and executes nothing. `--check` runs it for real with `FORGE_CHECK=1` set and has the script report what it would change — a content-level preview `--dry-run` structurally cannot give. It is refused for any die not declaring `supports_check: true` in the registry, because a die that ignored the variable would write to every repo while the operator believed they were previewing
 - `precommit generate` — generate `.pre-commit-config.yaml` from standard blocks (Go implementation)
 - `ci generate` — generate `.github/workflows/validate.yml` from standard CI blocks (`--dry-run` prints instead of writing)
 - `precommit check` — report hooks that would abort a sync because they are non-standard and unmarked
@@ -100,7 +101,7 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 - `golangci.yml` — Go repos
 - `prettierrc.json` — Vue repos
 - `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. Rules are narrowed to `ambiguous, references, structure, convention.terminator`: sqlfluff's defaults are mostly layout and capitalisation opinions, which failed every `.sql` file in the portfolio and would have taught everyone to skip the hook. The narrowed set passes clean across all seven repos while still catching unparsable SQL and unused CTEs
-- `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, codespell, pytest, pyright). The ruff `select` is the six rules every repo already runs, not an aspirational set: a template nothing conforms to reads as the standard while being unable to measure drift. `[tool.pyright]` is here despite the hook enforcing mypy, because basedpyright runs in every editor on every machine and is therefore exactly what drifts — it was dropped once as "an editor concern" and the four repos configuring it diverged. It is a REPLACE section, so `typeCheckingMode = "standard"` collapses the twelve-key blocks repos accumulated rather than sitting alongside them. Named `pyright`, not `basedpyright`, so one section serves nvim and Pylance
+- `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, codespell, pytest, pyright). The ruff `select` is the six rules every repo already runs, not an aspirational set: a template nothing conforms to reads as the standard while being unable to measure drift. `[tool.pyright]` is here despite the hook enforcing mypy, because basedpyright runs in every editor on every machine and is therefore exactly what drifts — it was dropped once as "an editor concern" and the four repos configuring it diverged. Named `pyright`, not `basedpyright`, so one section serves nvim and Pylance. `typeCheckingMode = "standard"` replaced the twelve-key blocks repos had accumulated; that collapse was a one-time migration, already applied everywhere, and is not something the steady-state sync repeats
 
 **Config generation** — a Go function in `precommit/generate.go`, invoked as `forge precommit generate`. Handles block composition, custom section preservation, hook deduplication, and safety checks.
 
@@ -111,7 +112,9 @@ A block must appear in `categoryMap` (stack-gated) or `genericBlocks` (every rep
 **`pre-commit/scripts/`** — Python helper scripts (embedded in binary):
 
 - `generate_config.py` — legacy Python generator (replaced by Go implementation, kept as reference)
-- `merge_pyproject_tools.py` — merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing)
+- `merge_pyproject_tools.py` — merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing). **The standard owns exactly the keys it writes**, recorded as `[tool.forge] managed` in each repo's pyproject. That record is what makes retraction possible: a key dropped from the template is removed everywhere on the next sync, because the record proves forge put it there, and the retraction is printed rather than silent. A key absent from the record is the project's and is unreachable from the delete path.
+
+  This replaced a `REPLACE_SECTIONS` set naming whole sections to overwrite wholesale. Owning a section and setting a floor under one are different jobs, and one verb doing both deleted project config three times — a repo's ruff `exclude`, then a FastAPI repo's bugbear exemptions, its pydantic mypy plugin and an alembic per-file-ignore. Per-key ownership recorded at write time cannot express that mistake, which is why the fix is a mechanism rather than a fourth entry removed from a list. Paths are stored as arrays, not dotted strings, because a segment can contain a dot (`per-file-ignores."__init__.py"`) and the record that authorizes deletion does not get to depend on quoting being right. The record table is rebuilt from scratch on every write, so a resync is byte-identical — the die's SKIP status depends on that idempotence
 
 **Custom hook markers** — repos with project-specific hooks use these markers in their `.pre-commit-config.yaml`:
 
@@ -169,6 +172,10 @@ stamp yet, so that is a first-time rewrite rather than a bump. Coupling a cheap 
 expensive one is why the cheap change stopped being made and the settings drifted instead. Running
 it across the portfolio is also the drift report — OK means drifted, SKIP means current.
 
+`--check` (via `FORGE_CHECK`) prints the unified diff each repo would take instead of writing it. A
+template edit fans out to every Python repo at once, so this is the plan step: see the change across
+the portfolio, then apply. It is also the only way to preview a retraction before it happens.
+
 Both this and the sync die pass `uv run --no-project`: without it uv builds the repo being edited
 just to run a stdlib script, and the build chatter on stderr is long enough to swallow the one word
 the die reads back to decide OK versus SKIP.
@@ -184,16 +191,16 @@ declared component has a CI block.
 
 - `config/` — forge and syncer config loading
 - `dies/` — registry and stats, plus integration tests for the sync-pre-commit die (declared stacks, dedup, custom preservation, safety, config deployment). Each test writes a temp registry naming its temp repo and points the die at it with `FORGE_REPOS_FILE`, so a test declares its stacks the same way a real repo does.
-- `precommit/` — config generator: 9 unit tests (using `fstest.MapFS`) + 7 integration tests against real blocks
+- `precommit/` — config generator: unit tests (using `fstest.MapFS`) plus integration tests against real blocks
 - `runner/` — repo filtering, execution
 
 **Note:** The sync-pre-commit integration tests (`dies/sync_precommit_test.go`) require the `forge` binary on PATH since the die script calls `forge precommit generate`. Run `go install .` before `go test ./...`.
 
 **Python tests** (`pre-commit/scripts/run_tests.sh`):
 
-- `test_generate_config.py` — 8 unit tests for the legacy Python generator
-- `test_merge_pyproject_tools.py` — 5 unit tests for pyproject merge
-- `test_integration.py` — 10 integration tests for the legacy Python generator
+- `test_generate_config.py` — unit tests for the legacy Python generator
+- `test_merge_pyproject_tools.py` — pyproject merge: what the standard forces, what it never deletes, and what it retracts
+- `test_integration.py` — integration tests for the legacy Python generator
 
 Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 

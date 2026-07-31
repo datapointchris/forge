@@ -8,6 +8,11 @@
 #
 # Writes nothing but pyproject.toml. Running it across the portfolio doubles as
 # the drift report: OK means the repo had drifted, SKIP means it was current.
+#
+# FORGE_CHECK (set by `forge dies run --check`) prints the diff each repo would
+# take instead of writing it. A template edit fans out to every Python repo at
+# once, so seeing that before it lands is the difference between a review and an
+# archaeology session.
 
 if [ -n "${FORGE_DATA_DIR:-}" ]; then
   configs_dir="$FORGE_DATA_DIR/pre-commit/configs"
@@ -41,16 +46,40 @@ fi
 merge_err=$(mktemp)
 trap 'rm -f "$merge_err"' EXIT
 
+check_flag=()
+if [ -n "${FORGE_CHECK:-}" ]; then
+  check_flag=(--check)
+fi
+
 if ! merge_out=$(uv run --no-project --with tomlkit python \
-  "$scripts_dir/merge_pyproject_tools.py" \
+  "$scripts_dir/merge_pyproject_tools.py" "${check_flag[@]}" \
   "$configs_dir/pyproject-tools.toml" pyproject.toml 2> "$merge_err"); then
   echo "merge failed: $(tail -3 "$merge_err")"
   exit 1
 fi
 
-if [ "$merge_out" != "updated" ]; then
+# First line is the status word, the rest is detail worth showing — retracted
+# keys, and the diff under --check. A retraction is never silent.
+status=$(printf '%s\n' "$merge_out" | head -1)
+detail=$(printf '%s\n' "$merge_out" | tail -n +2)
+
+case "$status" in
+current)
   echo "pyproject current"
   exit 2
-fi
+  ;;
+updated)
+  echo "pyproject updated"
+  ;;
+would-update)
+  echo "pyproject would change"
+  ;;
+*)
+  echo "unexpected merge output: $status"
+  exit 1
+  ;;
+esac
 
-echo "pyproject updated"
+if [ -n "$detail" ]; then
+  printf '%s\n' "$detail"
+fi

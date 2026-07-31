@@ -21,6 +21,7 @@ import (
 var (
 	diesFilterNames []string
 	diesDryRun      bool
+	diesCheck       bool
 )
 
 var diesCmd = &cobra.Command{
@@ -57,7 +58,11 @@ var diesRunCmd = &cobra.Command{
 Example:
   forge dies run maintenance/add-planning-to-gitignore.sh
   forge dies run maintenance/add-planning-to-gitignore.sh -F dotfiles,homelab
-  forge dies run maintenance/add-planning-to-gitignore.sh -n`,
+  forge dies run maintenance/add-planning-to-gitignore.sh -n
+  forge dies run maintenance/sync-pyproject.sh --check
+
+--dry-run names the repos a die would visit. --check runs it for real and has it
+report what it would change, which only dies declaring supports_check can do.`,
 	Args: cobra.ExactArgs(1),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) > 0 {
@@ -116,6 +121,7 @@ var diesStatsCmd = &cobra.Command{
 func init() {
 	diesRunCmd.Flags().StringSliceVarP(&diesFilterNames, "filter", "F", nil, "comma-separated repo names to include")
 	diesRunCmd.Flags().BoolVarP(&diesDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
+	diesRunCmd.Flags().BoolVar(&diesCheck, "check", false, "report what the die would change instead of changing it")
 
 	diesCmd.AddCommand(diesListCmd)
 	diesCmd.AddCommand(diesRunCmd)
@@ -203,12 +209,22 @@ func runDiesList(cmd *cobra.Command, args []string) error {
 func runDiesRun(cmd *cobra.Command, args []string) error {
 	diePath := args[0]
 
+	if diesCheck {
+		if err := requireCheckSupport(diePath); err != nil {
+			return err
+		}
+	}
+
 	// Resolve die source: filesystem (dies_dir configured) or embedded
 	scriptPath, env, cleanup, err := resolveDie(diePath)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
+
+	if diesCheck {
+		env = append(env, "FORGE_CHECK=1")
+	}
 
 	var syncerCfg *config.SyncerConfig
 	if cfgPath != "" {
@@ -292,6 +308,25 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 // resolveDie returns the script path, env vars, and cleanup function for a die.
 // When dies_dir is configured, it uses the filesystem directly.
 // Otherwise, it extracts from embedded assets.
+// requireCheckSupport refuses --check for a die that does not honor FORGE_CHECK.
+// Passing it to one that ignores it would write to every repo while reporting a
+// preview, which is worse than having no preview at all.
+func requireCheckSupport(diePath string) error {
+	reg, err := loadDiesRegistry()
+	if err != nil {
+		return err
+	}
+
+	die, ok := reg.Dies[diePath]
+	if !ok {
+		return fmt.Errorf("die not found: %s", diePath)
+	}
+	if !die.SupportsCheck {
+		return fmt.Errorf("%s does not support --check; it would write for real", diePath)
+	}
+	return nil
+}
+
 func resolveDie(diePath string) (scriptPath string, env []string, cleanup func(), err error) {
 	noop := func() {}
 
