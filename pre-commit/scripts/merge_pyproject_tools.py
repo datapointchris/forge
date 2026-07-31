@@ -157,7 +157,12 @@ def main(argv):
         target['tool'] = tomlkit.table()
 
     retracted = apply_standard(standard['tool'], target['tool'])
-    merged = tomlkit.dumps(target)
+
+    # The record table carries a trailing blank line so it does not abut the next
+    # header. When it lands at EOF there is no next header, and end-of-file-fixer
+    # strips the blank on commit — leaving the sync and the hook to undo each
+    # other on every run. Normalising here settles it in the sync's favour.
+    merged = tomlkit.dumps(target).rstrip('\n') + '\n'
 
     if merged == original:
         print('current')

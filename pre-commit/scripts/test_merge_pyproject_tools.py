@@ -131,6 +131,26 @@ def test_second_sync_is_a_no_op():
         assert target_path.read_text() == after_first
 
 
+def test_leaves_exactly_one_newline_at_eof():
+    """The record table is often the last thing in the file.
+
+    Its trailing blank line keeps it off the next header, but at EOF there is no
+    next header and pre-commit's end-of-file-fixer strips it — so sync and hook
+    rewrite each other on every commit until one of them yields.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.ruff]\nline-length = 140\n')
+        target_path.write_text('[project]\nname = "myapp"\n')
+
+        assert main([str(standard_path), str(target_path)]) == 0
+
+        written = target_path.read_text()
+        assert written.endswith(']\n')
+        assert not written.endswith('\n\n')
+
+
 def test_check_reports_without_writing():
     with tempfile.TemporaryDirectory() as tmp:
         standard_path = Path(tmp) / 'standard.toml'
@@ -175,6 +195,7 @@ if __name__ == '__main__':
     test_preserves_unrelated_sections()
     test_flatten_descends_to_leaves_only()
     test_second_sync_is_a_no_op()
+    test_leaves_exactly_one_newline_at_eof()
     test_check_reports_without_writing()
     test_full_pyproject_roundtrip()
     print('all tests passed')
