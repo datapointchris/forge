@@ -119,3 +119,22 @@ func TestApplyRuntimeVersionsLeavesVersionFileAlone(t *testing.T) {
 		t.Errorf("version-file input was rewritten: %q", got)
 	}
 }
+
+// A repo that treats ruff as a fleet tool rather than a project dependency does
+// not declare it, and `uv run ruff` then failed to spawn instead of linting.
+// CI uses uvx, pinned to the same rev as the pre-commit hook so the two cannot
+// report different findings.
+func TestApplyUvxVersionsTracksTheHookRev(t *testing.T) {
+	manifest := &Toolchain{Version: 9}
+	manifest.Hooks = append(manifest.Hooks, Hook{Repo: "https://github.com/astral-sh/ruff-pre-commit", Rev: "v9.9.9"})
+
+	got := manifest.ApplyUvxVersions("      - run: uvx ruff@0.0.1 check .\n")
+	if want := "      - run: uvx ruff@9.9.9 check .\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+
+	unmapped := "      - run: uvx somethingelse@1.2.3 --help\n"
+	if got := manifest.ApplyUvxVersions(unmapped); got != unmapped {
+		t.Errorf("unmapped tool rewritten: %q", got)
+	}
+}

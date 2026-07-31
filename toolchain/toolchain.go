@@ -19,7 +19,16 @@ var (
 	goInstallRE   = regexp.MustCompile(`^(.*go install\s+)(\S+?)@\S+(.*)$`)
 	runtimeLineRE = regexp.MustCompile(`^(\s*)([a-z]+)-version:\s*\S+\s*$`)
 	binaryLineRE  = regexp.MustCompile(`^(\s*)([a-z0-9]+)_version="\S+"\s*$`)
+	uvxLineRE     = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
 )
+
+// uvxHookRepos maps a tool a CI block runs as `uvx <tool>@<version>` to the
+// pre-commit repo pinning it. The version is derived from that hook's rev
+// rather than declared a second time, so CI and the local hook cannot disagree
+// about a finding — a second entry could drift, a derived one cannot.
+var uvxHookRepos = map[string]string{
+	"ruff": "https://github.com/astral-sh/ruff-pre-commit",
+}
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
 // config. Blocks carry their own revs for readability; this overrides them so
@@ -278,9 +287,35 @@ func (t *Toolchain) ApplyRuntimeVersions(content string) string {
 	return strings.Join(lines, "\n")
 }
 
+// ApplyUvxVersions rewrites `uvx <tool>@<version>` to the version pinned for
+// that tool's pre-commit hook. A tool with no mapping is left alone.
+//
+// CI runs these through uvx rather than `uv run` because `uv run ruff` resolves
+// ruff from the repo's own dependencies, and a repo that treats ruff as a fleet
+// tool rather than a project dependency does not declare it — CI then failed to
+// spawn the binary instead of linting.
+func (t *Toolchain) ApplyUvxVersions(content string) string {
+	lines := strings.Split(content, "\n")
+
+	for i, line := range lines {
+		m := uvxLineRE.FindStringSubmatch(line)
+		if len(m) < 5 {
+			continue
+		}
+		repo, mapped := uvxHookRepos[m[2]]
+		if !mapped {
+			continue
+		}
+		if rev, managed := t.RevFor(repo); managed {
+			lines[i] = m[1] + m[2] + "@" + strings.TrimPrefix(rev, "v") + m[4]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ApplyAll runs every substitution a generated file may need.
 func (t *Toolchain) ApplyAll(content string) string {
-	return t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content)))))
+	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content))))))
 }
 
 // BinaryVersion returns the pinned version for a released binary, and whether
