@@ -61,6 +61,23 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 	}
 }
 
+// Development is trunk-based, so pull_request alone would mean the workflow
+// almost never runs, and workflow_call only fires for a repo whose release
+// pipeline gates on it. Seven repos had no repo-wide lint at all; generating
+// them a workflow with no reachable trigger would have looked like a fix.
+func TestGenerateRunsOnPushToMain(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	for _, trigger := range []string{"  push:\n    branches: [main]", "  pull_request:", "  workflow_call:"} {
+		if !strings.Contains(workflow, trigger) {
+			t.Errorf("missing trigger %q:\n%s", trigger, workflow)
+		}
+	}
+}
+
 // A root component is the common case and should not carry a redundant
 // working-directory or a directory suffix in its job name.
 func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {

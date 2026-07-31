@@ -44,6 +44,14 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config
 		"name: CI",
 		"",
 		"on:",
+		// Development here is trunk-based: work lands on main directly and there
+		// are rarely pull requests, so pull_request alone validates almost
+		// nothing. workflow_call is how a release gates on this, but a repo with
+		// no release pipeline had no trigger at all — the workflow existed and
+		// never ran. A repo that does gate its release runs these checks twice on
+		// a push to main, which is the cheaper of the two mistakes.
+		"  push:",
+		"    branches: [main]",
 		"  pull_request:",
 		"  workflow_call:",
 		"",
