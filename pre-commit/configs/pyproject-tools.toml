@@ -33,6 +33,22 @@ ignore = [
 [tool.ruff.lint.isort]
 force-single-line = true
 
+# B008 fires on FastAPI's whole parameter-declaration vocabulary, which is
+# call-in-default by design. Lives here, not per-repo: ruff.lint is a REPLACE
+# section, so a repo-local copy is wiped on the next sync.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Cookie",
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Query",
+    "fastapi.Security",
+]
+
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
