@@ -42,6 +42,13 @@ ignore_missing_imports = true
 check_untyped_defs = false
 warn_return_any = false
 
+# `standard` replaces the per-rule opt-outs repos used to accumulate; basedpyright
+# defaults to `recommended`, which turns every one of them back on. Named
+# `pyright` so both basedpyright and Pylance read it.
+[tool.pyright]
+typeCheckingMode = "standard"
+analyzeUnannotatedFunctions = true  # or pylance stops analyzing in vscode
+
 [tool.codespell]
 check-filenames = true
 
