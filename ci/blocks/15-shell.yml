@@ -43,9 +43,15 @@
       # difference. Version comes from the toolchain manifest, like shellcheck.
       #
       # Discovery uses shfmt's own -f over tracked files rather than repeating
-      # the shebang scan above: shellcheck and shfmt disagree about what they
-      # can parse (shfmt has no zsh support), so each tool choosing its own set
-      # is more correct than sharing one list.
+      # the shebang scan above, because the two tools disagree about what they
+      # can parse and each is the authority on its own set.
+      #
+      # The zsh filter is not redundant with that. shfmt has no zsh support but
+      # -f lists .zsh anyway, so CI formatted a file the hook excludes via
+      # exclude_types: [zsh] — dotfiles' prompt.zsh passed every hook and failed
+      # here. The two sides have to name the same set or a repo cannot be green
+      # in both. shellcheck's scan above needs no such filter: it matches on a
+      # bash or sh shebang, which no zsh file carries.
       - name: shfmt
         run: |
           shfmt_version="3.13.1"
@@ -55,7 +61,8 @@
           chmod +x "$shfmt_bin"
           "$shfmt_bin" --version
 
-          files=$(git ls-files | xargs "$shfmt_bin" -f 2>/dev/null)
+          files=$(git ls-files | xargs "$shfmt_bin" -f 2>/dev/null \
+            | grep -vE '(^|/)(\.?zshrc|\.?zshenv|\.zprofile|\.zlogin|\.zlogout)$|\.zsh$' || true)
           if [ -z "$files" ]; then
             echo "no shell files found"
             exit 0
