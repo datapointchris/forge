@@ -8,4 +8,4 @@
       # prose in them and nobody would fix a hit, since the next install would
       # put it back.
       - id: codespell
-        exclude: '(^|/)(.*-lock\.json|.*\.lock|uv\.lock|package-lock\.json)$'
+        exclude: '(^|/)(.*-lock\.json|.*\.lock|uv\.lock|package-lock\.json|go\.sum)$'
