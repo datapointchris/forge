@@ -3,11 +3,26 @@
         with:
           node-version: "24"
           cache: npm
+          # A glob rather than {{dir}}/package-lock.json, because the two
+          # layouts here keep the lock in different places: nomad and meso have
+          # one per component in web/, while learning, budget and timeline are
+          # npm workspaces with a single lock at the repo root. setup-node
+          # fails outright when a named path does not resolve — timeline's
+          # client/ has no lock of its own and the job died before npm ci.
+          #
           # Action inputs resolve from the workspace root, not the job's
-          # working-directory, so this needs the component path.
-          cache-dependency-path: "{{dir}}/package-lock.json"
+          # working-directory, so this is not relative to the component.
+          cache-dependency-path: "**/package-lock.json"
 
-      - run: npm ci
+      # An npm workspace has to install from the root: the lock covers every
+      # workspace, and npm ci inside one refuses to run without a lock beside
+      # it. Falling back keeps the per-component layout installing in place.
+      - run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            cd "$GITHUB_WORKSPACE" && npm ci
+          fi
 
       # Not every frontend defines lint yet; --if-present keeps the rollout
       # from hard-failing on a missing script.
