@@ -13,7 +13,7 @@
 # Bump `version` on any change below, or on any change to the set of blocks —
 # the stamp answers "is this repo on the current standard", which a new block
 # changes just as much as a new rev does.
-version: 8
+version: 9
 
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -80,6 +80,16 @@ binaries:
     version: "0.10.0"
   - name: shfmt
     version: "3.13.1"
+  # bats and its two helper libraries are cloned by tag in CI. bashselfupdate's
+  # bespoke workflow cloned all three from main at --depth 1, so the test
+  # tooling moved underneath the suite with nothing recording which version a
+  # green run had used.
+  - name: bats
+    version: "1.14.0"
+  - name: bats_support
+    version: "0.3.0"
+  - name: bats_assert
+    version: "2.2.4"
 
 # Language runtimes pinned for generated CI.
 runtimes:

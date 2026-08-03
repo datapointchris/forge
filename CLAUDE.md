@@ -82,7 +82,7 @@ Forge includes a composable system for generating standardized `.pre-commit-conf
 
 **`pre-commit/blocks/`** — numbered YAML fragments composed from the repo's declared components:
 
-- Generic (all repos): conventional-commits, commit-branding, file-checks, markdown, shell, codespell
+- Generic (all repos): conventional-commits, commit-branding, file-checks, markdown, shell, codespell. The shell block is shellcheck, shfmt (styled by the deployed `.editorconfig`, never by hook args) and bats. The bats hook is guarded so a repo with no `tests/*.bats` passes, but a repo that *has* them and lacks bats fails at 127 rather than reporting success — the failure mode that hid seven shellcheck findings in `font` behind a green `language: system` hook
 - Python: python-format (uv-lock, ruff-format), python-lint (ruff-check, mypy via uv run)
 - Go: gofumpt, go-vet, go-build, go-mod-tidy, go-test, golangci-lint
 - Vue: eslint, prettier, typecheck (each entering the component's own directory)

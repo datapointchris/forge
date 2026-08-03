@@ -18,8 +18,12 @@ var (
 	usesLineRE    = regexp.MustCompile(`^(\s*-?\s*uses:\s*)([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@\S+(.*)$`)
 	goInstallRE   = regexp.MustCompile(`^(.*go install\s+)(\S+?)@\S+(.*)$`)
 	runtimeLineRE = regexp.MustCompile(`^(\s*)([a-z]+)-version:\s*\S+\s*$`)
-	binaryLineRE  = regexp.MustCompile(`^(\s*)([a-z0-9]+)_version="\S+"\s*$`)
-	uvxLineRE     = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
+	// The name may hold underscores (bats_support), so the greedy class has to
+	// include one and let backtracking find the final `_version`. Without that a
+	// multi-word tool silently never matches, and ships whatever version the
+	// block happens to name — the exact drift the manifest exists to prevent.
+	binaryLineRE = regexp.MustCompile(`^(\s*)([a-z0-9_]+)_version="\S+"\s*$`)
+	uvxLineRE    = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
 )
 
 // uvxHookRepos maps a tool a CI block runs as `uvx <tool>@<version>` to the

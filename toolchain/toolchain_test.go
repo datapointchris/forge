@@ -93,6 +93,22 @@ func TestApplyBinaryVersionsOverridesBlockPin(t *testing.T) {
 	}
 }
 
+// A tool whose name holds an underscore must still be pinned. When the name
+// pattern excluded underscores this matched nothing and failed silently, so the
+// block kept whatever version it happened to name.
+func TestApplyBinaryVersionsHandlesUnderscoredName(t *testing.T) {
+	manifest := &Toolchain{
+		Version:  9,
+		Binaries: []Binary{{Name: "bats_support", Version: "0.3.0"}},
+	}
+
+	got := manifest.ApplyBinaryVersions("          bats_support_version=\"0.0.1\"\n")
+
+	if !strings.Contains(got, `bats_support_version="0.3.0"`) {
+		t.Errorf("underscored binary name not pinned: %q", got)
+	}
+}
+
 // A block may pin a version the manifest does not own; only managed names are
 // rewritten, so an unrelated assignment of the same shape is left intact.
 func TestApplyBinaryVersionsLeavesUnmanagedNameAlone(t *testing.T) {

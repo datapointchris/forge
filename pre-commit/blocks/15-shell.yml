@@ -16,3 +16,18 @@
     rev: v3.13.1-1
     hooks:
       - id: shfmt
+
+  # bats ships no hook repo of its own, so this one is local.
+  #
+  # The guard distinguishes "this repo has no tests" from "this repo has tests
+  # and bats is missing". Only the first is allowed to pass: a bare `bats
+  # tests/` under language: system would be the second hook in this portfolio to
+  # report success because its tool was absent, which is how font accumulated
+  # seven shellcheck findings behind a green hook.
+  - repo: local
+    hooks:
+      - id: bats
+        name: bats
+        entry: bash -c 'compgen -G "tests/*.bats" > /dev/null || exit 0; exec bats tests/'
+        language: system
+        pass_filenames: false

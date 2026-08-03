@@ -61,3 +61,36 @@
             exit 0
           fi
           echo "$files" | xargs "$shfmt_bin" -d
+
+      # Tests are bats. All three are cloned at a tag rather than from main:
+      # a test harness that moves on its own turns an unrelated upstream change
+      # into a failing build, and nothing records which version a green run used.
+      #
+      # The helper libraries go under ~/.local/lib because that is where the
+      # suites `load` them from — the same path they use on a workstation, so a
+      # test cannot pass locally and fail here over a lookup path.
+      #
+      # Guarded so a shell repo with no suite yet is not a hard failure. The
+      # guard covers absence only: if tests exist, bats runs and its exit status
+      # stands.
+      - name: bats
+        run: |
+          bats_version="1.14.0"
+          bats_support_version="0.3.0"
+          bats_assert_version="2.2.4"
+
+          if ! compgen -G "tests/*.bats" > /dev/null; then
+            echo "no bats tests found"
+            exit 0
+          fi
+
+          git clone --depth 1 --branch "v${bats_version}" \
+            https://github.com/bats-core/bats-core.git "$RUNNER_TEMP/bats"
+          sudo "$RUNNER_TEMP/bats/install.sh" /usr/local
+
+          git clone --depth 1 --branch "v${bats_support_version}" \
+            https://github.com/bats-core/bats-support.git "$HOME/.local/lib/bats-support"
+          git clone --depth 1 --branch "v${bats_assert_version}" \
+            https://github.com/bats-core/bats-assert.git "$HOME/.local/lib/bats-assert"
+
+          bats tests/
