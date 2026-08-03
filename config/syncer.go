@@ -32,6 +32,17 @@ type Toolchain struct {
 	// SQLDialect is the sqlfluff dialect for the repo's .sql files.
 	// Empty means the repo has no SQL worth linting.
 	SQLDialect string `json:"sql_dialect,omitempty"`
+	// ShellcheckDisable are rules this repo turns off in its deployed
+	// .shellcheckrc, each with the reason it does not apply.
+	//
+	// The shared config carries no disables and should not: they hid six real
+	// SC2155s per repo. But "never disable anything" is not a standard either —
+	// homelab's deploy scripts interpolate local variables into remote ssh
+	// commands 53 times, which is what those scripts are for, and SC2029 flags
+	// every one. The choice was between 53 inline suppressions and a lie, so
+	// this is the third option: declared once, in the registry, with a reason
+	// attached, visible to anyone reading what the repo asks for.
+	ShellcheckDisable []ShellcheckException `json:"shellcheck_disable,omitempty"`
 	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
 	// whose content is invalid on purpose. logsift keeps a tree of deliberately
 	// broken files to generate real hook output for its pattern tests; every
@@ -40,6 +51,14 @@ type Toolchain struct {
 	// generated blocks, and the repo is the only thing that knows the tree is
 	// fixtures rather than source.
 	Exclude string `json:"exclude,omitempty"`
+}
+
+// ShellcheckException is one disabled rule and why it does not apply here.
+// Reason is not optional: an undocumented disable is indistinguishable from
+// one nobody has re-examined since, which is how the previous configs drifted.
+type ShellcheckException struct {
+	Rule   string `json:"rule"`
+	Reason string `json:"reason"`
 }
 
 // Component is one buildable unit: a stack and the directory it lives in.

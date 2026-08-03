@@ -42,7 +42,7 @@ fi
 configs_deployed=""
 
 # Markdownlint — always deploy
-if [ ! -f .markdownlint.json ] || ! diff -q "$configs_dir/markdownlint.json" .markdownlint.json > /dev/null 2>&1; then
+if [ ! -f .markdownlint.json ] || ! diff -q "$configs_dir/markdownlint.json" .markdownlint.json >/dev/null 2>&1; then
   cp "$configs_dir/markdownlint.json" .markdownlint.json
   configs_deployed="$configs_deployed markdownlint"
 fi
@@ -50,7 +50,7 @@ fi
 # EditorConfig — always deploy, because the shell block is generic and shfmt
 # reads its style from here. A repo that got the hook without this file would
 # be formatted at shfmt's default of tab indentation.
-if [ ! -f .editorconfig ] || ! diff -q "$configs_dir/editorconfig.ini" .editorconfig > /dev/null 2>&1; then
+if [ ! -f .editorconfig ] || ! diff -q "$configs_dir/editorconfig.ini" .editorconfig >/dev/null 2>&1; then
   cp "$configs_dir/editorconfig.ini" .editorconfig
   configs_deployed="$configs_deployed editorconfig"
 fi
@@ -59,14 +59,23 @@ fi
 # so every repo runs the hook and every repo needs the settings that let it
 # follow a sourced file. Left unmanaged, the three shell repos drifted into two
 # different configs, two of which disabled real findings.
-if [ ! -f .shellcheckrc ] || ! diff -q "$configs_dir/shellcheckrc.ini" .shellcheckrc > /dev/null 2>&1; then
-  cp "$configs_dir/shellcheckrc.ini" .shellcheckrc
+#
+# The shared config carries no disables, and a repo that genuinely needs one
+# declares it as toolchain.shellcheck_disable rather than editing this file or
+# scattering inline directives. homelab is the case: 53 SC2029s, one per ssh
+# command built from a local variable, which is what those scripts do.
+shellcheckrc_tmp="$(mktemp)"
+cat "$configs_dir/shellcheckrc.ini" >"$shellcheckrc_tmp"
+forge precommit shellcheck-disables >>"$shellcheckrc_tmp"
+if [ ! -f .shellcheckrc ] || ! diff -q "$shellcheckrc_tmp" .shellcheckrc >/dev/null 2>&1; then
+  cp "$shellcheckrc_tmp" .shellcheckrc
   configs_deployed="$configs_deployed shellcheck"
 fi
+rm -f "$shellcheckrc_tmp"
 
 # Go lint config
 if echo "$declared" | grep -q "go"; then
-  if [ ! -f .golangci.yml ] || ! diff -q "$configs_dir/golangci.yml" .golangci.yml > /dev/null 2>&1; then
+  if [ ! -f .golangci.yml ] || ! diff -q "$configs_dir/golangci.yml" .golangci.yml >/dev/null 2>&1; then
     cp "$configs_dir/golangci.yml" .golangci.yml
     configs_deployed="$configs_deployed golangci"
   fi
@@ -74,7 +83,7 @@ fi
 
 # Vue/Frontend configs
 if echo "$declared" | grep -q "vue"; then
-  if [ ! -f .prettierrc.json ] || ! diff -q "$configs_dir/prettierrc.json" .prettierrc.json > /dev/null 2>&1; then
+  if [ ! -f .prettierrc.json ] || ! diff -q "$configs_dir/prettierrc.json" .prettierrc.json >/dev/null 2>&1; then
     cp "$configs_dir/prettierrc.json" .prettierrc.json
     configs_deployed="$configs_deployed prettier"
   fi
@@ -83,7 +92,7 @@ fi
 # SQL lint config — deployed wherever a dialect is declared, since the block
 # passes the dialect but the ruleset lives in the config.
 if echo "$declared" | grep -q "sql"; then
-  if [ ! -f .sqlfluff ] || ! diff -q "$configs_dir/sqlfluff.ini" .sqlfluff > /dev/null 2>&1; then
+  if [ ! -f .sqlfluff ] || ! diff -q "$configs_dir/sqlfluff.ini" .sqlfluff >/dev/null 2>&1; then
     cp "$configs_dir/sqlfluff.ini" .sqlfluff
     configs_deployed="$configs_deployed sqlfluff"
   fi
@@ -105,7 +114,7 @@ fi
 # Every stage any block uses has to be installed, or its hooks silently never
 # run — a config that declares prepare-commit-msg without the git hook in place
 # looks correct and does nothing.
-if command -v pre-commit &> /dev/null; then
+if command -v pre-commit &>/dev/null; then
   pre-commit install --install-hooks -t pre-commit -t commit-msg -t prepare-commit-msg -t post-commit 2>&1 | tail -1
 fi
 

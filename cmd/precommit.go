@@ -75,6 +75,7 @@ func init() {
 	precommitCmd.AddCommand(precommitGenerateCmd)
 	precommitCmd.AddCommand(precommitCheckCmd)
 	precommitCmd.AddCommand(precommitStacksCmd)
+	precommitCmd.AddCommand(precommitShellcheckDisablesCmd)
 	rootCmd.AddCommand(precommitCmd)
 }
 
@@ -138,6 +139,39 @@ var precommitStacksCmd = &cobra.Command{
 	Use:   "stacks",
 	Short: "Print the block categories this repo declares, one per line",
 	RunE:  runPrecommitStacks,
+}
+
+var precommitShellcheckDisablesCmd = &cobra.Command{
+	Use:   "shellcheck-disables",
+	Short: "Print this repo's declared shellcheck exceptions as .shellcheckrc lines",
+	RunE:  runPrecommitShellcheckDisables,
+}
+
+// runPrecommitShellcheckDisables emits the block the sync die appends to the
+// deployed .shellcheckrc. Printing rather than writing keeps one writer for
+// that file, so a repo declaring nothing still gets the shared config byte for
+// byte and the die's diff check keeps working.
+func runPrecommitShellcheckDisables(_ *cobra.Command, _ []string) error {
+	declared, err := resolveToolchain()
+	if err != nil {
+		return err
+	}
+	if len(declared.ShellcheckDisable) == 0 {
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("# Repo-specific exceptions, declared in the registry rather than written")
+	fmt.Println("# here — see toolchain.shellcheck_disable. Each one carries its reason so")
+	fmt.Println("# it can be re-examined instead of inherited.")
+	for _, exception := range declared.ShellcheckDisable {
+		fmt.Println()
+		for _, line := range strings.Split(exception.Reason, "\n") {
+			fmt.Printf("# %s\n", line)
+		}
+		fmt.Printf("disable=%s\n", exception.Rule)
+	}
+	return nil
 }
 
 // runPrecommitStacks exists so the sync die can deploy the right tool configs

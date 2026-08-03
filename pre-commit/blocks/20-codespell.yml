@@ -8,4 +8,8 @@
       # prose in them and nobody would fix a hit, since the next install would
       # put it back.
       - id: codespell
-        exclude: '(^|/)(.*-lock\.json|.*\.lock|uv\.lock|package-lock\.json|go\.sum)$'
+        # The second alternation is sops output. Ciphertext is base64, so it
+        # produces the same false hits a lock file's hashes do, and the plain
+        # name covers homelab's group_data/secrets.yaml as well as the
+        # *.enc.env convention.
+        exclude: '(^|/)(.*-lock\.json|.*\.lock|uv\.lock|package-lock\.json|go\.sum|secrets?[^/]*\.(ya?ml|env|json)|.*\.enc\.[^/]+)$'
