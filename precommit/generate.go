@@ -378,6 +378,9 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.To
 	lines = append(lines, fmt.Sprintf("# forge-toolchain: %d", manifest.Version))
 	lines = append(lines, "fail_fast: true")
 	lines = append(lines, "default_stages: [pre-commit]")
+	if declared.Exclude != "" {
+		lines = append(lines, fmt.Sprintf("exclude: %s", declared.Exclude))
+	}
 	lines = append(lines, "repos:")
 
 	for _, b := range blocks {

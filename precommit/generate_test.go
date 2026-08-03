@@ -772,6 +772,35 @@ func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
 	}
 }
 
+func TestGenerateEmitsDeclaredExclude(t *testing.T) {
+	manifest := testToolchain(t)
+	blocks := os.DirFS("../pre-commit/blocks")
+
+	declared := detected("python")
+	declared.Exclude = "^tests/fixtures/"
+
+	config, err := Generate(blocks, manifest, declared, nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if !strings.Contains(config, "\nexclude: ^tests/fixtures/\n") {
+		t.Error("declared exclude should appear as pre-commit's top-level exclude")
+	}
+	// It has to precede repos:, or pre-commit reads it as part of a hook entry.
+	if strings.Index(config, "exclude:") > strings.Index(config, "repos:") {
+		t.Error("exclude must be emitted before repos:")
+	}
+
+	bare, err := Generate(blocks, manifest, detected("python"), nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if strings.Contains(bare, "\nexclude:") {
+		t.Error("a repo declaring no exclude should get no top-level exclude")
+	}
+}
+
 // Check is what the can-generate die uses to tell a clean sync from one that
 // would abort. A hook no standard block provides must keep failing it — the fix
 // is a marker, not silently dropping the hook's coverage.

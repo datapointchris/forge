@@ -32,6 +32,14 @@ type Toolchain struct {
 	// SQLDialect is the sqlfluff dialect for the repo's .sql files.
 	// Empty means the repo has no SQL worth linting.
 	SQLDialect string `json:"sql_dialect,omitempty"`
+	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
+	// whose content is invalid on purpose. logsift keeps a tree of deliberately
+	// broken files to generate real hook output for its pattern tests; every
+	// file-shaped hook fails on them, and fail_fast only hid that behind the
+	// first one. Excluding per hook would mean naming the same path in a dozen
+	// generated blocks, and the repo is the only thing that knows the tree is
+	// fixtures rather than source.
+	Exclude string `json:"exclude,omitempty"`
 }
 
 // Component is one buildable unit: a stack and the directory it lives in.
