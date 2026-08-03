@@ -82,10 +82,15 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config
 		}
 		lines = append(lines, "    steps:")
 
+		// Checkout comes first, then before:<stack>. "Before" means before the
+		// stack's own steps, not before the repo exists: ichrisbirch decrypts
+		// its test secrets out of secrets/ in one of these, which cannot work
+		// against a workspace that has not been checked out. Nothing has wanted
+		// to run ahead of checkout.
+		lines = append(lines, "", applyDir(indentComment(stripDescription(manifest.ApplyAll(shared))), component.Dir))
 		if section, ok := customSections["before:"+name]; ok {
 			lines = append(lines, "", section)
 		}
-		lines = append(lines, "", applyDir(indentComment(stripDescription(manifest.ApplyAll(shared))), component.Dir))
 		lines = append(lines, "", fmt.Sprintf("      # generated:%s", name), applyDir(indentComment(stripDescription(manifest.ApplyAll(block))), component.Dir))
 		if section, ok := customSections["after:"+name]; ok {
 			lines = append(lines, "", section)

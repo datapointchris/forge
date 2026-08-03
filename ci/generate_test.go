@@ -196,3 +196,28 @@ func originalDir(t *testing.T) string {
 	}
 	return dir
 }
+
+// A before:<stack> section runs before the stack's steps, not before checkout.
+// ichrisbirch decrypts test secrets out of secrets/ in one, which needs the
+// workspace to exist.
+func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
+	custom := map[string]string{
+		"before:python": "      # > custom:before:python - Secrets\n" +
+			"      - run: sops decrypt secrets/test.enc.env > .env",
+	}
+
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), custom)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	checkout := strings.Index(workflow, "actions/checkout")
+	section := strings.Index(workflow, "custom:before:python")
+	generated := strings.Index(workflow, "# generated:python")
+	if checkout < 0 || section < 0 || generated < 0 {
+		t.Fatalf("missing a landmark in:\n%s", workflow)
+	}
+	if checkout >= section || section >= generated {
+		t.Error("before: section must sit between checkout and the generated block")
+	}
+}
