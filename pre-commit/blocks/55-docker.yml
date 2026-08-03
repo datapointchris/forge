@@ -2,5 +2,10 @@
   - repo: https://github.com/hadolint/hadolint
     rev: v2.14.0
     hooks:
+      # DL3018 is DL3008's apk counterpart — the same "pin every package
+      # version" rule, for the five alpine-based images here. Ignoring one and
+      # enforcing the other only means the Debian images pass and the Alpine
+      # ones do not; pinning an apk version also breaks on the next base image
+      # bump, which is why DL3008 was ignored to begin with.
       - id: hadolint-docker
-        args: ["--ignore", "DL3008", "--ignore", "DL4006"]
+        args: ["--ignore", "DL3008", "--ignore", "DL3018", "--ignore", "DL4006"]
