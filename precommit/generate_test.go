@@ -255,6 +255,32 @@ func TestExtractCustomSections(t *testing.T) {
 	}
 }
 
+// A workflow indents every marker inside a job, so extraction that anchored at
+// ^ found nothing there: before:/after: sections were silently dropped on the
+// next sync, and an unterminated after:<block> absorbed the jobs after it.
+func TestExtractCustomSectionsIndented(t *testing.T) {
+	workflow := "jobs:\n" +
+		"  rust:\n" +
+		"    steps:\n" +
+		"      # > custom:before:rust - System headers\n" +
+		"      - run: apt-get install -y libwebkit2gtk-4.1-dev\n" +
+		"\n" +
+		"      # generated:rust\n" +
+		"      - run: cargo test\n"
+
+	sections := ExtractCustomSections(workflow)
+
+	if _, ok := sections["before:rust"]; !ok {
+		t.Fatal("missing before:rust section")
+	}
+	if !strings.Contains(sections["before:rust"], "libwebkit2gtk") {
+		t.Error("before:rust should contain the apt-get step")
+	}
+	if strings.Contains(sections["before:rust"], "cargo test") {
+		t.Error("indented # generated: must terminate the section")
+	}
+}
+
 func TestRoundtripPreservesCustom(t *testing.T) {
 	blocks := makeTestBlocks()
 	custom := map[string]string{

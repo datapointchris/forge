@@ -14,9 +14,15 @@ import (
 	"github.com/datapointchris/forge/toolchain"
 )
 
+// Both marker regexes tolerate leading whitespace because the same extractor
+// serves .pre-commit-config.yaml, where markers sit at column zero, and
+// validate.yml, where everything inside a job is indented six spaces. Anchored
+// at ^ they matched nothing in a workflow: a before:/after:<block> section was
+// dropped on the next sync, and generatedRE could not terminate a section, so
+// after:<block> ran on and swallowed the following jobs.
 var (
-	markerRE    = regexp.MustCompile(`^# > custom:(before|after):(\S+)`)
-	generatedRE = regexp.MustCompile(`^# generated:(\S+)`)
+	markerRE    = regexp.MustCompile(`^\s*# > custom:(before|after):(\S+)`)
+	generatedRE = regexp.MustCompile(`^\s*# generated:(\S+)`)
 	hookIDRE    = regexp.MustCompile(`^\s+-\s*id:\s*(\S+)`)
 	hookNameRE  = regexp.MustCompile(`^(\s+name:\s*)(.+)$`)
 	repoLineRE  = regexp.MustCompile(`^\s*-\s*repo:\s*(\S+)`)
