@@ -52,7 +52,12 @@ func runPrecommitCheck(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("accessing blocks: %w", err)
 	}
 
-	unknown, err := precommit.Check(blocksFS)
+	declared, err := resolveToolchain()
+	if err != nil {
+		return err
+	}
+
+	unknown, err := precommit.Check(blocksFS, declared)
 	if err != nil {
 		return err
 	}

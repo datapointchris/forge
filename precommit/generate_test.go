@@ -368,7 +368,7 @@ func TestSafetyCheckBlocksUnknownHooks(t *testing.T) {
 		"      - id: devstats-capture\n" +
 		"      - id: my-secret-hook\n"
 
-	unknown, err := SafetyCheck(configText, blocks, nil)
+	unknown, err := SafetyCheck(configText, blocks, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +400,7 @@ func TestSafetyCheckAllowsMarkedHooks(t *testing.T) {
 		"after:all": "# > custom:after:all - Stuff\n  - repo: local\n    hooks:\n      - id: unknown-hook",
 	}
 
-	unknown, err := SafetyCheck(configText, blocks, customSections)
+	unknown, err := SafetyCheck(configText, blocks, nil, customSections)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestSafetyCheckStillCatchesUnmarkedSiblings(t *testing.T) {
 		"after:all": "# > custom:after:all - Stuff\n  - repo: local\n    hooks:\n      - id: marked-hook",
 	}
 
-	unknown, err := SafetyCheck(configText, blocks, customSections)
+	unknown, err := SafetyCheck(configText, blocks, nil, customSections)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,6 +772,51 @@ func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
 	}
 }
 
+// A repo whose category renders in several directories gets suffixed hook ids,
+// which appear in no block file. The safety check compared against the raw
+// blocks, so such a repo was rejected by its own generated config on the second
+// sync and could never move off the version that produced it.
+func TestSafetyCheckAcceptsItsOwnSuffixedHooks(t *testing.T) {
+	// A block carrying {{dir}} renders differently per directory, which is what
+	// triggers suffixing; the Go block runs repo-wide and collapses instead.
+	blocks := makeTestBlocks()
+	blocks["50-vue.yml"] = &fstest.MapFile{
+		Data: []byte("  # Vue\n" +
+			"  - repo: local\n" +
+			"    hooks:\n" +
+			"      - id: vue-eslint\n" +
+			"        entry: bash -c 'cd {{dir}} && npm run lint'\n"),
+	}
+	declared := at("vue", "client", "node", "server")
+
+	generated, err := Generate(blocks, testToolchain(t), declared, nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(generated, "vue-eslint-client") {
+		t.Fatalf("expected suffixed ids in a multi-directory render, got:\n%s", generated)
+	}
+
+	unknown, err := SafetyCheck(generated, blocks, declared, nil)
+	if err != nil {
+		t.Fatalf("SafetyCheck: %v", err)
+	}
+	if len(unknown) > 0 {
+		t.Errorf("generated config rejected by its own safety check: %v", unknown)
+	}
+
+	// The widening is built from declared directories, so an unrelated hook that
+	// merely starts with a standard id is still reported.
+	stray := "repos:\n  - repo: local\n    hooks:\n      - id: vue-eslint-elsewhere\n"
+	unknown, err = SafetyCheck(stray, blocks, declared, nil)
+	if err != nil {
+		t.Fatalf("SafetyCheck: %v", err)
+	}
+	if len(unknown) != 1 || unknown[0] != "vue-eslint-elsewhere" {
+		t.Errorf("an undeclared suffix should still be unknown, got %v", unknown)
+	}
+}
+
 func TestGenerateEmitsDeclaredExclude(t *testing.T) {
 	manifest := testToolchain(t)
 	blocks := os.DirFS("../pre-commit/blocks")
@@ -817,7 +862,7 @@ func TestCheckReportsOnlyUnmarkedNonStandardHooks(t *testing.T) {
 		t.Chdir(t.TempDir())
 		writeConfig(t, "repos:\n  - repo: local\n    hooks:\n      - id: eslint\n")
 
-		unknown, err := Check(blocks)
+		unknown, err := Check(blocks, nil)
 		if err != nil {
 			t.Fatalf("Check: %v", err)
 		}
@@ -830,7 +875,7 @@ func TestCheckReportsOnlyUnmarkedNonStandardHooks(t *testing.T) {
 		t.Chdir(t.TempDir())
 		writeConfig(t, "repos:\n  - repo: local\n    hooks:\n      - id: sqlc-diff\n")
 
-		unknown, err := Check(blocks)
+		unknown, err := Check(blocks, nil)
 		if err != nil {
 			t.Fatalf("Check: %v", err)
 		}
@@ -843,7 +888,7 @@ func TestCheckReportsOnlyUnmarkedNonStandardHooks(t *testing.T) {
 		t.Chdir(t.TempDir())
 		writeConfig(t, "repos:\n  - repo: local\n    hooks:\n      - id: x\n\n# > custom:after:all - project hooks\n  - repo: local\n    hooks:\n      - id: sqlc-diff\n")
 
-		unknown, err := Check(blocks)
+		unknown, err := Check(blocks, nil)
 		if err != nil {
 			t.Fatalf("Check: %v", err)
 		}

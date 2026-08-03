@@ -482,13 +482,14 @@ func GetStandardHookIDs(blocksFS fs.FS) (map[string]bool, error) {
 // Marking one hook must not disarm the check for the rest of the file: a repo is
 // marked up incrementally, and the first marker added is exactly when an unmarked
 // sibling is most likely to be sitting one block away.
-func SafetyCheck(configText string, blocksFS fs.FS, customSections map[string]string) ([]string, error) {
+func SafetyCheck(configText string, blocksFS fs.FS, declared *config.Toolchain, customSections map[string]string) ([]string, error) {
 	existing := GetExistingHookIDs(configText)
 	marked := GetCustomHookIDs(customSections)
 	standard, err := GetStandardHookIDs(blocksFS)
 	if err != nil {
 		return nil, err
 	}
+	standard = withDirSuffixes(standard, declared)
 
 	var unknown []string
 	for id := range existing {
@@ -500,16 +501,47 @@ func SafetyCheck(configText string, blocksFS fs.FS, customSections map[string]st
 	return unknown, nil
 }
 
+// withDirSuffixes adds the per-directory ids renderForDirs produces when one
+// category's renders differ, which the block files themselves never contain.
+//
+// Without this a repo is rejected by its own generated config: timeline holds
+// three npm packages, so its vue hooks are written as vue-eslint-client,
+// -server and -shared, and the second sync aborted on all nine as unrecognized.
+// It stayed a version behind the fleet because of it. Only suffixes built from
+// a declared directory are accepted, so a genuinely unknown hook that merely
+// starts with a standard id is still reported.
+func withDirSuffixes(standard map[string]bool, declared *config.Toolchain) map[string]bool {
+	if declared == nil {
+		return standard
+	}
+
+	widened := make(map[string]bool, len(standard))
+	for id := range standard {
+		widened[id] = true
+	}
+	replacer := strings.NewReplacer("/", "-", "_", "-")
+	for _, component := range declared.Components {
+		if component.Dir == "" || component.Dir == "." {
+			continue
+		}
+		suffix := "-" + replacer.Replace(component.Dir)
+		for id := range standard {
+			widened[id+suffix] = true
+		}
+	}
+	return widened
+}
+
 // Check reports the hook IDs that would abort a real Run: present in the
 // existing config, not provided by a standard block, and not under a custom
 // marker. Empty means a sync would land cleanly.
-func Check(blocksFS fs.FS) ([]string, error) {
+func Check(blocksFS fs.FS, declared *config.Toolchain) ([]string, error) {
 	data, err := os.ReadFile(".pre-commit-config.yaml")
 	if err != nil {
 		return nil, nil // no config yet; nothing to preserve
 	}
 	configText := string(data)
-	return SafetyCheck(configText, blocksFS, ExtractCustomSections(configText))
+	return SafetyCheck(configText, blocksFS, declared, ExtractCustomSections(configText))
 }
 
 // DryRun returns what Run would write, without touching the filesystem and
@@ -539,7 +571,7 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.Toolcha
 
 	// Safety check
 	if configText != "" {
-		unknown, err := SafetyCheck(configText, blocksFS, customSections)
+		unknown, err := SafetyCheck(configText, blocksFS, declared, customSections)
 		if err != nil {
 			return "", fmt.Errorf("safety check: %w", err)
 		}
