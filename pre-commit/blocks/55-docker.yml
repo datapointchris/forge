@@ -7,5 +7,11 @@
       # enforcing the other only means the Debian images pass and the Alpine
       # ones do not; pinning an apk version also breaks on the next base image
       # bump, which is why DL3008 was ignored to begin with.
+      #
+      # The exclude is not about rules. hadolint matches on the Dockerfile name,
+      # and BuildKit's per-file ignore list is named <dockerfile>.dockerignore —
+      # learning has web/Dockerfile.dockerignore — so hadolint tried to parse an
+      # ignore list as a Dockerfile and failed on its first glob.
       - id: hadolint-docker
         args: ["--ignore", "DL3008", "--ignore", "DL3018", "--ignore", "DL4006"]
+        exclude: '\.dockerignore$'
