@@ -13,7 +13,7 @@
 # Bump `version` on any change below, or on any change to the set of blocks —
 # the stamp answers "is this repo on the current standard", which a new block
 # changes just as much as a new rev does.
-version: 9
+version: 10
 
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -71,6 +71,8 @@ actions:
 tools:
   - module: github.com/golangci/golangci-lint/v2/cmd/golangci-lint
     version: v2.12.2
+  - module: golang.org/x/vuln/cmd/govulncheck
+    version: v1.6.0
 
 # Tools generated CI downloads from a GitHub release, for tools with no module
 # ecosystem to install from. Kept at the same version as the corresponding

@@ -15,23 +15,8 @@ jobs:
   validate:
     uses: ./.github/workflows/validate.yml
 
-  # govulncheck is not in the generated blocks yet, so it runs here rather than
-  # not at all. Move it into the generator when the other repos adopt it.
-  vulnerabilities:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-          govulncheck ./...
-
   semver:
-    needs: [validate, vulnerabilities]
+    needs: [validate]
     runs-on: ubuntu-latest
     permissions:
       contents: write

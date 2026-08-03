@@ -1,4 +1,4 @@
-# forge-toolchain: 7
+# forge-toolchain: 10
 name: CI
 
 on:
@@ -35,3 +35,13 @@ jobs:
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
           golangci-lint run
+
+      # Two advisories found by hand on 2026-07-26 that this would have caught:
+      # GO-2026-5932 (x/crypto/openpgp, unmaintained and unfixed) reached three
+      # repos through go-selfupdate, and GO-2026-5856 (crypto/tls) shipped
+      # because a stale `go` directive picks the toolchain that compiles the
+      # binary, so the stdlib goes stale with it.
+      - name: Vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          govulncheck ./...
