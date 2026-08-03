@@ -1,8 +1,17 @@
   # Shell
+  #
+  # exclude_types: [zsh] on both tools. Neither supports zsh, and neither says
+  # so — shellcheck lints a .zshrc as bash and reports nothing, while shfmt
+  # reformats it under bash rules: on dotfiles it rewrote `>&2 }` to `>&2; }`,
+  # correct for bash and unnecessary in zsh. Both were silently out of contract,
+  # which is worse than either erroring. identify already tags these files zsh,
+  # so this is the native exclusion rather than a path regex that would have to
+  # enumerate .zshrc, .zprofile, .zlogin and the rest.
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.10.0
     hooks:
       - id: shellcheck
+        exclude_types: [zsh]
 
   # shfmt has no pre-commit hooks file of its own, so this is the repo shfmt's
   # README points at. Its `shfmt` id runs the prebuilt upstream binary, which
@@ -16,6 +25,7 @@
     rev: v3.13.1-1
     hooks:
       - id: shfmt
+        exclude_types: [zsh]
 
   # bats ships no hook repo of its own, so this one is local.
   #

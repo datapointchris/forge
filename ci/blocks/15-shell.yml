@@ -73,13 +73,22 @@
       # Guarded so a shell repo with no suite yet is not a hard failure. The
       # guard covers absence only: if tests exist, bats runs and its exit status
       # stands.
+      #
+      # Discovery recurses. `tests/*.bats` matched only a flat layout, so
+      # dotfiles — whose 24 suites all live in tests/apps, tests/install and
+      # tests/libraries — took the no-tests exit and reported a green bats step
+      # having run nothing, which is the exact failure this guard exists to
+      # prevent. The pre-commit block deliberately keeps the flat glob: running
+      # the full suite costs three minutes, which belongs on a runner and not on
+      # every commit, and a repo that wants it locally gates it behind a
+      # # > custom: hook of its own.
       - name: bats
         run: |
           bats_version="1.14.0"
           bats_support_version="0.3.0"
           bats_assert_version="2.2.4"
 
-          if ! compgen -G "tests/*.bats" > /dev/null; then
+          if [ -z "$(find tests -name '*.bats' -print -quit 2>/dev/null)" ]; then
             echo "no bats tests found"
             exit 0
           fi
@@ -93,4 +102,4 @@
           git clone --depth 1 --branch "v${bats_assert_version}" \
             https://github.com/bats-core/bats-assert.git "$HOME/.local/lib/bats-assert"
 
-          bats tests/
+          bats -r tests/
