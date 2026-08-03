@@ -47,6 +47,14 @@ if [ ! -f .markdownlint.json ] || ! diff -q "$configs_dir/markdownlint.json" .ma
   configs_deployed="$configs_deployed markdownlint"
 fi
 
+# EditorConfig — always deploy, because the shell block is generic and shfmt
+# reads its style from here. A repo that got the hook without this file would
+# be formatted at shfmt's default of tab indentation.
+if [ ! -f .editorconfig ] || ! diff -q "$configs_dir/editorconfig.ini" .editorconfig > /dev/null 2>&1; then
+  cp "$configs_dir/editorconfig.ini" .editorconfig
+  configs_deployed="$configs_deployed editorconfig"
+fi
+
 # Go lint config
 if echo "$declared" | grep -q "go"; then
   if [ ! -f .golangci.yml ] || ! diff -q "$configs_dir/golangci.yml" .golangci.yml > /dev/null 2>&1; then

@@ -98,6 +98,7 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 **`pre-commit/configs/`** — standard tool config templates deployed alongside the pre-commit config:
 
 - `markdownlint.json` — all repos
+- `editorconfig.ini` — deployed as `.editorconfig` to all repos, because the shell block is generic and shfmt takes its style from there rather than from hook args. Shell keys sit under `[*]`, not `[*.sh]`: the portfolio keeps executables with no extension (`bin/font`, `dotfiles/apps/common/menu`, `theme/themes/*/bordersrc`), a suffix pattern cannot reach them, and shfmt does not skip a file it fails to match — it formats it at its tab default. shfmt reads these keys only for files it identifies as shell, so `[*]` costs nothing there; the per-language sections exist because editors read `[*]` for everything. **Never put a parser or printer flag on the shfmt hook**: a flag replaces the EditorConfig file rather than merging with it, so one `--indent` silently drops `switch_case_indent` and `binary_next_line` as well
 - `golangci.yml` — Go repos
 - `prettierrc.json` — Vue repos
 - `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. Rules are narrowed to `ambiguous, references, structure, convention.terminator`: sqlfluff's defaults are mostly layout and capitalisation opinions, which failed every `.sql` file in the portfolio and would have taught everyone to skip the hook. The narrowed set passes clean across all seven repos while still catching unparsable SQL and unused CTEs

@@ -35,3 +35,29 @@
             exit 0
           fi
           echo "$files" | xargs "$shellcheck_bin"
+
+      # Formatting is defined by the repo's .editorconfig, which shfmt reads on
+      # its own. Do not add a printer flag here: one flag discards the whole
+      # file, so CI would silently grade against a different style than the
+      # hook. -d is an output flag, keeps the config, and exits non-zero on any
+      # difference. Version comes from the toolchain manifest, like shellcheck.
+      #
+      # Discovery uses shfmt's own -f over tracked files rather than repeating
+      # the shebang scan above: shellcheck and shfmt disagree about what they
+      # can parse (shfmt has no zsh support), so each tool choosing its own set
+      # is more correct than sharing one list.
+      - name: shfmt
+        run: |
+          shfmt_version="3.13.1"
+          shfmt_bin="$RUNNER_TEMP/shfmt"
+          curl -fsSL -o "$shfmt_bin" \
+            "https://github.com/mvdan/sh/releases/download/v${shfmt_version}/shfmt_v${shfmt_version}_linux_amd64"
+          chmod +x "$shfmt_bin"
+          "$shfmt_bin" --version
+
+          files=$(git ls-files | xargs "$shfmt_bin" -f 2>/dev/null)
+          if [ -z "$files" ]; then
+            echo "no shell files found"
+            exit 0
+          fi
+          echo "$files" | xargs "$shfmt_bin" -d

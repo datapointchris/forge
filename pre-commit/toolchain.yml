@@ -13,7 +13,7 @@
 # Bump `version` on any change below, or on any change to the set of blocks —
 # the stamp answers "is this repo on the current standard", which a new block
 # changes just as much as a new rev does.
-version: 7
+version: 8
 
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -26,6 +26,10 @@ hooks:
     rev: v0.47.0
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.10.0
+  # Tag tracks the shfmt release it wraps, so this pin and the `shfmt` binary
+  # below stay legible as the same version.
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
   - repo: https://github.com/astral-sh/uv-pre-commit
@@ -74,6 +78,8 @@ tools:
 binaries:
   - name: shellcheck
     version: "0.10.0"
+  - name: shfmt
+    version: "3.13.1"
 
 # Language runtimes pinned for generated CI.
 runtimes:

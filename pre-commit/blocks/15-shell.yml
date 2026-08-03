@@ -3,3 +3,16 @@
     rev: v0.10.0
     hooks:
       - id: shellcheck
+
+  # shfmt has no pre-commit hooks file of its own, so this is the repo shfmt's
+  # README points at. Its `shfmt` id runs the prebuilt upstream binary, which
+  # keeps the hook off a Go toolchain; `shfmt-src` is the one that needs Go.
+  #
+  # No formatting args on purpose. A parser or printer flag does not merge with
+  # .editorconfig — it discards the file wholesale, so adding `--indent 2` here
+  # would silently drop switch_case_indent and binary_next_line along with it.
+  # Output flags (--write, --diff) are safe. .editorconfig is the style.
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
