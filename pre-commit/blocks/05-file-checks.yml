@@ -9,7 +9,12 @@
       - id: check-yaml
         args: [--unsafe]
       - id: check-toml
+      # tsconfig.json is JSONC — TypeScript documents comments in it, and the
+      # generated one ships with them, so a strict JSON parser is the wrong
+      # tool rather than the file being wrong. check-json5 below still parses
+      # it, so nothing is unchecked.
       - id: check-json
+        exclude: '(^|/)tsconfig(\..*)?\.json$'
       - id: end-of-file-fixer
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
