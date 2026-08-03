@@ -55,6 +55,15 @@ if [ ! -f .editorconfig ] || ! diff -q "$configs_dir/editorconfig.ini" .editorco
   configs_deployed="$configs_deployed editorconfig"
 fi
 
+# Shellcheck — always deploy, for the same reason: the shell block is generic,
+# so every repo runs the hook and every repo needs the settings that let it
+# follow a sourced file. Left unmanaged, the three shell repos drifted into two
+# different configs, two of which disabled real findings.
+if [ ! -f .shellcheckrc ] || ! diff -q "$configs_dir/shellcheckrc.ini" .shellcheckrc > /dev/null 2>&1; then
+  cp "$configs_dir/shellcheckrc.ini" .shellcheckrc
+  configs_deployed="$configs_deployed shellcheck"
+fi
+
 # Go lint config
 if echo "$declared" | grep -q "go"; then
   if [ ! -f .golangci.yml ] || ! diff -q "$configs_dir/golangci.yml" .golangci.yml > /dev/null 2>&1; then
