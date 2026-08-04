@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/datapointchris/goselfupdate v0.4.0
+	github.com/datapointchris/goselfupdate v0.5.0
 	github.com/fatih/color v1.19.0
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
