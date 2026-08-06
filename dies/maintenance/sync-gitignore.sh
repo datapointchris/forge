@@ -11,6 +11,12 @@
 # gaps describes. It is also why this cannot be a plain file deploy like
 # .editorconfig or .markdownlint.json.
 #
+# Absent, it creates. That does not weaken the rule above: append-only exists to
+# protect a repo's own entries, and a file that does not exist has none. Skipping
+# instead made a new repo the one case the golden path did not cover, which is
+# where it is needed most — the bootstrap checklist ran this, got "1 skip", and
+# left the repo with no .gitignore at all.
+#
 # Deliberately omitted, because the tool that creates them writes a .gitignore
 # containing '*' into the directory itself: .venv (uv), htmlcov (coverage.py),
 # .pytest_cache, .ruff_cache, .mypy_cache. Listing them here would be dead
@@ -46,9 +52,14 @@ if echo "$stacks" | grep -qx "python"; then
   wanted+=(".coverage" "coverage.xml" "dist/" "*.egg-info/")
 fi
 
+creating=""
 if [ ! -f .gitignore ]; then
-  echo "no .gitignore"
-  exit 2
+  if [ -n "${FORGE_CHECK:-}" ]; then
+    echo "would create with: ${wanted[*]}"
+    exit 0
+  fi
+  : >.gitignore
+  creating=1
 fi
 
 missing=()
@@ -77,4 +88,8 @@ sed -i -e '$a\' .gitignore
 
 printf '%s\n' "${missing[@]}" >>.gitignore
 
-echo "added: ${missing[*]}"
+if [ -n "$creating" ]; then
+  echo "created with: ${missing[*]}"
+else
+  echo "added: ${missing[*]}"
+fi

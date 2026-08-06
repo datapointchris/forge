@@ -171,12 +171,63 @@ func TestSyncGitignore_CheckWritesNothing(t *testing.T) {
 	}
 }
 
-func TestSyncGitignore_SkipsRepoWithoutGitignore(t *testing.T) {
+// A new repo is where the golden path is needed most, so an absent .gitignore is
+// created rather than skipped. Append-only protects a repo's own entries, and a
+// file that does not exist has none.
+func TestSyncGitignore_CreatesGitignoreWhenAbsent(t *testing.T) {
 	dir := makeTempRepo(t, stacksAt("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"test\"\n",
 	})
 
-	if _, code := runGitignoreDie(t, dir); code != exitSkip {
-		t.Fatalf("expected SKIP for a repo with no .gitignore, got exit %d", code)
+	out, code := runGitignoreDie(t, dir)
+	if code != 0 {
+		t.Fatalf("expected OK, got exit %d: %s", code, out)
+	}
+	if !strings.Contains(out, "created") {
+		t.Errorf("output should distinguish creating from appending, got: %s", out)
+	}
+
+	lines := gitignoreLines(t, dir)
+	for _, entry := range []string{".planning", ".coverage", "coverage.xml", "dist/", "*.egg-info/"} {
+		if !contains(lines, entry) {
+			t.Errorf("created .gitignore missing %q, got %v", entry, lines)
+		}
+	}
+}
+
+// The created file must not open with a blank line: creation writes an empty
+// file and the append path then runs its trailing-newline guard over it.
+func TestSyncGitignore_CreatedFileHasNoLeadingBlankLine(t *testing.T) {
+	dir := makeTempRepo(t, stacksAt("go"), map[string]string{
+		"go.mod": "module test\n",
+	})
+
+	if _, code := runGitignoreDie(t, dir); code != 0 {
+		t.Fatalf("expected OK, got exit %d", code)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("reading .gitignore: %s", err)
+	}
+	if strings.HasPrefix(string(content), "\n") {
+		t.Errorf("created .gitignore opens with a blank line: %q", string(content))
+	}
+}
+
+func TestSyncGitignore_CheckDoesNotCreateGitignore(t *testing.T) {
+	dir := makeTempRepo(t, stacksAt("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"test\"\n",
+	})
+
+	out, code := runGitignoreDie(t, dir, "FORGE_CHECK=1")
+	if code != 0 {
+		t.Fatalf("expected OK, got exit %d", code)
+	}
+	if !strings.Contains(out, "would create") {
+		t.Errorf("check mode should report the creation, got: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+		t.Error("check mode created .gitignore — the exact failure supports_check exists to prevent")
 	}
 }
