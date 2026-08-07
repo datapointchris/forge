@@ -53,7 +53,7 @@ For development, set `FORGE_DIES_DIR` to use filesystem dies instead of embedded
 }
 ```
 
-Repos with `"status": "retired"` are skipped. Valid statuses: `active` (default), `dormant`, `retired`. The optional `description` field is shown by `forge status`.
+Valid statuses: `active` (the default when the field is absent), `dormant`, `retired`. Only `active` repos are swept implicitly — `dormant` is reachable by naming it with `-F`, `retired` is not reachable at all. The optional `description` field is shown by `forge status`.
 
 ## Usage
 

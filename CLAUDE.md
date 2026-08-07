@@ -55,9 +55,11 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 - `ci` — generates the baseline validation workflow, reusing `precommit`'s block composition and custom-section markers
 - `toolchain` — the version manifest shared by both generators
 
-**Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns the active portfolio and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides that, so a clone stays reachable on purpose. Retired repos are excluded either way.
+**Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach.
 
-**Data flow for `dies run`:** determine asset source (embedded or `FORGE_DIES_DIR`) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load repo registry → `SelectRepos` (retired and reference clones dropped unless named) → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
+**Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' $XDG_DATA_HOME/forge/repos.json | sort | uniq -c`). None of it takes another release, so a maintenance die run across it is churn: a config every repo "should" have is worth nothing in one that will never run the tool. An entry with **no** status counts as active — repos.json is hand-edited, and the opposite default drops a repo out of every maintenance operation without a word.
+
+**Data flow for `dies run`:** determine asset source (embedded or `FORGE_DIES_DIR`) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load repo registry → `SelectRepos` (retired, dormant and reference clones dropped unless named) → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
 
 ## Die Scripts
 

@@ -61,12 +61,39 @@ func TestSelectRepos(t *testing.T) {
 		{Name: "forge", Path: "~/tools/forge"},
 		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode"},
 		{Name: "sess", Path: "~/tools/sess", Status: "retired"},
+		{Name: "reddit-nlp", Path: "~/code/reddit-nlp", Status: "dormant"},
 	}
 
 	t.Run("implicit selection excludes reference clones", func(t *testing.T) {
 		got := SelectRepos(repos, nil)
 		if len(got) != 1 || got[0].Name != "forge" {
 			t.Errorf("got %v, want only forge", got)
+		}
+	})
+
+	// Most of the portfolio is dormant and none of it takes another release,
+	// so sweeping it is churn.
+	t.Run("implicit selection excludes dormant repos", func(t *testing.T) {
+		for _, r := range SelectRepos(repos, nil) {
+			if r.Status == "dormant" {
+				t.Errorf("dormant repo leaked into an implicit sweep: %+v", r)
+			}
+		}
+	})
+
+	t.Run("explicit -F reaches a dormant repo", func(t *testing.T) {
+		got := SelectRepos(repos, []string{"reddit-nlp"})
+		if len(got) != 1 || got[0].Name != "reddit-nlp" {
+			t.Errorf("got %v, want reddit-nlp — dormant is excluded by default, not hidden", got)
+		}
+	})
+
+	// repos.json is hand-edited; an entry that omits status must not vanish
+	// from every maintenance operation without a word.
+	t.Run("an entry with no status is treated as active", func(t *testing.T) {
+		got := SelectRepos([]config.Repo{{Name: "fresh", Path: "~/tools/fresh"}}, nil)
+		if len(got) != 1 {
+			t.Errorf("got %v, want fresh — a missing status must not silently exclude", got)
 		}
 	})
 

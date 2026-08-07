@@ -50,27 +50,46 @@ type Opts struct {
 	CaptureOutput bool // tee stdout/stderr to buffer for failure replay
 }
 
-// ActiveRepos returns repos that are not retired.
+// ActiveRepos returns the repos being worked on, dropping dormant ones as well
+// as retired. Dormant is most of the portfolio and none of it takes another
+// release, so a maintenance die swept across it is pure churn: a config every
+// repo "should" have is worth nothing in one that will never run the tool.
+// An entry with no status counts as active. repos.json is hand-edited, and the
+// opposite default drops such a repo out of every maintenance operation
+// silently — a repo that stops receiving the standards while still looking
+// registered is far worse than one swept that should not have been.
 func ActiveRepos(repos []config.Repo) []config.Repo {
 	var active []config.Repo
 	for _, r := range repos {
-		if r.Status != "retired" {
+		if r.Status == "active" || r.Status == "" {
 			active = append(active, r)
 		}
 	}
 	return active
 }
 
+// AddressableRepos returns everything a name can still reach. Retired is the
+// one status -F cannot override.
+func AddressableRepos(repos []config.Repo) []config.Repo {
+	var addressable []config.Repo
+	for _, r := range repos {
+		if r.Status != "retired" {
+			addressable = append(addressable, r)
+		}
+	}
+	return addressable
+}
+
 // SelectRepos resolves the repos a command should act on. With no -F names it
 // returns the active portfolio, excluding third-party reference clones — no
 // implicit operation should ever touch a repo that is not ours. Naming repos
-// explicitly overrides that, so a reference clone is still reachable on purpose.
+// explicitly overrides that, so a reference clone or a dormant repo is still
+// reachable on purpose.
 func SelectRepos(repos []config.Repo, names []string) []config.Repo {
-	active := ActiveRepos(repos)
 	if len(names) > 0 {
-		return FilterRepos(active, names)
+		return FilterRepos(AddressableRepos(repos), names)
 	}
-	return OwnedRepos(active)
+	return OwnedRepos(ActiveRepos(repos))
 }
 
 // OwnedRepos returns repos in the portfolio, dropping third-party reference
