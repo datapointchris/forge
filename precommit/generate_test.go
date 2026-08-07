@@ -10,8 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/datapointchris/forge/v3/config"
-	"github.com/datapointchris/forge/v3/toolchain"
+	"github.com/datapointchris/forge/v4/config"
+	"github.com/datapointchris/forge/v4/toolchain"
 )
 
 func makeTestBlocks() fstest.MapFS {

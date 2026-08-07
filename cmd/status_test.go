@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/datapointchris/forge/v3/config"
+	"github.com/datapointchris/forge/v4/config"
 )
 
 // newRepoWithPlanning builds a repo dir whose .planning is a symlink to dest,

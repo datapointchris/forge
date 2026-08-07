@@ -1,6 +1,6 @@
 package main
 
-import "github.com/datapointchris/forge/v3/cmd"
+import "github.com/datapointchris/forge/v4/cmd"
 
 func main() {
 	cmd.SetEmbeddedAssets(embeddedDies, embeddedPreCommit, embeddedCI)
