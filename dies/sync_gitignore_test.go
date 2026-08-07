@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v4/runner"
+	"github.com/datapointchris/forge/v5/runner"
 )
 
 // The die's SKIP contract, shared with the runner that interprets it.

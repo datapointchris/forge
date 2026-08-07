@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v4/config"
-	"github.com/datapointchris/forge/v4/toolchain"
+	"github.com/datapointchris/forge/v5/config"
+	"github.com/datapointchris/forge/v5/toolchain"
 )
 
 func testManifest(t *testing.T) *toolchain.Toolchain {

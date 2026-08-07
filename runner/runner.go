@@ -10,7 +10,7 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/datapointchris/forge/v4/config"
+	"github.com/datapointchris/forge/v5/config"
 )
 
 // ExitSkip is the exit code scripts use to signal "nothing to do."

@@ -12,7 +12,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v4/runner"
+	"github.com/datapointchris/forge/v5/runner"
 )
 
 // computerCategory is the icb task category that flags dev/computer work. The
