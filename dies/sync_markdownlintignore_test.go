@@ -101,6 +101,42 @@ func TestSyncMarkdownlintignore_HandlesMissingTrailingNewline(t *testing.T) {
 	}
 }
 
+// A bare filename gives a later reader no way to tell a deliberate exclusion
+// from a forgotten one, which is why every hand-written file in the fleet
+// explains itself.
+func TestSyncMarkdownlintignore_ExplainsTheEntryItAdds(t *testing.T) {
+	dir := makeTempRepo(t, stacksAt("go"), nil)
+
+	if _, code := runMarkdownlintignoreDie(t, dir); code != 0 {
+		t.Fatalf("expected OK, got exit %d", code)
+	}
+
+	lines := markdownlintignoreLines(t, dir)
+	if len(lines) < 2 || !strings.HasPrefix(lines[0], "#") {
+		t.Errorf("entry was written without its rationale: %v", lines)
+	}
+	if lines[len(lines)-1] != "CHANGELOG.md" {
+		t.Errorf("comment must precede the entry it explains: %v", lines)
+	}
+}
+
+// The comment is written once, with the entry. A repo that already carries the
+// entry by hand keeps its own wording.
+func TestSyncMarkdownlintignore_LeavesAnExistingEntryUncommented(t *testing.T) {
+	dir := makeTempRepo(t, stacksAt("go"), map[string]string{
+		".markdownlintignore": "# our own words\nCHANGELOG.md\n",
+	})
+
+	if _, code := runMarkdownlintignoreDie(t, dir); code != exitSkip {
+		t.Fatalf("expected SKIP, got exit %d", code)
+	}
+
+	lines := markdownlintignoreLines(t, dir)
+	if len(lines) != 2 || lines[0] != "# our own words" {
+		t.Errorf("existing wording was rewritten: %v", lines)
+	}
+}
+
 func TestSyncMarkdownlintignore_CheckModeWritesNothing(t *testing.T) {
 	dir := makeTempRepo(t, stacksAt("go"), nil)
 
