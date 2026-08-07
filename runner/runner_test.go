@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/datapointchris/forge/v2/config"
+	"github.com/datapointchris/forge/v3/config"
 )
 
 func TestFilterRepos(t *testing.T) {

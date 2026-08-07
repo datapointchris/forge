@@ -15,9 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/datapointchris/forge/v2/config"
-	"github.com/datapointchris/forge/v2/precommit"
-	"github.com/datapointchris/forge/v2/toolchain"
+	"github.com/datapointchris/forge/v3/config"
+	"github.com/datapointchris/forge/v3/precommit"
+	"github.com/datapointchris/forge/v3/toolchain"
 )
 
 // WorkflowPath is where the generated workflow lands. Deliberately not ci.yml:

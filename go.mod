@@ -1,4 +1,4 @@
-module github.com/datapointchris/forge/v2
+module github.com/datapointchris/forge/v3
 
 go 1.26.5
 

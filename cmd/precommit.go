@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v2/config"
-	"github.com/datapointchris/forge/v2/precommit"
-	"github.com/datapointchris/forge/v2/toolchain"
+	"github.com/datapointchris/forge/v3/config"
+	"github.com/datapointchris/forge/v3/precommit"
+	"github.com/datapointchris/forge/v3/toolchain"
 )
 
 var precommitCmd = &cobra.Command{

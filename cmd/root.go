@@ -11,7 +11,7 @@ import (
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v2/config"
+	"github.com/datapointchris/forge/v3/config"
 )
 
 var cfgPath string
