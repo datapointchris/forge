@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/ci"
-	"github.com/datapointchris/forge/config"
-	"github.com/datapointchris/forge/toolchain"
+	"github.com/datapointchris/forge/v2/ci"
+	"github.com/datapointchris/forge/v2/config"
+	"github.com/datapointchris/forge/v2/toolchain"
 )
 
 var ciDryRun bool

@@ -7,9 +7,9 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w
-      - -X github.com/datapointchris/forge/cmd.version={{.Version}}
-      - -X github.com/datapointchris/forge/cmd.commit={{.ShortCommit}}
-      - -X github.com/datapointchris/forge/cmd.date={{.Date}}
+      - -X github.com/datapointchris/forge/v2/cmd.version={{.Version}}
+      - -X github.com/datapointchris/forge/v2/cmd.commit={{.ShortCommit}}
+      - -X github.com/datapointchris/forge/v2/cmd.date={{.Date}}
     goos:
       - linux
       - darwin

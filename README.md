@@ -13,7 +13,7 @@ Download the latest binary from [Releases](https://github.com/datapointchris/for
 ### From Source
 
 ```bash
-go install github.com/datapointchris/forge@latest
+go install github.com/datapointchris/forge/v2@latest
 ```
 
 ### Self-Update

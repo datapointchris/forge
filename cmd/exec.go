@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/config"
-	"github.com/datapointchris/forge/runner"
+	"github.com/datapointchris/forge/v2/config"
+	"github.com/datapointchris/forge/v2/runner"
 )
 
 var (
