@@ -11,11 +11,11 @@ Forge is a Go CLI tool that serves as an internal developer platform (IDP) for m
 ```bash
 go build -o forge .        # Build binary
 go test ./...              # Run all tests (includes Go integration tests for dies)
-golangci-lint run          # Lint (13 linters, see .golangci.yml)
+golangci-lint run          # Lint (enabled set is in .golangci.yml)
 go run . <subcommand>      # Run without building
 ```
 
-Pre-commit hooks run gofumpt, go vet, go build, go test, golangci-lint, shellcheck, codespell, and enforce conventional commits on every commit. A custom hook runs the Python test suite when `pre-commit/` files change.
+The hook inventory is generated from `pre-commit/toolchain.yml` — read that, or `.pre-commit-config.yaml`, rather than a list here. `~/dev/standards/ci.md` § "Never restate the hook inventory in a repo's `CLAUDE.md`" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
 
 ## Architecture
 
@@ -72,9 +72,11 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 
 **Categories:**
 
-- `checks/` — scorecard dies (has-pre-commit, has-claude-md, has-clean-gitignore, has-planning-dir, planning-docs, can-generate)
-- `maintenance/` — golden path enforcement (sync-pre-commit, sync-pyproject, sync-ci, sync-planning, pre-commit-update, add-planning-to-gitignore, rename-master-to-main)
+- `checks/` — scorecard dies: report a repo's state, change nothing
+- `maintenance/` — golden path enforcement: bring a repo back to the standard
 - `onetime/` — one-shot migrations
+
+`forge dies list` enumerates them with descriptions; the directories are the source of truth.
 
 ## Pre-commit Standardization System
 
@@ -151,7 +153,8 @@ the generated one is additive.
 validates the workflow with actionlint and the config with `pre-commit validate-config`, and reports
 what would block a real sync: unmarked custom hooks, or a hand-written `ci.yml`. Writes nothing.
 **Run it across the portfolio before bumping the manifest** — a version bump fans out to every repo,
-so the rollout is only as safe as its worst one. Current state: **65 ok, zero failures.**
+so the rollout is only as safe as its worst one. The gate is clean when it reports zero failures;
+run it rather than trusting a count written here.
 
 The findings worth knowing are the ones no schema validator can reach. `defaults.run.working-directory`
 does not apply to action inputs, so any path in one needs `{{dir}}`. A valid workflow can still fail at
@@ -209,7 +212,7 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 ## Build and Release
 
 - `.goreleaser.yaml` — goreleaser config with ldflags injecting version/commit/date into the binary
-- `.github/workflows/release.yml` — GitHub Actions release workflow triggered by version tags
+- `.github/workflows/release.yml` — release workflow, triggered on push to `main`. go-semantic-release decides the version and creates the tag; triggering on the tag instead is the broken pattern `~/dev/standards/release.md` rejects, because a `GITHUB_TOKEN` tag push does not retrigger Actions
 - Installed via `go install github.com/datapointchris/forge@latest` or dotfiles `go-tools.sh`
 - `forge update` — self-updates by downloading the latest release binary from GitHub (no Go toolchain needed)
 - `forge version` — shows version, commit SHA, and build date (`dev` when built without ldflags)
