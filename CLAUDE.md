@@ -43,9 +43,8 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 
 **Packages** (at repo root):
 
-- `config` — loads two config files:
-  - **Forge config** (`~/.config/forge/config.toml`, TOML): `repos_file` pointing to the repo registry
-  - **Repo registry** (`~/dev/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone — a repo cloned for reading, never for cross-repo work.
+- `config` — loads the repo registry:
+  - **Repo registry** (`$XDG_DATA_HOME/forge/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone — a repo cloned for reading, never for cross-repo work.
   - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: nomad's `api/` and `cli/` are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
 
   - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
@@ -195,7 +194,7 @@ declared component has a CI block.
 **Go tests** (`go test ./...`):
 
 - `config/` — forge and syncer config loading
-- `dies/` — registry and stats, plus integration tests for the sync-pre-commit die (declared stacks, dedup, custom preservation, safety, config deployment). Each test writes a temp registry naming its temp repo and points the die at it with `FORGE_REPOS_FILE`, so a test declares its stacks the same way a real repo does.
+- `dies/` — registry and stats, plus integration tests for the sync-pre-commit die (declared stacks, dedup, custom preservation, safety, config deployment). Each test writes a temp registry naming its temp repo and points the die at it with `XDG_DATA_HOME`, so a test declares its stacks the same way a real repo does.
 - `precommit/` — config generator: unit tests (using `fstest.MapFS`) plus integration tests against real blocks
 - `runner/` — repo filtering, execution
 

@@ -16,7 +16,7 @@ func runMarkdownlintignoreDie(t *testing.T, repoDir string, extraEnv ...string) 
 	cmd.Dir = repoDir
 	cmd.Env = append(os.Environ(),
 		"PATH="+forgeOnPath(t)+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(repoDir), "repos.json"))
+		"XDG_DATA_HOME="+filepath.Dir(repoDir))
 	cmd.Env = append(cmd.Env, extraEnv...)
 
 	out, _ := cmd.CombinedOutput()

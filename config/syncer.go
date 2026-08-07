@@ -9,7 +9,20 @@ import (
 	"strings"
 )
 
-const defaultReposFileFallback = "~/.config/syncer/datapointchris.json"
+// DefaultReposPath is forge's own XDG data directory. A generic tool must not
+// carry a fleet-specific path, so it asks for the registry where its own data
+// lives and knows nothing about where the file is actually maintained — the
+// fleet points this at a shared registry with a symlink.
+func DefaultReposPath() string {
+	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
+		return filepath.Join(dir, "forge", "repos.json")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "share", "forge", "repos.json")
+}
 
 type Repo struct {
 	Name        string `json:"name"`
@@ -144,26 +157,12 @@ func ExpandTilde(path string) (string, error) {
 	return "", fmt.Errorf("expanding ~user paths is not supported: %s", path)
 }
 
-// LoadReposFromForgeConfig loads repos using the path from ForgeConfig.ReposFile,
-// falling back to the default syncer config path if not configured.
-func LoadReposFromForgeConfig() (*SyncerConfig, error) {
-	// Env override, matching FORGE_DIES_DIR: a die shells out to forge, so a
-	// caller pointing at a different registry has no other way to say so.
-	if reposFile := os.Getenv("FORGE_REPOS_FILE"); reposFile != "" {
-		return LoadSyncerConfig(reposFile)
-	}
-
-	forgeCfg, err := LoadForgeConfig(DefaultForgeConfigPath)
-	if err != nil {
-		// Config file missing or unreadable — use fallback
-		return LoadSyncerConfig(defaultReposFileFallback)
-	}
-
-	if forgeCfg.ReposFile != "" {
-		return LoadSyncerConfig(forgeCfg.ReposFile)
-	}
-
-	return LoadSyncerConfig(defaultReposFileFallback)
+// LoadRepos reads the registry from DefaultReposPath. Callers wanting a
+// different one pass --config, which is the only override: a config file naming
+// the registry's location was a second place for the path to live, and a tool
+// that resolves its own data directory does not need one.
+func LoadRepos() (*SyncerConfig, error) {
+	return LoadSyncerConfig(DefaultReposPath())
 }
 
 // FindRepoByPath returns the repo whose path contains dir, preferring the

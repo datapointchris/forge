@@ -90,7 +90,14 @@ func makeTempRepo(t *testing.T, components []config.Component, files map[string]
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "repos.json"), data, 0o644); err != nil {
+	// XDG layout: the die resolves $XDG_DATA_HOME/forge/repos.json, so the
+	// fixture goes where the real resolution looks rather than where a bespoke
+	// override used to point.
+	forgeData := filepath.Join(root, "forge")
+	if err := os.MkdirAll(forgeData, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(forgeData, "repos.json"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -117,7 +124,7 @@ func runSyncDie(t *testing.T, repoDir string) string {
 	// pre-commit install will fail in temp repos, that's fine
 	cmd.Env = append(os.Environ(),
 		"PATH="+forgeOnPath(t)+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(repoDir), "repos.json"))
+		"XDG_DATA_HOME="+filepath.Dir(repoDir))
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -405,7 +412,7 @@ func TestSyncDie_SafetyAbortsOnUnknownHooks(t *testing.T) {
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"PATH="+forgeOnPath(t)+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"FORGE_REPOS_FILE="+filepath.Join(filepath.Dir(dir), "repos.json"))
+		"XDG_DATA_HOME="+filepath.Dir(dir))
 	out, err := cmd.CombinedOutput()
 
 	if err == nil {

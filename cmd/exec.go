@@ -67,7 +67,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if cfgPath != "" {
 		cfg, err = config.LoadSyncerConfig(cfgPath)
 	} else {
-		cfg, err = config.LoadReposFromForgeConfig()
+		cfg, err = config.LoadRepos()
 	}
 	if err != nil {
 		return err

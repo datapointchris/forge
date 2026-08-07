@@ -64,5 +64,5 @@ func loadRepos() (*config.SyncerConfig, error) {
 	if cfgPath != "" {
 		return config.LoadSyncerConfig(cfgPath)
 	}
-	return config.LoadReposFromForgeConfig()
+	return config.LoadRepos()
 }

@@ -26,21 +26,20 @@ Downloads and installs the latest release binary from GitHub. No Go toolchain re
 
 ## Configuration
 
-Forge uses two config files:
+### Repo Registry
 
-### Forge Config
+`$XDG_DATA_HOME/forge/repos.json` — defines the repos forge operates on. Override
+a single run with `-c <path>`.
 
-`~/.config/forge/config.toml` — points to the repo registry.
+Forge reads the registry from its own data directory and does not know where the
+file is really maintained; point it at a shared registry with a symlink:
 
-```toml
-repos_file = "~/dev/repos.json"
+```bash
+mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/forge"
+ln -sfn /path/to/repos.json "${XDG_DATA_HOME:-$HOME/.local/share}/forge/repos.json"
 ```
 
 For development, set `FORGE_DIES_DIR` to use filesystem dies instead of embedded. The `.envrc` in the repo root handles this via direnv.
-
-### Repo Registry
-
-`~/dev/repos.json` — defines the repos forge operates on. Override with `-c`.
 
 ```json
 {

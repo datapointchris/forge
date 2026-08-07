@@ -230,7 +230,7 @@ func runDiesRun(cmd *cobra.Command, args []string) error {
 	if cfgPath != "" {
 		syncerCfg, err = config.LoadSyncerConfig(cfgPath)
 	} else {
-		syncerCfg, err = config.LoadReposFromForgeConfig()
+		syncerCfg, err = config.LoadRepos()
 	}
 	if err != nil {
 		return err
