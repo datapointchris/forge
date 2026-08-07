@@ -11,6 +11,9 @@ dies:
   checks/has-clean-gitignore.sh:
     description: "Check that .gitignore exists, is not generated bloat, has .planning entry, no duplicates."
     tags: [checks, gitignore, scorecard]
+  checks/has-clean-markdownlintignore.sh:
+    description: "Check that a repo carrying a generated CHANGELOG.md keeps it in .markdownlintignore. SKIP means the repo has no CHANGELOG.md to protect."
+    tags: [checks, markdownlint, scorecard]
   checks/has-planning-dir.sh:
     description: "Check that repo has a .planning/ directory and report file count."
     tags: [checks, planning, scorecard]
