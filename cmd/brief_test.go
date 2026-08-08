@@ -53,7 +53,7 @@ func TestFilterComputerTodosEmpty(t *testing.T) {
 }
 
 func TestOpenItemsInOrder(t *testing.T) {
-	// `icb projects view <id> --json` returns {..., "items": [...]} with per-item
+	// `icb projects show <id> --json` returns {..., "items": [...]} with per-item
 	// position; completed/archived items must be dropped and the rest ordered.
 	const raw = `{
 	  "id": "proj-1",
@@ -67,7 +67,7 @@ func TestOpenItemsInOrder(t *testing.T) {
 	  ]
 	}`
 
-	var view icbProjectView
+	var view icbProjectShow
 	if err := json.Unmarshal([]byte(raw), &view); err != nil {
 		t.Fatalf("unmarshal project view: %v", err)
 	}

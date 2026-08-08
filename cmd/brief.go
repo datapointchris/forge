@@ -77,7 +77,7 @@ type icbProject struct {
 	ItemCount *int   `json:"item_count"`
 }
 
-// icbProjectItem mirrors an item from `icb projects view <id> --json`.
+// icbProjectItem mirrors an item from `icb projects show <id> --json`.
 type icbProjectItem struct {
 	ID        string  `json:"id"`
 	Title     string  `json:"title"`
@@ -88,9 +88,9 @@ type icbProjectItem struct {
 	Position  int     `json:"position"`
 }
 
-// icbProjectView is the `icb projects view <id> --json` payload: the project
+// icbProjectShow is the `icb projects show <id> --json` payload: the project
 // fields plus its ordered items.
-type icbProjectView struct {
+type icbProjectShow struct {
 	Items []icbProjectItem `json:"items"`
 }
 
@@ -235,7 +235,7 @@ func fetchICB() ([]roadmapProject, []icbTask, []string) {
 			}
 			items, err := icbProjectItems(p.ID)
 			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("icb projects view %s: %v", p.Name, err))
+				warnings = append(warnings, fmt.Sprintf("icb projects show %s: %v", p.Name, err))
 				continue
 			}
 			open := openItemsInOrder(items)
@@ -284,11 +284,11 @@ func icbProjects() ([]icbProject, error) {
 }
 
 func icbProjectItems(id string) ([]icbProjectItem, error) {
-	out, err := icbRun("projects", "view", id, "--json")
+	out, err := icbRun("projects", "show", id, "--json")
 	if err != nil {
 		return nil, err
 	}
-	var view icbProjectView
+	var view icbProjectShow
 	if err := json.Unmarshal(out, &view); err != nil {
 		return nil, fmt.Errorf("parsing project items: %w", err)
 	}
