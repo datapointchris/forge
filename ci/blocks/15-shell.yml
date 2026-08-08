@@ -82,11 +82,11 @@
       # stands.
       #
       # Discovery stays flat, and says so when it finds a nested layout it will
-      # not run. Recursing was tried: dotfiles keeps its 24 suites under
-      # tests/apps, tests/install and tests/libraries, so `tests/*.bats` matched
-      # nothing and the step reported green having run nothing. But `bats -r`
-      # then swept in that repo's integration tier, which wants Docker images
-      # and live network and fails on a bare runner.
+      # not run. Recursing was tried: dotfiles keeps every suite in a
+      # subdirectory of tests/, so `tests/*.bats` matched nothing and the step
+      # reported green having run nothing. But `bats -r` then swept in that
+      # repo's integration tier, which wants Docker images and live network and
+      # fails on a bare runner.
       #
       # A generic block cannot tell a unit suite from an integration one — only
       # the repo knows which of its tiers is runner-safe. So this runs the flat
