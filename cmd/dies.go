@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -22,6 +23,8 @@ var (
 	diesFilterNames []string
 	diesDryRun      bool
 	diesCheck       bool
+	diesStatsSince  string
+	diesStatsJSON   bool
 )
 
 var diesCmd = &cobra.Command{
@@ -122,6 +125,9 @@ func init() {
 	diesRunCmd.Flags().StringSliceVarP(&diesFilterNames, "filter", "F", nil, "comma-separated repo names to include")
 	diesRunCmd.Flags().BoolVarP(&diesDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
 	diesRunCmd.Flags().BoolVar(&diesCheck, "check", false, "report what the die would change instead of changing it")
+
+	diesStatsCmd.Flags().StringVar(&diesStatsSince, "since", "", "only runs at or after this point: \"2 weeks\", \"30 days\", 72h, or 2026-07-01")
+	diesStatsCmd.Flags().BoolVar(&diesStatsJSON, "json", false, "output as JSON to stdout")
 
 	diesCmd.AddCommand(diesListCmd)
 	diesCmd.AddCommand(diesRunCmd)
@@ -468,19 +474,69 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if len(records) == 0 {
-		fmt.Println("No execution history found.")
-		return nil
+	window := ""
+	if diesStatsSince != "" {
+		cutoff, err := dies.ParseSince(diesStatsSince, time.Now())
+		if err != nil {
+			return err
+		}
+		records = dies.Since(records, cutoff)
+		window = fmt.Sprintf(" since %s", cutoff.Format("2006-01-02"))
 	}
 
 	if len(args) == 1 {
 		records = dies.StatsForDie(records, args[0])
-		if len(records) == 0 {
-			fmt.Printf("No execution history for %s\n", args[0])
-			return nil
-		}
 	}
 
+	if len(records) == 0 {
+		if diesStatsJSON {
+			return emitDiesStatsJSON(cmd, args, nil, nil)
+		}
+		switch {
+		case len(args) == 1:
+			fmt.Printf("No execution history for %s%s\n", args[0], window)
+		default:
+			fmt.Printf("No execution history found%s.\n", window)
+		}
+		return nil
+	}
+
+	dies.SortNewestFirst(records)
+
+	if len(args) == 1 {
+		if diesStatsJSON {
+			return emitDiesStatsJSON(cmd, args, records, nil)
+		}
+		printDieRunHistory(args[0], window, records)
+		return nil
+	}
+
+	aggregated := dies.AggregateByDie(records)
+	if diesStatsJSON {
+		return emitDiesStatsJSON(cmd, args, nil, aggregated)
+	}
+	printDieStatsSummary(window, aggregated)
+	return nil
+}
+
+// emitDiesStatsJSON keeps one schema per view: the per-die argument returns the
+// runs themselves, the default returns the aggregate the table shows.
+func emitDiesStatsJSON(cmd *cobra.Command, args []string, records []dies.RunRecord, aggregated []dies.DieStats) error {
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	if len(args) == 1 {
+		if records == nil {
+			records = []dies.RunRecord{}
+		}
+		return enc.Encode(records)
+	}
+	if aggregated == nil {
+		aggregated = []dies.DieStats{}
+	}
+	return enc.Encode(aggregated)
+}
+
+func printDieStatsSummary(window string, aggregated []dies.DieStats) {
 	bold := color.New(color.Bold)
 	cyan := color.New(color.FgHiCyan)
 	dim := color.New(color.Faint)
@@ -488,20 +544,45 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 	yellow := color.New(color.FgHiYellow)
 	red := color.New(color.FgHiRed)
 
-	bold.Printf("\n%-50s %-20s %4s %4s %4s\n", "Die", "Timestamp", "OK", "Skip", "Fail")
-	dim.Printf("%s\n", strings.Repeat("─", 90))
+	if window != "" {
+		fmt.Printf("\nRuns%s\n", window)
+	}
+	bold.Printf("\n%-50s %5s %-16s %5s %5s %5s\n", "Die", "Runs", "Last run", "OK", "Skip", "Fail")
+	dim.Printf("%s\n", strings.Repeat("─", 92))
+
+	for _, s := range aggregated {
+		fmt.Printf("%s %s %s %s %s %s\n",
+			cyan.Sprintf("%-50s", s.Die),
+			bold.Sprintf("%5d", s.Runs),
+			s.LastRun.Format("2006-01-02 15:04"),
+			green.Sprintf("%5d", s.OK),
+			yellow.Sprintf("%5d", s.Skip),
+			red.Sprintf("%5d", s.Fail))
+	}
+
+	dim.Printf("\nPer-run history: forge dies stats <die-path>\n\n")
+}
+
+func printDieRunHistory(diePath, window string, records []dies.RunRecord) {
+	bold := color.New(color.Bold)
+	cyan := color.New(color.FgHiCyan)
+	dim := color.New(color.Faint)
+	green := color.New(color.FgHiGreen)
+	yellow := color.New(color.FgHiYellow)
+	red := color.New(color.FgHiRed)
+
+	cyan.Printf("\n%s%s\n", diePath, window)
+	bold.Printf("%-16s %5s %5s %5s\n", "Run", "OK", "Skip", "Fail")
+	dim.Printf("%s\n", strings.Repeat("─", 34))
 
 	for _, r := range records {
-		fmt.Printf("%s %s %s %s %s\n",
-			cyan.Sprintf("%-50s", r.Die),
-			dim.Sprintf("%-20s", r.Timestamp.Format("2006-01-02 15:04")),
-			green.Sprintf("%4d", r.OK),
-			yellow.Sprintf("%4d", r.Skip),
-			red.Sprintf("%4d", r.Fail))
+		fmt.Printf("%s %s %s %s\n",
+			r.Timestamp.Format("2006-01-02 15:04"),
+			green.Sprintf("%5d", r.OK),
+			yellow.Sprintf("%5d", r.Skip),
+			red.Sprintf("%5d", r.Fail))
 	}
 	fmt.Println()
-
-	return nil
 }
 
 func printGroupedResults(results []runner.Result) {

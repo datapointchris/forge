@@ -27,6 +27,7 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 - `exec` — run an inline command or script file across repos
 - `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
   - Subcommands: `list`, `run`, `show`, `search`, `stats`
+  - `stats` aggregates one row per die, most-recently-run first, with `--since` (git's own spelling — `2 weeks`, `30.days.ago` — plus Go durations and ISO dates) and `--json`. Naming a die gives its run-by-run history instead. Per-run rows grow without bound while the number of dies does not, so the old per-run dump put the oldest screen in front of the reader first; `review-fleet` dropped the call entirely rather than carry a step nobody read
   - `run` takes two different previews. `--dry-run`/`-n` names the repos the die would visit and executes nothing. `--check` runs it for real with `FORGE_CHECK=1` set and has the script report what it would change — a content-level preview `--dry-run` structurally cannot give. It is refused for any die not declaring `supports_check: true` in the registry, because a die that ignored the variable would write to every repo while the operator believed they were previewing
 - `precommit generate` — generate `.pre-commit-config.yaml` from standard blocks (Go implementation)
 - `ci generate` — generate `.github/workflows/validate.yml` from standard CI blocks (`--dry-run` prints instead of writing)
