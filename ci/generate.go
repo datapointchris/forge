@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/datapointchris/forge/v5/config"
@@ -25,13 +26,49 @@ import (
 // over one would destroy work nothing could recover.
 const WorkflowPath = ".github/workflows/validate.yml"
 
+// releaseWorkflowPath is read, never written — release.yml is per-repo and
+// deliberately not generated. See ReleaseGatesOnValidate.
+const releaseWorkflowPath = ".github/workflows/release.yml"
+
+// releaseGateRef matches a reusable-workflow call naming this workflow, the
+// shape a release uses to gate on it:
+//
+//	validate:
+//	  uses: ./.github/workflows/validate.yml
+var releaseGateRef = regexp.MustCompile(`uses:\s*\./` + regexp.QuoteMeta(WorkflowPath))
+
+// ReleaseGatesOnValidate reports whether the repo's release workflow runs this
+// one as a job.
+//
+// Detected rather than declared, which is the opposite of how components work.
+// A registry flag would be a second place to remember, and the failure it
+// guards against is precisely a thing nobody remembers: add a release gate,
+// forget the flag, and the duplicate run comes back silently. Reading the file
+// cannot drift from the file.
+//
+// Every unknown answers false, which reproduces the old behavior — an extra
+// run, never a missing one.
+func ReleaseGatesOnValidate() bool {
+	data, err := os.ReadFile(releaseWorkflowPath)
+	if err != nil {
+		return false
+	}
+	return releaseGateRef.Match(data)
+}
+
 // Generate composes the workflow from the repo's declared components.
 //
 // Each component becomes its own job with a working-directory, because a repo
 // can hold several of the same stack in different places — nomad's api/ and
 // cli/ are both Go modules, deliberately isolated. One serial job would hide
 // which one failed and force them to share a setup step.
-func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component, customSections map[string]string) (string, error) {
+func Generate(
+	blocksFS fs.FS,
+	manifest *toolchain.Toolchain,
+	components []config.Component,
+	customSections map[string]string,
+	releaseGated bool,
+) (string, error) {
 	shared, err := loadBlock(blocksFS, "checkout")
 	if err != nil {
 		return "", err
@@ -44,14 +81,27 @@ func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config
 		"name: CI",
 		"",
 		"on:",
-		// Development here is trunk-based: work lands on main directly and there
-		// are rarely pull requests, so pull_request alone validates almost
-		// nothing. workflow_call is how a release gates on this, but a repo with
-		// no release pipeline had no trigger at all — the workflow existed and
-		// never ran. A repo that does gate its release runs these checks twice on
-		// a push to main, which is the cheaper of the two mistakes.
-		"  push:",
-		"    branches: [main]",
+	)
+
+	// Development here is trunk-based: work lands on main directly and there are
+	// rarely pull requests, so pull_request alone validates almost nothing. A
+	// repo with no release pipeline therefore needs push, or the workflow exists
+	// and never runs.
+	//
+	// Where a release does gate on this, push is the *duplicate* rather than the
+	// safety net: release.yml fires on the same push and calls this workflow, so
+	// emitting push here runs every job twice for one commit. That went unnoticed
+	// across fourteen repos because both runs are green — the cost is only ever a
+	// confusing history. workflow_call still covers main, so nothing is lost.
+	if !releaseGated {
+		lines = append(lines,
+			"  push:",
+			"    branches: [main]",
+		)
+	}
+
+	lines = append(
+		lines,
 		"  pull_request:",
 		"  workflow_call:",
 		"",
@@ -126,7 +176,7 @@ func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.C
 	if data, err := os.ReadFile(WorkflowPath); err == nil && strings.HasPrefix(string(data), "# forge-toolchain:") {
 		existing = string(data)
 	}
-	return Generate(blocksFS, manifest, components, precommit.ExtractCustomSections(existing))
+	return Generate(blocksFS, manifest, components, precommit.ExtractCustomSections(existing), ReleaseGatesOnValidate())
 }
 
 // Run generates the workflow and writes it when changed.
@@ -145,7 +195,7 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Comp
 
 	customSections := precommit.ExtractCustomSections(existing)
 
-	workflow, err := Generate(blocksFS, manifest, components, customSections)
+	workflow, err := Generate(blocksFS, manifest, components, customSections, ReleaseGatesOnValidate())
 	if err != nil {
 		return "", err
 	}

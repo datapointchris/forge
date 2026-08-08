@@ -138,6 +138,21 @@ on `pull_request` and exposed via `workflow_call` so a release workflow can `nee
 `go install` versions come from the same `toolchain.yml` as the pre-commit hooks, and the same
 `# > custom:` markers preserve repo-specific steps.
 
+**The `push: main` trigger is emitted only when nothing else covers main.** Development is
+trunk-based, so `pull_request` alone would validate almost nothing and a repo with no release
+pipeline needs `push` or the workflow never runs. But where `release.yml` gates on this workflow it
+already fires on that same push and calls it, so emitting `push` too runs every job twice for one
+commit — which is what fourteen repos silently did, because both runs are green and nothing about a
+duplicate green run looks wrong.
+
+`ReleaseGatesOnValidate` decides it by **reading `release.yml` for a `uses:` naming this workflow**.
+Detection, not a registry field, and deliberately against the usual `declared, never detected`
+rule: the failure being prevented is someone adding a release gate and forgetting to flip a flag,
+which a flag cannot prevent and a file read cannot get wrong. It re-derives on every generate, so
+adding or removing the gate fixes the triggers by itself. Every unknown — no `release.yml`, an
+unreadable one, a release gating on a hand-written `ci.yml` — answers false and keeps `push`, so
+the failure mode is the old duplicate run rather than an unvalidated main.
+
 **One job per declared component**, named `<stack>` at the root or `<stack>-<dir>` below it, each
 with a `working-directory`. nomad generates `go-api`, `go-cli`, and `vue-web` running in parallel —
 a single serial job would hide which module failed and force them to share one setup step. A
