@@ -18,7 +18,10 @@ sync_dir() {
     if [ "$link_dest" = "$synced_path" ]; then
       # Correct symlink — ensure the target directory exists
       if [ ! -d "$synced_path" ]; then
-        mkdir -p "$synced_path" || { echo "$repo_target: mkdir failed: $synced_path"; return 1; }
+        mkdir -p "$synced_path" || {
+          echo "$repo_target: mkdir failed: $synced_path"
+          return 1
+        }
         echo "$repo_target: created missing target dir"
         return 0
       fi
@@ -34,10 +37,35 @@ sync_dir() {
   if [ -d "$repo_target" ]; then
     entry_count=$(find "$repo_target" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')
     if [ "$entry_count" -gt 0 ]; then
-      mkdir -p "$synced_path" || { echo "$repo_target: mkdir failed: $synced_path"; return 1; }
+      mkdir -p "$synced_path" || {
+        echo "$repo_target: mkdir failed: $synced_path"
+        return 1
+      }
+
+      # The synced copy is the one other machines have been editing. mv would overwrite
+      # it with this repo's unsynced copy and lose the newer content silently, so refuse
+      # the migration and let a human merge. Identical files are not a conflict.
+      conflicts=""
+      while IFS= read -r entry; do
+        dest="$synced_path/$(basename "$entry")"
+        [ -e "$dest" ] || continue
+        diff -rq "$entry" "$dest" >/dev/null 2>&1 && continue
+        conflicts="$conflicts $(basename "$entry")"
+      done < <(find "$repo_target" -maxdepth 1 -mindepth 1)
+      if [ -n "$conflicts" ]; then
+        echo "$repo_target: differs from synced copy, not migrating:$conflicts"
+        return 1
+      fi
+
       find "$repo_target" -maxdepth 1 -mindepth 1 -exec mv {} "$synced_path/" \;
-      rmdir "$repo_target" || { echo "$repo_target: rmdir failed"; return 1; }
-      ln -s "$synced_path" "$repo_target" || { echo "$repo_target: symlink failed"; return 1; }
+      rmdir "$repo_target" || {
+        echo "$repo_target: rmdir failed"
+        return 1
+      }
+      ln -s "$synced_path" "$repo_target" || {
+        echo "$repo_target: symlink failed"
+        return 1
+      }
       echo "$repo_target: migrated $entry_count files → symlink"
       return 0
     fi
@@ -46,8 +74,14 @@ sync_dir() {
   fi
 
   # Create symlink
-  mkdir -p "$synced_path" || { echo "$repo_target: mkdir failed: $synced_path"; return 1; }
-  ln -s "$synced_path" "$repo_target" || { echo "$repo_target: symlink failed"; return 1; }
+  mkdir -p "$synced_path" || {
+    echo "$repo_target: mkdir failed: $synced_path"
+    return 1
+  }
+  ln -s "$synced_path" "$repo_target" || {
+    echo "$repo_target: symlink failed"
+    return 1
+  }
   echo "$repo_target: created symlink"
   return 0
 }
