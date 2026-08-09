@@ -59,9 +59,13 @@ if [ -z "$branch" ] || [ "$branch" = "null" ]; then
 fi
 
 # A branch with no protection 404s here, which is a state to fix rather than an
-# error to report — hence the fallback rather than a bare failure.
-current=$(gh api "repos/$slug/branches/$branch/protection" \
-  --jq '"\(.allow_force_pushes.enabled) \(.allow_deletions.enabled) \(.enforce_admins.enabled)"' 2>/dev/null || echo "unprotected")
+# error to report. The assignment must be overwritten inside the failure branch
+# rather than with `|| echo`: gh prints API errors to stdout, so the 404 body would
+# otherwise be captured and then have the fallback appended to it.
+if ! current=$(gh api "repos/$slug/branches/$branch/protection" \
+  --jq '"\(.allow_force_pushes.enabled) \(.allow_deletions.enabled) \(.enforce_admins.enabled)"' 2>/dev/null); then
+  current="unprotected"
+fi
 
 changes=()
 if [ "$current" = "unprotected" ]; then
