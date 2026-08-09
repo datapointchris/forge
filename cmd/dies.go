@@ -60,9 +60,9 @@ var diesRunCmd = &cobra.Command{
 	Long: `Execute a die script across all (or filtered) repos.
 
 Example:
-  forge dies run maintenance/add-planning-to-gitignore.sh
-  forge dies run maintenance/add-planning-to-gitignore.sh -F dotfiles,homelab
-  forge dies run maintenance/add-planning-to-gitignore.sh -n
+  forge dies run maintenance/sync-gitignore.sh
+  forge dies run maintenance/sync-gitignore.sh -F dotfiles,homelab
+  forge dies run maintenance/sync-gitignore.sh -n
   forge dies run maintenance/sync-pyproject.sh --check
 
 --dry-run names the repos a die would visit. --check runs it for real and has it

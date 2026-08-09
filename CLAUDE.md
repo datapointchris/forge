@@ -92,7 +92,6 @@ Optional metadata lives in `dies/registry.yml` with `description` and `tags` per
 
 - `checks/` — scorecard dies: report a repo's state, change nothing
 - `maintenance/` — golden path enforcement: bring a repo back to the standard
-- `onetime/` — one-shot migrations
 
 `forge dies list` enumerates them with descriptions; the directories are the source of truth.
 

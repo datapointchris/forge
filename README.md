@@ -146,7 +146,7 @@ forge dies list
 forge dies list checks
 
 # Run a die across repos
-forge dies run maintenance/add-planning-to-gitignore.sh
+forge dies run maintenance/sync-gitignore.sh
 
 # Run on specific repos only
 forge dies run checks/pre-commit-config.sh -F forge,dotfiles
@@ -158,7 +158,7 @@ forge dies run checks/pre-commit-config.sh -n
 forge dies search gitignore
 
 # Show details and last run info
-forge dies show maintenance/add-planning-to-gitignore.sh
+forge dies show maintenance/sync-gitignore.sh
 
 # View execution history
 forge dies stats
