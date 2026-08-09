@@ -50,6 +50,10 @@ dies:
     description: "Set the GitHub merge commit title to the PR title and its body to the PR body, and delete the branch on merge, so a merged PR reads as the work rather than 'Merge pull request #N from ...'. Changes repo settings, not files; commits nothing. SKIP means already current, or a non-GitHub remote."
     tags: [github, pr, merge, standardization]
     supports_check: true
+  maintenance/sync-branch-protection.sh:
+    description: "Block force-push and deletion on the default branch, with enforce_admins so the sole admin is subject to it too. Deliberately adds no review or PR requirement: those deadlock a solo repo and would forbid direct-to-main commits. Changes repo settings, not files; commits nothing. SKIP means already current, a non-GitHub remote, or a private repo without a paid plan."
+    tags: [github, branches, safety, standardization]
+    supports_check: true
   maintenance/sync-markdownlintignore.sh:
     description: "Ensure the standard .markdownlintignore entries are present. Creates the file when absent, otherwise append-only, never a rewrite; does not commit. SKIP means already current."
     tags: [markdownlint, standardization, golden-path]
