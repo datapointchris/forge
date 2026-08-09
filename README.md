@@ -49,7 +49,7 @@ mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/forge"
 ln -sfn /path/to/repos.json "${XDG_DATA_HOME:-$HOME/.local/share}/forge/repos.json"
 ```
 
-For development, set `FORGE_DIES_DIR` to use filesystem dies instead of embedded. The `.envrc` in the repo root handles this via direnv.
+Dies are Go, compiled into the binary, so a development build is the current dies — there is no filesystem mode to switch into.
 
 ```json
 {
@@ -113,64 +113,56 @@ forge brief --no-issues --no-tasks
 forge brief --json
 ```
 
-### Sync planning directories
+### Reconcile the repos
+
+Three verbs over one measurement, Terraform-shaped. `plan` is `apply` minus its last
+step — the same walk, stopping before the write — so there is no `--dry-run` for
+`apply` to be the opposite of.
 
 ```bash
-# Create .planning/ symlinks to ~/dev/repos/ for Syncthing sync
-forge dies run maintenance/sync-planning.sh
+# What is wrong: findings apply cannot fix
+forge repos check
+
+# What apply would change, writing nothing
+forge repos plan
+forge repos plan precommit -F forge,dotfiles
+
+# Make it so — a die is required
+forge repos apply gitignore -F refcheck
+
+# Which repos a verb would visit
+forge repos list
+
+# Anything that is not a die
+forge repos exec -- git status --short
+forge repos exec -f ./one-off.sh
 ```
 
-### Execute commands across repos
+Exit codes: `0` converged, `1` changes pending (`plan` only), `2` usage, `3` something
+is wrong. `check` never returns 1 — a repo behind the standard is drift, not a fault.
+
+### Browse the dies
+
+`forge dies` is the library and executes nothing.
 
 ```bash
-# Inline command
-forge exec -- git status --short
-
-# Script file
-forge exec -f ./cleanup.sh
-
-# Filter to specific repos
-forge exec -F dotfiles,homelab -- git pull
-
-# Dry run
-forge exec -n -- git status
-```
-
-### Manage and run dies
-
-Dies are reusable bash scripts organized by category (subdirectory). They use exit codes to report status: **0** = OK, **2** = skip (nothing to do), anything else = fail.
-
-```bash
-# List available dies
 forge dies list
-forge dies list checks
-
-# Run a die across repos
-forge dies run maintenance/sync-pre-commit.sh
-
-# Run on specific repos only
-forge dies run checks/pre-commit-config.sh -F forge,dotfiles
-
-# Dry run
-forge dies run checks/pre-commit-config.sh -n
-
-# Search dies by name, description, or tags
+forge dies show precommit
 forge dies search gitignore
-
-# Show details and last run info
-forge dies show maintenance/sync-pre-commit.sh
-
-# View execution history
 forge dies stats
-forge dies stats checks/pre-commit-config.sh
+forge dies stats precommit
 ```
 
-### Pre-commit config generation
+### The version manifest
 
 ```bash
-# Generate .pre-commit-config.yaml for the current repo's tech stack
-forge precommit generate --detected python,go
+forge toolchain show           # what is pinned now
+forge toolchain plan           # what upstream has released since
+forge toolchain apply          # take it, and bump the manifest version
 ```
+
+Then roll out to one repo before fanning out:
+`forge repos apply precommit -F <repo>`.
 
 ### Version and update
 

@@ -39,24 +39,15 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 - `status` — cross-project status view: descriptions from repos.json, status.md content (printed verbatim — the docs are lean current-state snapshots, not changelogs), design doc listings from `.planning/` directories. Planning is resolved through each repo's own `.planning` symlink, never by joining `~/dev/repos/<name>/planning` — repo names are not unique, and name-keying attributed one repo's docs to another. A `.planning` that is a real directory instead of a symlink still renders but is reported as unsynced, since Syncthing never sees it. Flags: `--all` (include description-only repos), `--json` (machine-readable), `-F` (filter repos)
 - `brief` — one-page cross-project work brief for an AI coding session. Composes three layers: planning (each repo's status.md + design docs, reusing `status`'s collector), roadmap (ordered `icb` projects + open items), and todos (the Computer-category `icb` task list surfaced as a capture inbox to triage into a project, plus open GitHub issues per repo via `gh`). The `icb`/`gh` layers degrade to warnings when a tool is missing or unauthenticated. Flags: `--json`, `-F`, `--no-issues`, `--no-tasks`.
   A fourth section, **Possibly done**, cross-checks the two: an open roadmap item carrying a `repo` is flagged when that repo's `status.md` has a line reporting completion *and* naming at least two of the item's distinctive words. It quotes the line as evidence rather than asserting a verdict, because the check is a heuristic. Two tuning decisions came from live false positives: words drawn from the completion vocabulary itself (`done`, `shipped`) are excluded from an item's distinctive terms, and one shared word is never enough. **This is the AI's dev brief across repos — deliberately NOT the human single pane of glass (`menu dashboard` in dotfiles, a glance across all life apps: tasks/habits/books/learning). Two audiences, two scopes; do not extend one to cover the other.**
-- `exec` — run an inline command or script file across repos
-- `dies` — manage and run dies (reusable scripts with metadata and stats tracking)
-  - Subcommands: `list`, `run`, `show`, `search`, `stats`
-  - `stats` aggregates one row per die, most-recently-run first, with `--since` (git's own spelling — `2 weeks`, `30.days.ago` — plus Go durations and ISO dates) and `--json`. Naming a die gives its run-by-run history instead. Per-run rows grow without bound while the number of dies does not, so the old per-run dump put the oldest screen in front of the reader first; `review-fleet` dropped the call entirely rather than carry a step nobody read
-  - `run` takes two different previews. `--dry-run`/`-n` names the repos the die would visit and executes nothing. `--check` runs it for real with `FORGE_CHECK=1` set and has the script report what it would change — a content-level preview `--dry-run` structurally cannot give. It is refused for any die not declaring `supports_check: true` in the registry, because a die that ignored the variable would write to every repo while the operator believed they were previewing
-- `precommit generate` — generate `.pre-commit-config.yaml` from standard blocks (Go implementation)
-- `ci generate` — generate `.github/workflows/validate.yml` from standard CI blocks (`--dry-run` prints instead of writing)
-- `precommit check` — report hooks that would abort a sync because they are non-standard and unmarked
+- `repos` — the reconcile verbs, and everything that acts on repos. `check` / `plan` / `apply` each take an optional die name (`apply` requires one), and `-F` narrows the repos. `list` answers which repos a verb would visit; `exec` runs an arbitrary command or script file, which is where a one-off sweep lives now that dies are Go
+- `dies` — the library, which executes nothing: `list`, `show`, `search`, `stats`
+  - `stats` aggregates one row per die, most-recently-run first, with `--since` (git's own spelling — `2 weeks`, `30.days.ago` — plus Go durations and ISO dates) and `--json`. Naming a die gives its run-by-run history instead. Per-run rows grow without bound while the number of dies does not, so the old per-run dump put the oldest screen in front of the reader first
+- `toolchain` — `show`, `plan`, `apply` over `pre-commit/toolchain.yml`. `plan` asks `pre-commit autoupdate` what upstream has released, against a config synthesized in a throwaway repo, and writes nothing. Rolling the answer out is a separate step by design: bump, resync one repo, verify, fan out
 - `cli spec` / `cli audit` — read the installed CLIs' command surfaces and report where their grammar varies. Reads from the *outside* only: `--help`, plus cobra's `__complete` where a tool has one. It never runs a bare subcommand, because the shape most worth finding is a noun that performs a read with no verb, and running it to find out would fire that read against a live API. Four help formats are parsed (`cliaudit.Framework`) — the parsers exist because five tools hand-roll their help and cannot be read any other way. **Reports variation, never fails**: `~/dev/standards/cli-design.md` holds machine contracts that bind and design guidance that does not, and this covers the second, so it exits 0 whatever it finds. Discovery resolves active repos to binaries from what each repo already declares — a `pyproject.toml` `[project.scripts]` key, a goreleaser `binary:` — falling back to the repo name; a repo declaring an entry point that is not installed is listed, one declaring none is not (that is a library, not a missing tool). **It audits what is installed, not the working tree**, so a tool built but not installed reports its released surface
 - `version` — print version, commit, and build date (set via ldflags)
 - `update` — self-update from GitHub releases (downloads pre-built binary, atomic swap)
 
-**Embedded assets** — dies, pre-commit blocks, configs, and scripts are embedded into the binary via `//go:embed` in `embed.go` at the repo root. The binary is self-contained — no repo clone needed.
-
-**Dual-mode operation:**
-
-- **Embedded mode** (default): binary uses embedded assets. Die scripts are extracted to temp files for execution. `FORGE_DATA_DIR` env var points to extracted pre-commit assets.
-- **Filesystem mode** (development): when `FORGE_DIES_DIR` env var is set, dies and assets are read from disk. Use direnv (`.envrc` in repo root) for automatic setup. Scripts reference assets via `dirname $0` resolution.
+**Embedded assets** — pre-commit blocks, configs, scripts and CI blocks are embedded into the binary via `//go:embed` in `embed.go`. The binary is self-contained. There is no filesystem mode: dies are Go, so a development build *is* the current dies, and `FORGE_DIES_DIR` had nothing left to switch.
 
 **Packages** (at repo root):
 
@@ -64,10 +55,11 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
   - **Repo registry** (`$XDG_DATA_HOME/forge/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone — a repo cloned for reading, never for cross-repo work.
   - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: nomad's `api/` and `cli/` are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
 
-  - The `-c` persistent flag overrides the repos file path. `FORGE_DIES_DIR` env var enables filesystem mode for development.
-- `dies` — registry (`LoadRegistry` accepts `fs.FS` — works with `os.DirFS`, `embed.FS`, or test fakes) and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`). Also contains the bash die scripts in category subdirectories.
-- `runner` — executes commands in each repo directory, handles output capture, colored results, filtering, and env var injection
-- `assets` — extracts embedded assets to temp directories for shell execution, manages cleanup
+  - **`sync_base`** (top level) and **`synced_dirs`** (per repo) are what the planning die reads. Declared rather than compiled in: `~/dev/repos` is one fleet's Syncthing layout, and `stats/data` belongs to ichrisbirch. Both were hardcoded in the bash die, which is what `DefaultReposPath`'s own comment rules out.
+  - The `-c` persistent flag overrides the repos file path.
+- `reconcile` — the die contract and the walk. `Change` (Verdict × Repair), the check/plan lenses, `Assess`/`Apply`, exit codes, rendering. See below.
+- `dies` — one file per die, the `Builtin()` registry, and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`).
+- `runner` — repo selection, and command execution for `repos exec`
 - `precommit` — Go implementation of config generation (block composition, custom section preservation, hook deduplication, safety checks)
 - `ci` — generates the baseline validation workflow, reusing `precommit`'s block composition and custom-section markers
 - `toolchain` — the version manifest shared by both generators
@@ -76,24 +68,26 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 
 **Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' $XDG_DATA_HOME/forge/repos.json | sort | uniq -c`). None of it takes another release, so a maintenance die run across it is churn: a config every repo "should" have is worth nothing in one that will never run the tool. An entry with **no** status counts as active — repos.json is hand-edited, and the opposite default drops a repo out of every maintenance operation without a word.
 
-**Data flow for `dies run`:** determine asset source (embedded or `FORGE_DIES_DIR`) → load registry from `fs.FS` → validate die exists → extract script to temp file if embedded → load repo registry → `SelectRepos` (retired, dormant and reference clones dropped unless named) → execute script in each repo via bash (with `FORGE_DATA_DIR` if embedded) → print colored results → append stats record → cleanup temp files.
+**Data flow for a reconcile verb:** load the registry → `SelectRepos` (retired, dormant and reference clones dropped unless named) → build one `Assets` (embedded trees + manifest) shared by the walk → `AssessAll` (Observe then Diff per repo per die, refusals isolated) → fold through the verb's lens → render rows, or `apply` and render outcomes → record the run → exit 0/1/3.
 
-## Die Scripts
+## Dies
 
-Dies are bash scripts in `dies_dir`, organized by category subdirectory. Exit code conventions:
+A die is a Go value implementing `reconcile.Die`: `Observe` reads, `Diff` is pure, `Perform` is the only writer. `plan` is a **prefix of apply's call graph** rather than apply with a flag off, so no die contains a branch asking whether it may write — there is no branch that can be wrong. `forge dies list` enumerates them; `dies/builtin.go` is the registry, and a die carries its own description and tags rather than having them in a side-file that can disagree.
 
-- **0** = OK (success)
-- **2** = SKIP (nothing to do — the `ExitSkip` constant in `runner/runner.go`)
-- **anything else** = FAIL
+That replaced a `FORGE_CHECK` environment variable read just before each script's write, opted into per die with `supports_check: true` and verified by nothing. Four of twelve write dies implemented it; the rest could only be previewed by running them.
 
-Optional metadata lives in `dies/registry.yml` with `description` and `tags` per die.
+**`Change` is the contract.** `Verdict` is matched/missing/stale/undeclared/**unknown**; `Repair` is automatic/by_hand/none.
 
-**Categories:**
+- **`plan` keeps `Automatic` repairs** — the repo differs from the standard, which is what apply is for.
+- **`check` keeps `ByHand` findings** — a hand-written pipeline, an unmarked custom hook, a `.planning` diverged from its synced copy, a missing CLAUDE.md. Real drift apply cannot fix.
+- **`Unknown` is neither**, and never moves the exit code. `gh` unauthenticated is not fifty drifted repos, and apply is not the fix for a login. *Unverified is not permission.*
+- **`Undeclared` is never actionable.** Forge does not delete what it did not put there.
 
-- `checks/` — scorecard dies: report a repo's state, change nothing
-- `maintenance/` — golden path enforcement: bring a repo back to the standard
+The old `checks/` vs `maintenance/` directory split was this distinction at the wrong granularity — `has-clean-gitignore` ended by printing "run sync-gitignore", the same desired-state list written twice in two files. Each concern is one die now.
 
-`forge dies list` enumerates them with descriptions; the directories are the source of truth.
+**Exit codes** (`cli-design.md` § Machine contract, plus terraform's `-detailed-exitcode`): 0 converged, 1 pending changes, 2 usage, 3 something is wrong. `plan` answers 0/1 and 3 only on a refusal; `check` answers 0/3 and never 1.
+
+**The property test is the point.** `dies/property_test.go` runs `Observe` + `Diff` for every registered die against a fixture sandbox and fails if anything changed. A new die is safe by default rather than safe by declaration, which is exactly what `supports_check` could not be.
 
 ## Pre-commit Standardization System
 
@@ -124,9 +118,9 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 - `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. Rules are narrowed to `ambiguous, references, structure, convention.terminator`: sqlfluff's defaults are mostly layout and capitalisation opinions, which failed every `.sql` file in the portfolio and would have taught everyone to skip the hook. The narrowed set passes clean across all seven repos while still catching unparsable SQL and unused CTEs
 - `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, codespell, pytest, pyright). The ruff `select` is the six rules every repo already runs, not an aspirational set: a template nothing conforms to reads as the standard while being unable to measure drift. `[tool.pyright]` is here despite the hook enforcing mypy, because basedpyright runs in every editor on every machine and is therefore exactly what drifts — it was dropped once as "an editor concern" and the four repos configuring it diverged. Named `pyright`, not `basedpyright`, so one section serves nvim and Pylance. `typeCheckingMode = "standard"` replaced the twelve-key blocks repos had accumulated; that collapse was a one-time migration, already applied everywhere, and is not something the steady-state sync repeats
 
-**Config generation** — a Go function in `precommit/generate.go`, invoked as `forge precommit generate`. Handles block composition, custom section preservation, hook deduplication, and safety checks.
+**Config generation** — `precommit/generate.go`. Block composition, custom section preservation, hook deduplication, and safety checks, all as pure functions over text. The `precommit` die composes them directly rather than through `Run`/`DryRun`, which is what makes `Observe` a read: `Generate` and `SafetyCheck` cannot write, so the read verbs have no path to a write.
 
-Which blocks apply, and **where each one runs**, come from the repo's declared `toolchain.components` — the same source CI reads, never a filesystem probe. Stack blocks carry `{{dir}}` (a `cd` target) and `{{dirprefix}}` (a `files:` anchor, empty at the root since `^\./` matches nothing pre-commit passes). Renders that come out identical collapse, so a repo with `api/` and `cli/` gets one Go block; renders that differ have their hook ids and names suffixed with the directory. `--detected <stack>` remains as an override for a repo not yet in the registry, and places everything at the root. `forge precommit stacks` prints the declared categories so the die deploys tool configs from that same answer.
+Which blocks apply, and **where each one runs**, come from the repo's declared `toolchain.components` — the same source CI reads, never a filesystem probe. Stack blocks carry `{{dir}}` (a `cd` target) and `{{dirprefix}}` (a `files:` anchor, empty at the root since `^\./` matches nothing pre-commit passes). Renders that come out identical collapse, so a repo with `api/` and `cli/` gets one Go block; renders that differ have their hook ids and names suffixed with the directory. `dies.declaredCategories` derives the same answer the die deploys tool configs from, so the config and its configs cannot disagree about which stacks a repo has.
 
 A block must appear in `categoryMap` (stack-gated) or `genericBlocks` (every repo); one in neither is an error rather than a silent default. The `sql` category is the one gated by something other than a component — a declared `sql_dialect` pulls it in and fills `{{dialect}}`, because `.sql` files have no build directory of their own and nothing in them says postgres rather than sqlite.
 
@@ -135,7 +129,7 @@ A block must appear in `categoryMap` (stack-gated) or `genericBlocks` (every rep
 - `generate_config.py` — legacy Python generator (replaced by Go implementation, kept as reference)
 - `merge_pyproject_tools.py` — merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing). **The standard owns exactly the keys it writes**, recorded as `[tool.forge] managed` in each repo's pyproject. That record is what makes retraction possible: a key dropped from the template is removed everywhere on the next sync, because the record proves forge put it there, and the retraction is printed rather than silent. A key absent from the record is the project's and is unreachable from the delete path.
 
-  This replaced a `REPLACE_SECTIONS` set naming whole sections to overwrite wholesale. Owning a section and setting a floor under one are different jobs, and one verb doing both deleted project config three times — a repo's ruff `exclude`, then a FastAPI repo's bugbear exemptions, its pydantic mypy plugin and an alembic per-file-ignore. Per-key ownership recorded at write time cannot express that mistake, which is why the fix is a mechanism rather than a fourth entry removed from a list. Paths are stored as arrays, not dotted strings, because a segment can contain a dot (`per-file-ignores."__init__.py"`) and the record that authorizes deletion does not get to depend on quoting being right. The record table is rebuilt from scratch on every write, so a resync is byte-identical — the die's SKIP status depends on that idempotence
+  This replaced a `REPLACE_SECTIONS` set naming whole sections to overwrite wholesale. Owning a section and setting a floor under one are different jobs, and one verb doing both deleted project config three times — a repo's ruff `exclude`, then a FastAPI repo's bugbear exemptions, its pydantic mypy plugin and an alembic per-file-ignore. Per-key ownership recorded at write time cannot express that mistake, which is why the fix is a mechanism rather than a fourth entry removed from a list. Paths are stored as arrays, not dotted strings, because a segment can contain a dot (`per-file-ignores."__init__.py"`) and the record that authorizes deletion does not get to depend on quoting being right. The record table is rebuilt from scratch on every write, so a resync is byte-identical — the die reporting converged depends on that idempotence
 
 **Custom hook markers** — repos with project-specific hooks use these markers in their `.pre-commit-config.yaml`:
 
@@ -181,12 +175,12 @@ one would destroy work nothing could recover. `ci.Run` aborts on any `validate.y
 `# forge-toolchain:` header for the same reason. Bespoke pipelines stay as separate workflow files;
 the generated one is additive.
 
-**`dies/checks/can-generate.sh`** — the pre-rollout gate. Dry-runs both generators against a repo,
-validates the workflow with actionlint and the config with `pre-commit validate-config`, and reports
-what would block a real sync: unmarked custom hooks, or a hand-written `ci.yml`. Writes nothing.
-**Run it across the portfolio before bumping the manifest** — a version bump fans out to every repo,
-so the rollout is only as safe as its worst one. The gate is clean when it reports zero failures;
-run it rather than trusting a count written here.
+**`forge repos check` is the pre-rollout gate.** A version bump fans out to every repo, so the rollout
+is only as safe as its worst one. The `precommit` and `ci` dies validate the workflow with actionlint
+and the config with `pre-commit validate-config`, and report what would block a real sync as `ByHand`
+findings. This absorbed the `can-generate` die, which existed only because the generators could not be
+run across the portfolio — the thing `-F` gave every other operation and the promotion to a top-level
+command had taken away.
 
 The findings worth knowing are the ones no schema validator can reach. `defaults.run.working-directory`
 does not apply to action inputs, so any path in one needs `{{dir}}`. A valid workflow can still fail at
@@ -202,42 +196,38 @@ image build is bespoke per repo (each app builds and pushes its own in its own p
 is a pre-commit concern, so there is no baseline job left to run. A declared stack with no block is
 skipped rather than emitting an empty job.
 
-**`dies/maintenance/sync-pyproject.sh`** — the pyproject merge alone, without the config
-regeneration. Adopting one better setting through the full sync die means also fanning out whatever
-`toolchain.yml` currently pins, to every Python repo at once; most carry no `# forge-toolchain:`
-stamp yet, so that is a first-time rewrite rather than a bump. Coupling a cheap change to an
-expensive one is why the cheap change stopped being made and the settings drifted instead. Running
-it across the portfolio is also the drift report — OK means drifted, SKIP means current.
+**The `pyproject` die is separate from `precommit`, and stays that way.** Adopting one better setting
+through the full sync means also fanning out whatever `toolchain.yml` currently pins, to every Python
+repo at once. Coupling a cheap change to an expensive one is why the cheap change stopped being made
+and the settings drifted instead.
 
-`--check` (via `FORGE_CHECK`) prints the unified diff each repo would take instead of writing it. A
-template edit fans out to every Python repo at once, so this is the plan step: see the change across
-the portfolio, then apply. It is also the only way to preview a retraction before it happens.
+Its `Observe` is the merge script's own `--check`, whose unified diff becomes the `Change`'s `Patch` —
+so `forge repos plan pyproject` shows a template edit as it will land across every Python repo, and is
+the only way to preview a retraction. `uv run --no-project` is passed because without it uv builds the
+repo being edited just to run a stdlib script.
 
-Both this and the sync die pass `uv run --no-project`: without it uv builds the repo being edited
-just to run a stdlib script, and the build chatter on stderr is long enough to swallow the one word
-the die reads back to decide OK versus SKIP.
-
-**`dies/maintenance/sync-ci.sh`** — generates the workflow, exits SKIP when current or when no
-declared component has a CI block.
-
-**`dies/maintenance/sync-pre-commit.sh`** — the main die that orchestrates everything. Generates the config, deploys tool configs, merges pyproject.toml, and installs the git hooks for **every stage a block uses** (`pre-commit`, `commit-msg`, `prepare-commit-msg`, `post-commit`) — an uninstalled stage means those hooks silently never run. Idempotent — exits with SKIP when nothing changed.
+**The `precommit` die** generates the config, deploys the tool configs its hooks read, and installs the
+git hooks for **every stage the config declares** — an uninstalled stage means those hooks silently
+never run. Stages are parsed from the `stages:` lists rather than substring-matched, because
+`commit-msg` is a substring of `prepare-commit-msg`. Running it across the portfolio found 41 repos
+declaring both those stages with neither hook installed.
 
 ## Testing
 
 **Go tests** (`go test ./...`):
 
 - `config/` — forge and syncer config loading
-- `dies/` — registry and stats, plus integration tests for the sync-pre-commit die (declared stacks, dedup, custom preservation, safety, config deployment). Each test writes a temp registry naming its temp repo and points the die at it with `XDG_DATA_HOME`, so a test declares its stacks the same way a real repo does.
+- `reconcile/` — the fold (a mixed `[]Change` through both lenses), the walk's refusal isolation, exit codes
+- `dies/` — per-die behavior against a temp fixture repo, plus `property_test.go`, which asserts across **every** registered die that `Observe` + `Diff` leave the sandbox byte-identical and that no `Change` is left unclassified
 - `precommit/` — config generator: unit tests (using `fstest.MapFS`) plus integration tests against real blocks
 - `runner/` — repo filtering, execution
 
-**Note:** The sync-pre-commit integration tests (`dies/sync_precommit_test.go`) require the `forge` binary on PATH since the die script calls `forge precommit generate`. Run `go install .` before `go test ./...`.
+Nothing shells out to `forge`, so `go test ./...` needs no prior `go install`.
 
 **Python tests** (`pre-commit/scripts/run_tests.sh`):
 
-- `test_generate_config.py` — unit tests for the legacy Python generator
 - `test_merge_pyproject_tools.py` — pyproject merge: what the standard forces, what it never deletes, and what it retracts
-- `test_integration.py` — integration tests for the legacy Python generator
+- `test_generate_config.py`, `test_integration.py` — the legacy Python generator, kept as reference
 
 Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 
@@ -259,4 +249,4 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 
 ## Embedded Assets
 
-All die scripts, pre-commit blocks, configs, and Python scripts are embedded into the binary via `//go:embed` directives in `embed.go`. By default, the binary uses embedded assets. Set `FORGE_DIES_DIR` env var to use filesystem assets during development (the `.envrc` in the repo root does this automatically via direnv).
+Pre-commit blocks, configs, Python scripts and CI blocks are embedded via `//go:embed` in `embed.go`. There is no filesystem mode and no extraction, with one exception: the `pyproject` die materializes `merge_pyproject_tools.py` and its template to a temp directory to run them, because tomlkit is the only thing in either ecosystem that edits TOML losslessly and a round-trip that drops a repo's comments is a replacement rather than a merge.
