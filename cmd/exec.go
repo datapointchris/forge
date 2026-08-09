@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/v5/config"
@@ -18,16 +19,21 @@ var (
 	scriptFile      string
 )
 
+// execCmd is the escape hatch, and the reason dropping bash dies costs nothing:
+// a one-off sweep is still one command, it just no longer has to be registered
+// as a die to be run.
 var execCmd = &cobra.Command{
 	Use:   "exec [-- command...]",
-	Short: "Execute a command in each repo",
-	Long: `Execute a command in each repo tracked by syncer.
+	Short: "Run an arbitrary command in each repo",
+	Long: `Run a command in each selected repo.
 
-Inline mode:
-  forge exec -- git status --short
+Inline:
+  forge repos exec -- git status --short
 
-Script mode:
-  forge exec -f ./dies/maintenance/my-script.sh`,
+Script file:
+  forge repos exec -f ./one-off.sh
+
+For anything reusable, write a die instead — it gets plan, check and apply.`,
 	RunE: runExec,
 }
 
@@ -35,15 +41,15 @@ func init() {
 	execCmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
 	execCmd.Flags().BoolVarP(&execDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
 	execCmd.Flags().StringVarP(&scriptFile, "file", "f", "", "path to script file to execute in each repo")
-	rootCmd.AddCommand(execCmd)
+	reposCmd.AddCommand(execCmd)
 }
 
 func runExec(cmd *cobra.Command, args []string) error {
 	if scriptFile == "" && len(args) == 0 {
-		return fmt.Errorf("provide a command after -- or use -f to specify a script file")
+		return cobracmd.UsageError(fmt.Errorf("provide a command after -- or use -f to specify a script file"))
 	}
 	if scriptFile != "" && len(args) > 0 {
-		return fmt.Errorf("cannot use both -f and inline command")
+		return cobracmd.UsageError(fmt.Errorf("cannot use both -f and inline command"))
 	}
 
 	if scriptFile != "" {

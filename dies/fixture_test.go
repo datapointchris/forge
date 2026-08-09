@@ -177,3 +177,7 @@ func readFile(t *testing.T, path string) string {
 func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
+
+func shellcheckException(rule, reason string) config.ShellcheckException {
+	return config.ShellcheckException{Rule: rule, Reason: reason}
+}

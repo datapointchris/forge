@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/fs"
 
 	"github.com/spf13/cobra"
 
@@ -69,19 +71,12 @@ var reposApplyCmd = &cobra.Command{
 }
 
 func init() {
-	for _, cmd := range []*cobra.Command{reposCheckCmd, reposPlanCmd, reposApplyCmd} {
+	for _, cmd := range []*cobra.Command{reposCheckCmd, reposPlanCmd, reposApplyCmd, reposListCmd} {
 		cmd.Flags().StringSliceVarP(&reposFilterNames, "filter", "F", nil, "comma-separated repo names to include")
 		cmd.Flags().BoolVar(&reposJSON, "json", false, "output as JSON to stdout")
 		reposCmd.AddCommand(cmd)
 	}
 	rootCmd.AddCommand(reposCmd)
-}
-
-func completeDieNames(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	return dies.BuiltinNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
 // selectedDies resolves the die argument, or every die when none was named.
@@ -118,6 +113,25 @@ func targets() ([]reconcile.Target, error) {
 		selected = append(selected, reconcile.Target{Repo: repo, Assets: assets, Config: cfg})
 	}
 	return selected, nil
+}
+
+// resolvePreCommitFS roots an fs.FS at the pre-commit asset directory, the
+// parent of both the blocks and the toolchain manifest.
+func resolvePreCommitFS() (fs.FS, error) {
+	assetsFS, err := fs.Sub(embeddedPreCommit, "pre-commit")
+	if err != nil {
+		return nil, fmt.Errorf("accessing embedded assets: %w", err)
+	}
+	return assetsFS, nil
+}
+
+// resolveCIBlocksFS roots an fs.FS at the CI blocks directory.
+func resolveCIBlocksFS() (fs.FS, error) {
+	blocksFS, err := fs.Sub(embeddedCI, "ci/blocks")
+	if err != nil {
+		return nil, fmt.Errorf("accessing embedded CI blocks: %w", err)
+	}
+	return blocksFS, nil
 }
 
 // loadAssets gathers the embedded trees and the version manifest once, so every
@@ -162,11 +176,13 @@ func runReconcile(cmd *cobra.Command, args []string, lens reconcile.Lens) error 
 		if err := reconcile.EmitJSON(cmd.OutOrStdout(), results); err != nil {
 			return err
 		}
+		recordReconcileRun(chosen, results)
 		return reconcile.ExitFor(results)
 	}
 
 	render(cmd, results)
 	reconcile.RenderSummary(cmd.OutOrStdout(), results)
+	recordReconcileRun(chosen, results)
 	return reconcile.ExitFor(results)
 }
 
@@ -180,6 +196,22 @@ func render(cmd *cobra.Command, results []reconcile.Result) {
 			reconcile.RenderChange(cmd.ErrOrStderr(), change)
 		}
 		reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+	}
+}
+
+// recordReconcileRun files one record per die, so `forge dies stats` keeps
+// answering which operations are used even when a walk covered several at once.
+func recordReconcileRun(chosen []reconcile.Die, results []reconcile.Result) {
+	for _, die := range chosen {
+		var mine []reconcile.Result
+		for _, result := range results {
+			if result.Die == die.Name() {
+				mine = append(mine, result)
+			}
+		}
+		if len(mine) > 0 {
+			recordRun(die.Name(), mine)
+		}
 	}
 }
 
@@ -226,6 +258,7 @@ func runReposApply(cmd *cobra.Command, args []string) error {
 	}
 
 	reconcile.RenderSummary(cmd.OutOrStdout(), results)
+	recordReconcileRun(chosen, results)
 
 	// Drift is not a failure of apply — it is what apply just repaired — so
 	// only an Issue reaches the exit code here.
@@ -233,6 +266,37 @@ func runReposApply(cmd *cobra.Command, args []string) error {
 		if result.Status == reconcile.Issue {
 			return &reconcile.ExitError{Code: reconcile.ExitIssue}
 		}
+	}
+	return nil
+}
+
+var reposListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List the repos a verb would act on",
+	Long: `List the selected repos.
+
+This is what --dry-run used to answer on a die run. It is its own question —
+"which repos" — and it was never the same one as "what would change", which is
+` + "`plan`" + `.`,
+	Args: cobra.NoArgs,
+	RunE: runReposList,
+}
+
+func runReposList(cmd *cobra.Command, _ []string) error {
+	cfg, err := loadRepos()
+	if err != nil {
+		return err
+	}
+
+	selected := runner.SelectRepos(cfg.Repos, reposFilterNames)
+	if reposJSON {
+		encoder := json.NewEncoder(cmd.OutOrStdout())
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(selected)
+	}
+
+	for _, repo := range selected {
+		row(cmd.OutOrStdout(), "%s\n", repo.Name)
 	}
 	return nil
 }

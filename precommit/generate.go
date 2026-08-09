@@ -652,3 +652,29 @@ func joinTrimTrailing(lines []string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// ShellcheckDisables renders a repo's declared exceptions as the block appended
+// to its deployed .shellcheckrc.
+//
+// Printed as an appendix rather than merged into the shared config, so one
+// writer owns that file and a repo declaring nothing still gets the shared
+// config byte for byte. Each exception carries its reason so it can be
+// re-examined instead of inherited.
+func ShellcheckDisables(declared *config.Toolchain) string {
+	if declared == nil || len(declared.ShellcheckDisable) == 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	out.WriteString("\n# Repo-specific exceptions, declared in the registry rather than written\n")
+	out.WriteString("# here — see toolchain.shellcheck_disable. Each one carries its reason so\n")
+	out.WriteString("# it can be re-examined instead of inherited.\n")
+	for _, exception := range declared.ShellcheckDisable {
+		out.WriteString("\n")
+		for _, line := range strings.Split(exception.Reason, "\n") {
+			fmt.Fprintf(&out, "# %s\n", line)
+		}
+		fmt.Fprintf(&out, "disable=%s\n", exception.Rule)
+	}
+	return out.String()
+}

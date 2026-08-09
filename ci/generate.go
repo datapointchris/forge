@@ -48,8 +48,12 @@ var releaseGateRef = regexp.MustCompile(`uses:\s*\./` + regexp.QuoteMeta(Workflo
 //
 // Every unknown answers false, which reproduces the old behavior — an extra
 // run, never a missing one.
-func ReleaseGatesOnValidate() bool {
-	data, err := os.ReadFile(releaseWorkflowPath)
+//
+// Takes the repo root rather than reading the working directory: the dies walk
+// many repos in one process, where a relative path answers about whichever repo
+// the process happens to be standing in.
+func ReleaseGatesOnValidate(root string) bool {
+	data, err := os.ReadFile(filepath.Join(root, releaseWorkflowPath))
 	if err != nil {
 		return false
 	}
@@ -176,7 +180,7 @@ func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.C
 	if data, err := os.ReadFile(WorkflowPath); err == nil && strings.HasPrefix(string(data), "# forge-toolchain:") {
 		existing = string(data)
 	}
-	return Generate(blocksFS, manifest, components, precommit.ExtractCustomSections(existing), ReleaseGatesOnValidate())
+	return Generate(blocksFS, manifest, components, precommit.ExtractCustomSections(existing), ReleaseGatesOnValidate("."))
 }
 
 // Run generates the workflow and writes it when changed.
@@ -195,7 +199,7 @@ func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Comp
 
 	customSections := precommit.ExtractCustomSections(existing)
 
-	workflow, err := Generate(blocksFS, manifest, components, customSections, ReleaseGatesOnValidate())
+	workflow, err := Generate(blocksFS, manifest, components, customSections, ReleaseGatesOnValidate("."))
 	if err != nil {
 		return "", err
 	}

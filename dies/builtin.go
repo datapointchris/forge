@@ -28,6 +28,8 @@ func Builtin() []reconcile.Die {
 		BranchProtection{},
 		DefaultBranch{},
 		Pyproject{},
+		PreCommit{},
+		CI{},
 	}
 }
 
