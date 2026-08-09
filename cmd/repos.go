@@ -1,12 +1,16 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/datapointchris/goselfupdate/cobracmd"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/v5/dies"
@@ -18,6 +22,7 @@ import (
 var (
 	reposFilterNames []string
 	reposJSON        bool
+	reposYes         bool
 )
 
 var reposCmd = &cobra.Command{
@@ -62,12 +67,17 @@ var reposPlanCmd = &cobra.Command{
 }
 
 var reposApplyCmd = &cobra.Command{
-	Use:   "apply <die>",
+	Use:   "apply [die]",
 	Short: "Make the pending changes",
-	// A die is required. An unaliased apply over every die and every repo is
-	// not something anyone should be able to type by accident, and the read
-	// verbs are where the whole-portfolio question belongs.
-	Args:              cobra.ExactArgs(1),
+	Long: `Make the changes plan reported.
+
+Naming a die applies that one. Omitting it applies them all, which is the other
+half of the terraform loop and is gated by a confirmation rather than by being
+untypeable — the plan printed above the prompt is what you are confirming.
+
+Only Automatic repairs are ever performed. A finding check reports is
+structurally unreachable from here, whether or not a die was named.`,
+	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeDieNames,
 	RunE:              runReposApply,
 }
@@ -78,6 +88,8 @@ func init() {
 		cmd.Flags().BoolVar(&reposJSON, "json", false, "output as JSON to stdout")
 		reposCmd.AddCommand(cmd)
 	}
+	reposApplyCmd.Flags().BoolVar(&reposYes, "yes", false, "apply without confirming, for the unaliased form")
+
 	rootCmd.AddCommand(reposCmd)
 }
 
@@ -232,47 +244,118 @@ func runReposApply(cmd *cobra.Command, args []string) error {
 
 	measurements := reconcile.AssessAll(walked, chosen)
 
-	// The width comes from every row the run will print, so the column does not
-	// widen halfway down as apply reaches a longer name.
+	// The plan is printed in full before anything is written, and what is acted
+	// on is what was printed — Perform re-verifies live rather than the walk
+	// taking a second look that may have found something different.
 	planned := make([]reconcile.Result, 0, len(measurements))
 	for _, m := range measurements {
 		planned = append(planned, m.Fold(reconcile.LensPlan))
 	}
 	width := reconcile.LabelWidth(planned)
+	if !reposJSON {
+		render(cmd, planned)
+	}
+
+	if err := confirmApply(cmd, args, planned); err != nil {
+		return err
+	}
 
 	var results []reconcile.Result
 	for i, m := range measurements {
-		// The plan is printed before it is acted on, and what is acted on is
-		// what was printed — Perform re-verifies live rather than the walk
-		// taking a second look that may find something different.
 		result := planned[i]
-		for _, change := range result.Changes {
-			reconcile.RenderChange(cmd.ErrOrStderr(), change)
-		}
-
-		for _, outcome := range reconcile.Apply(m) {
+		outcomes := reconcile.Apply(m)
+		for _, outcome := range outcomes {
 			reconcile.RenderOutcome(cmd.ErrOrStderr(), outcome)
 			if !outcome.OK() {
 				result.Status = reconcile.Issue
 				result.Detail = outcome.Message
 			}
 		}
-
-		reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+		if len(outcomes) > 0 {
+			reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+		}
 		results = append(results, result)
 	}
 
-	reconcile.RenderSummary(cmd.OutOrStdout(), results)
+	if reposJSON {
+		if err := reconcile.EmitJSON(cmd.OutOrStdout(), results); err != nil {
+			return err
+		}
+	} else {
+		reconcile.RenderSummary(cmd.OutOrStdout(), results)
+	}
 	recordReconcileRun(chosen, results)
 
-	// Drift is not a failure of apply — it is what apply just repaired — so
-	// only an Issue reaches the exit code here.
+	// Drift is not a failure of apply — it is what apply just repaired — so only
+	// an Issue reaches the exit code here.
 	for _, result := range results {
 		if result.Status == reconcile.Issue {
 			return &reconcile.ExitError{Code: reconcile.ExitIssue}
 		}
 	}
 	return nil
+}
+
+// confirmApply gates the unaliased form, where the blast radius is every
+// operation forge knows, everywhere.
+//
+// Naming a die is its own confirmation — the word is the scope — so that form
+// keeps running unprompted. cli-design.md scales friction to blast radius, and
+// nothing here is destructive in the sense that rule bites on: no die commits,
+// so every file-shaped change lands as an unstaged diff. What earns the prompt
+// is size, which is why it prints a count rather than a warning.
+func confirmApply(cmd *cobra.Command, args []string, planned []reconcile.Result) error {
+	if len(args) > 0 || reposYes {
+		return nil
+	}
+
+	pending, repos := pendingSummary(planned)
+	if pending == 0 {
+		return nil
+	}
+	scale := fmt.Sprintf("%s across %s",
+		plural(pending, "change", "changes"), plural(repos, "repo", "repos"))
+
+	// Never block on a closed stdin: a prompt waiting on one deadlocks the
+	// caller with no output and no exit code.
+	if !isatty.IsTerminal(os.Stdin.Fd()) {
+		return cobracmd.UsageError(fmt.Errorf("%s pending; pass --yes to apply non-interactively", scale))
+	}
+
+	row(cmd.ErrOrStderr(), "\napply %s? [y/N] ", scale)
+	answer, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && answer == "" {
+		return err
+	}
+	if strings.ToLower(strings.TrimSpace(answer)) != "y" {
+		// Said out loud rather than exiting silently: a prompt that takes an
+		// answer and prints nothing back leaves the operator unsure whether it
+		// was read, which is the state a confirmation exists to remove.
+		row(cmd.ErrOrStderr(), "canceled — nothing was applied\n")
+		return cobracmd.ErrReported
+	}
+	return nil
+}
+
+// pendingSummary counts what apply would do, and across how many repos.
+func pendingSummary(planned []reconcile.Result) (changes, repos int) {
+	seen := map[string]bool{}
+	for _, result := range planned {
+		changes += result.Pending
+		if result.Pending > 0 {
+			seen[result.Repo] = true
+		}
+	}
+	return changes, len(seen)
+}
+
+// plural renders a count with its noun. Both forms are named by the caller,
+// because English inflection is not derivable from the singular.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return strconv.Itoa(n) + " " + many
 }
 
 var reposListCmd = &cobra.Command{

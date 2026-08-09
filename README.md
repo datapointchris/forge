@@ -127,8 +127,10 @@ forge repos check
 forge repos plan
 forge repos plan precommit -F forge,dotfiles
 
-# Make it so — a die is required
+# Make it so. Naming a die applies that one; omitting it applies them all,
+# after a confirmation showing the count (--yes to skip, required off a TTY).
 forge repos apply gitignore -F refcheck
+forge repos apply -F refcheck
 
 # Which repos a verb would visit
 forge repos list
