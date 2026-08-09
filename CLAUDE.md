@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Forge
 
-Forge is a Go CLI tool that serves as an internal developer platform (IDP) for managing a portfolio of git repositories. It provides cross-project status views, planning directory sync, command execution across repos, reusable maintenance scripts ("dies"), and a composable pre-commit standardization system.
+Forge **acts on repos**: it runs an operation against a selection of them, one at a time. Planning
+directory sync, command execution, reusable maintenance scripts ("dies"), and the composable
+pre-commit and CI standardization systems.
+
+**It owns no aggregation.** Reporting across the portfolio — reading every repo and saying where
+things stand — is `fleet`'s job, and the two are kept apart because their blast radius is opposite:
+a command that sweeps every repo read-only sat at the same level as one that rewrites a file in
+your working directory, with nothing in the grammar to tell them apart. If a command *changes* a
+repo it belongs here; if it only reports, it belongs in fleet.
+
+**`status` and `brief` are on the wrong side of that line** and predate it. Both aggregate and
+neither writes, so both belong in fleet — `fleet status` already exists and duplicates `forge
+status` today. Do not extend either one here, and do not add a third: new reporting goes to fleet.
 
 ## Commands
 
