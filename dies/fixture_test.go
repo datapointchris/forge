@@ -173,3 +173,7 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(content)
 }
+
+func writeFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0o644)
+}

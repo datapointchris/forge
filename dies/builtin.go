@@ -26,6 +26,7 @@ func Builtin() []reconcile.Die {
 		ClaudeMD{},
 		MergeSettings{},
 		BranchProtection{},
+		DefaultBranch{},
 	}
 }
 

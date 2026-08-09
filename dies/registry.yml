@@ -18,6 +18,3 @@ dies:
     description: "Merge standard [tool.*] sections into a Python repo's pyproject.toml, without regenerating the pre-commit config. Idempotent; SKIP means already current."
     tags: [python, pyproject, standardization, golden-path]
     supports_check: true
-  maintenance/rename-master-to-main.sh:
-    description: "Rename master branch to main (local + remote + GitHub default). Idempotent."
-    tags: [git, branches, maintenance]
