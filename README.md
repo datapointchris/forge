@@ -4,14 +4,15 @@ Run commands and reusable scripts across multiple git repositories.
 
 Forge reads a repo list from config and executes operations in each repo's working directory — either ad-hoc commands or managed scripts called **dies**.
 
-**Forge acts on repos; it does not report across them.** Reading the portfolio and saying where it
-stands is [fleet](https://github.com/datapointchris/fleet). The split is by blast radius: a
-read-only sweep and a command that rewrites a file in your working directory should not sit at the
-same level with nothing in the grammar to tell them apart. If it changes a repo it goes here; if it
-only reports, it goes in fleet.
+**Forge's unit of work is one repo.** Running an operation across the whole portfolio is machinery
+for reaching many repos, not a different kind of operation. Questions about the fleet as a whole
+belong to [fleet](https://github.com/datapointchris/fleet), whose unit is the fleet itself.
 
-`status` and `brief` predate that line and are on the wrong side of it — both are aggregation, and
-`fleet status` already covers the first.
+The test is what a command operates on, not whether it writes: a per-repo read still belongs here,
+and a fleet-level question belongs in fleet even if answering it means writing something.
+
+`status` and `brief` predate that line and are on the wrong side of it — both answer a question
+about the portfolio, and `fleet status` already covers the first.
 
 ## Installation
 

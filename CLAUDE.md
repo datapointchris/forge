@@ -8,15 +8,18 @@ Forge **acts on repos**: it runs an operation against a selection of them, one a
 directory sync, command execution, reusable maintenance scripts ("dies"), and the composable
 pre-commit and CI standardization systems.
 
-**It owns no aggregation.** Reporting across the portfolio — reading every repo and saying where
-things stand — is `fleet`'s job, and the two are kept apart because their blast radius is opposite:
-a command that sweeps every repo read-only sat at the same level as one that rewrites a file in
-your working directory, with nothing in the grammar to tell them apart. If a command *changes* a
-repo it belongs here; if it only reports, it belongs in fleet.
+**The split with fleet is granularity, not read versus write.** Every operation here is "do this to
+a repo"; the sweep machinery — selection, `-F`, running across the portfolio — is how one operation
+reaches many repos, not a different kind of operation. `fleet`'s unit is the fleet as a whole, and
+it does no repo-specific work beyond reading each repo to assemble a view of it.
 
-**`status` and `brief` are on the wrong side of that line** and predate it. Both aggregate and
-neither writes, so both belong in fleet — `fleet status` already exists and duplicates `forge
-status` today. Do not extend either one here, and do not add a third: new reporting goes to fleet.
+So the test for a new command is **what it operates on**. A read that runs per repo still belongs
+here; a question about the fleet belongs in fleet even if answering it one day means writing
+something.
+
+**`status` and `brief` are on the wrong side of that line** and predate it. Both answer a question
+about the portfolio rather than operating on a repo — `fleet status` already exists and duplicates
+`forge status` today. Do not extend either one here, and do not add a third.
 
 ## Commands
 
