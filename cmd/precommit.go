@@ -18,6 +18,7 @@ import (
 var precommitCmd = &cobra.Command{
 	Use:   "precommit",
 	Short: "Pre-commit config management",
+	RunE:  requireSubcommand,
 }
 
 var precommitGenerateCmd = &cobra.Command{

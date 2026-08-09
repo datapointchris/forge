@@ -34,6 +34,7 @@ var diesCmd = &cobra.Command{
 
 A die is a script in the dies directory, organized by category (subdirectory).
 Use 'forge dies list' to see available dies, or 'forge dies run' to execute one.`,
+	RunE: requireSubcommand,
 }
 
 var diesListCmd = &cobra.Command{

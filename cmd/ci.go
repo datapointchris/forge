@@ -18,6 +18,7 @@ var ciDryRun bool
 var ciCmd = &cobra.Command{
 	Use:   "ci",
 	Short: "Manage generated CI workflows",
+	RunE:  requireSubcommand,
 }
 
 var ciGenerateCmd = &cobra.Command{
