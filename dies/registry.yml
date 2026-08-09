@@ -46,6 +46,10 @@ dies:
     description: "Ensure the standard .gitignore entries are present for the declared stack. Creates the file when absent, otherwise append-only, never a rewrite; does not commit. SKIP means already current."
     tags: [gitignore, python, standardization, golden-path]
     supports_check: true
+  maintenance/sync-merge-settings.sh:
+    description: "Set the GitHub merge commit title to the PR title and its body to the PR body, and delete the branch on merge, so a merged PR reads as the work rather than 'Merge pull request #N from ...'. Changes repo settings, not files; commits nothing. SKIP means already current, or a non-GitHub remote."
+    tags: [github, pr, merge, standardization]
+    supports_check: true
   maintenance/sync-markdownlintignore.sh:
     description: "Ensure the standard .markdownlintignore entries are present. Creates the file when absent, otherwise append-only, never a rewrite; does not commit. SKIP means already current."
     tags: [markdownlint, standardization, golden-path]

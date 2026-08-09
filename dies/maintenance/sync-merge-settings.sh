@@ -55,17 +55,22 @@ if ! slug=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null); th
 fi
 
 if ! current=$(gh api "repos/$slug" \
-  --jq '"\(.merge_commit_title) \(.merge_commit_message) \(.delete_branch_on_merge)"' 2>/dev/null); then
+  --jq '"\(.merge_commit_title) \(.merge_commit_message) \(.delete_branch_on_merge) \(.allow_merge_commit)"' 2>/dev/null); then
   echo "could not read settings for $slug"
   exit 2
 fi
 
-read -r title message delete_branch <<<"$current"
+read -r title message delete_branch allow_merge <<<"$current"
 
 changes=()
 [ "$title" != "$WANT_TITLE" ] && changes+=("title: $title → $WANT_TITLE")
 [ "$message" != "$WANT_MESSAGE" ] && changes+=("message: $message → $WANT_MESSAGE")
 [ "$delete_branch" != "true" ] && changes+=("delete_branch_on_merge: $delete_branch → true")
+# GitHub rejects the two title/message fields outright (HTTP 422) when merge
+# commits are disabled, so this is not an extra opinion bolted on — it is what
+# makes the rest of the request legal. Two repos failed exactly this way.
+# Squash and rebase are left alone: enabling merge does not require banning them.
+[ "$allow_merge" != "true" ] && changes+=("allow_merge_commit: $allow_merge → true")
 
 if [ ${#changes[@]} -eq 0 ]; then
   echo "merge settings current"
@@ -78,6 +83,7 @@ if [ -n "${FORGE_CHECK:-}" ]; then
 fi
 
 gh api -X PATCH "repos/$slug" \
+  -F allow_merge_commit=true \
   -f merge_commit_title="$WANT_TITLE" \
   -f merge_commit_message="$WANT_MESSAGE" \
   -F delete_branch_on_merge=true \
