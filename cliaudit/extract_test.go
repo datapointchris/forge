@@ -30,7 +30,7 @@ func TestCobraTreeComesFromCompleteNotHelp(t *testing.T) {
 		"__complete books list ": ":4\nCompletion ended with directive: ShellCompDirectiveNoFileComp",
 		"__complete books show ": ":4\nCompletion ended with directive: ShellCompDirectiveNoFileComp",
 		"--help":                 cobraRoot,
-		"books --help":           "Work with books\n\nUsage:\n  demo books [command]\n",
+		"books --help":           "Work with books\n\nUsage:\n  demo books [command]\n\nAvailable Commands:\n  list        List books\n  show        Show one book\n",
 		"books list --help":      "List books\n\nUsage:\n  demo books list [flags]\n\nFlags:\n      --json   as JSON\n",
 		"books show --help":      "Show one book\n\nUsage:\n  demo books show <id>\n",
 	})
@@ -52,7 +52,7 @@ func TestCobraLeafCarriesItsFlags(t *testing.T) {
 	run := fakeRunner(map[string]string{
 		"__complete ":      "list\tList\n:4\nCompletion ended with directive: x",
 		"__complete list ": ":4\nCompletion ended with directive: x",
-		"--help":           cobraRoot,
+		"--help":           "A test tool.\n\nUsage:\n  demo [command]\n\nAvailable Commands:\n  list        List\n",
 		"list --help":      "Usage:\n  demo list [flags]\n\nFlags:\n      --json    as JSON\n      --limit int\n",
 	})
 	tool := extractWith("demo", "", run)
@@ -60,6 +60,26 @@ func TestCobraLeafCarriesItsFlags(t *testing.T) {
 	tool.Walk(func(n *Node) { flags = n.Flags })
 	if !contains(flags, "--json") || !contains(flags, "--limit") {
 		t.Errorf("flags = %v, want --json and --limit", flags)
+	}
+}
+
+// __complete answers with a leaf's ValidArgs when it has no subcommands, and
+// says nothing about which kind of name it returned. `forge dies list` offered
+// its three categories and they parsed as three subcommands.
+func TestArgumentCompletionsAreNotSubcommands(t *testing.T) {
+	run := fakeRunner(map[string]string{
+		"__complete ":      "list\tList them\n:4\nCompletion ended with directive: x",
+		"__complete list ": "checks\nmaintenance\nonetime\n:4\nCompletion ended with directive: x",
+		"--help":           "Usage:\n  demo [command]\n\nAvailable Commands:\n  list        List them\n",
+		// The help of a leaf that takes an argument names no commands at all.
+		"list --help": "Usage:\n  demo list [category] [flags]\n\nFlags:\n  -h, --help   help for list\n",
+	})
+	tool := extractWith("demo", "", run)
+
+	var paths []string
+	tool.Walk(func(n *Node) { paths = append(paths, strings.Join(n.Path, " ")) })
+	if len(paths) != 1 || paths[0] != "list" {
+		t.Errorf("paths = %v, want [list] — argument values were read as commands", paths)
 	}
 }
 

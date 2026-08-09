@@ -166,7 +166,12 @@ func build(binary string, path []string, short string, fw Framework, run runner,
 	var kids []child
 	switch fw {
 	case FrameworkCobra:
-		kids = cobraChildren(binary, path, run)
+		// __complete is exact about names but does not say what kind of name it
+		// is returning: for a leaf with ValidArgs it answers with the argument
+		// values, so `forge dies list` offered checks/maintenance/onetime and
+		// they parsed as three subcommands. Only names the help also presents
+		// as commands survive.
+		kids = keepListed(cobraChildren(binary, path, run), helpCommandNames(help))
 	case FrameworkRich:
 		kids = richChildren(help)
 	case FrameworkSection, FrameworkFlat:
@@ -182,6 +187,36 @@ func build(binary string, path []string, short string, fw Framework, run runner,
 }
 
 type child struct{ name, desc string }
+
+// helpCommandNames is the first word of every indented row in a help screen.
+//
+// Deliberately not keyed off an "Available Commands:" heading: ifiles overrides
+// cobra's template with its own group titles, and the heading would have to be
+// enumerated per tool. Flag rows start with a dash and drop out; example rows
+// start with the binary name and fail the intersection.
+func helpCommandNames(help string) map[string]bool {
+	names := map[string]bool{}
+	for _, line := range strings.Split(help, "\n") {
+		if line == "" || !strings.HasPrefix(line, " ") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) > 0 && isCommandName(fields[0]) {
+			names[fields[0]] = true
+		}
+	}
+	return names
+}
+
+func keepListed(kids []child, listed map[string]bool) []child {
+	out := make([]child, 0, len(kids))
+	for _, k := range kids {
+		if listed[k.name] {
+			out = append(out, k)
+		}
+	}
+	return out
+}
 
 // cobraChildren asks cobra's own completion callback. Returns nil when the tool
 // is not cobra, which is also how the framework is detected.
