@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/v5/config"
+	"github.com/datapointchris/forge/v5/reconcile"
 )
 
 var cfgPath string
@@ -59,6 +60,14 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	autoConfig := autoupdate.Config{Update: updateConfig()}
 	if err := cobracmd.Execute(context.Background(), rootCmd, autoConfig); err != nil {
+		// A reconcile verb has already printed its rows, so what is left is the
+		// number, not a message. Checked before the printer below: `plan` that
+		// found drift exits 1 and prints nothing extra, because pending changes
+		// are its answer rather than an error.
+		var verdict *reconcile.ExitError
+		if errors.As(err, &verdict) {
+			os.Exit(int(verdict.Code))
+		}
 		// The update command writes its own ✗ line; printing here too would
 		// report the same failure twice.
 		if !errors.Is(err, cobracmd.ErrReported) {
