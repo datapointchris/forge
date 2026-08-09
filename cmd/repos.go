@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"strings"
 
+	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/v5/dies"
@@ -100,7 +102,10 @@ func targets() ([]reconcile.Target, error) {
 
 	repos := runner.SelectRepos(cfg.Repos, reposFilterNames)
 	if len(repos) == 0 {
-		return nil, fmt.Errorf("no repos matched filter")
+		// A usage error, not a runtime one: naming a repo that does not exist is
+		// the one failure worth retrying with different arguments, and it is
+		// almost always a typo or a shell that did not split the list.
+		return nil, cobracmd.UsageError(fmt.Errorf("no repos matched: %s", strings.Join(reposFilterNames, ", ")))
 	}
 
 	assets, err := loadAssets()
