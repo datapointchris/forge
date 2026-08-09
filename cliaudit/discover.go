@@ -77,6 +77,13 @@ func candidateNames(r config.Repo) (names []string, declared bool) {
 		}
 	}
 
+	// An explicit declaration wins: it exists precisely for the repo whose
+	// binary name is not readable from any file in it.
+	if r.Binary != "" {
+		add(r.Binary)
+		declared = true
+	}
+
 	for _, dir := range componentDirs(r) {
 		for _, n := range pyprojectScripts(filepath.Join(root, dir, "pyproject.toml")) {
 			add(n)

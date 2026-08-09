@@ -37,6 +37,13 @@ type Repo struct {
 	// Go service lives" exist across the portfolio, and facts like the SQL
 	// dialect are not derivable from the layout at all.
 	Toolchain *Toolchain `json:"toolchain,omitempty"`
+	// Binary is the command this repo installs, when that name cannot be read
+	// out of the repo. Declared for the same reason Toolchain is: a Go CLI has
+	// no standard place to state its binary name, so ichrisbirch's `icb` lives
+	// only in a cobra Use: string and a `go build -o` path, and nothing that
+	// reads the registry can find it. Omit it wherever the repo name, a
+	// pyproject [project.scripts] key, or a goreleaser binary: already says so.
+	Binary string `json:"binary,omitempty"`
 }
 
 // Toolchain is a repo's declared build surface.
