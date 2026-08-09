@@ -149,3 +149,12 @@ func has(haystack []string, needle string) bool {
 	}
 	return false
 }
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %s", path, err)
+	}
+	return string(content)
+}

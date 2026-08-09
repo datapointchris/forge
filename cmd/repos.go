@@ -174,11 +174,12 @@ func runReconcile(cmd *cobra.Command, args []string, lens reconcile.Lens) error 
 // of to stderr. Below a composite verb the items are the evidence for the row
 // that follows, not the answer a caller parses — which is --json.
 func render(cmd *cobra.Command, results []reconcile.Result) {
+	width := reconcile.LabelWidth(results)
 	for _, result := range results {
 		for _, change := range result.Changes {
 			reconcile.RenderChange(cmd.ErrOrStderr(), change)
 		}
-		reconcile.RenderResult(cmd.OutOrStdout(), result)
+		reconcile.RenderResult(cmd.OutOrStdout(), result, width)
 	}
 }
 
@@ -192,26 +193,36 @@ func runReposApply(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	measurements := reconcile.AssessAll(walked, chosen)
+
+	// The width comes from every row the run will print, so the column does not
+	// widen halfway down as apply reaches a longer name.
+	planned := make([]reconcile.Result, 0, len(measurements))
+	for _, m := range measurements {
+		planned = append(planned, m.Fold(reconcile.LensPlan))
+	}
+	width := reconcile.LabelWidth(planned)
+
 	var results []reconcile.Result
-	for _, m := range reconcile.AssessAll(walked, chosen) {
+	for i, m := range measurements {
 		// The plan is printed before it is acted on, and what is acted on is
 		// what was printed — Perform re-verifies live rather than the walk
 		// taking a second look that may find something different.
-		planned := m.Fold(reconcile.LensPlan)
-		for _, change := range planned.Changes {
+		result := planned[i]
+		for _, change := range result.Changes {
 			reconcile.RenderChange(cmd.ErrOrStderr(), change)
 		}
 
 		for _, outcome := range reconcile.Apply(m) {
 			reconcile.RenderOutcome(cmd.ErrOrStderr(), outcome)
 			if !outcome.OK() {
-				planned.Status = reconcile.Issue
-				planned.Detail = outcome.Message
+				result.Status = reconcile.Issue
+				result.Detail = outcome.Message
 			}
 		}
 
-		reconcile.RenderResult(cmd.OutOrStdout(), planned)
-		results = append(results, planned)
+		reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+		results = append(results, result)
 	}
 
 	reconcile.RenderSummary(cmd.OutOrStdout(), results)

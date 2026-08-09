@@ -49,15 +49,6 @@ func makePlanningFixture(t *testing.T, repoFiles, syncedFiles map[string]string)
 	return home, repoDir, syncedDir
 }
 
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading %s: %s", path, err)
-	}
-	return string(content)
-}
-
 func isSymlink(t *testing.T, path string) bool {
 	t.Helper()
 	info, err := os.Lstat(path)

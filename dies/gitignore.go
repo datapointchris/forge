@@ -2,7 +2,6 @@ package dies
 
 import (
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -71,8 +70,7 @@ var pythonIgnores = []wanted{
 }
 
 type gitignoreState struct {
-	exists    bool
-	lines     []string
+	lineFile
 	generated bool
 }
 
@@ -80,33 +78,18 @@ func (s gitignoreState) Summary() string {
 	if !s.exists {
 		return "no .gitignore"
 	}
-	return fmt.Sprintf("gitignore current (%d lines)", len(s.lines))
-}
-
-func (s gitignoreState) count(entry string) int {
-	var n int
-	for _, line := range s.lines {
-		if strings.TrimRight(line, "\r") == entry {
-			n++
-		}
-	}
-	return n
+	return fmt.Sprintf("gitignore current (%s)", plural(len(s.lines), "line"))
 }
 
 func (Gitignore) Observe(t reconcile.Target) (reconcile.Observation, error) {
-	data, err := os.ReadFile(t.Path(".gitignore"))
-	if os.IsNotExist(err) {
-		return gitignoreState{}, nil
-	}
+	file, err := readLineFile(t.Path(".gitignore"))
 	if err != nil {
 		return nil, err
 	}
 
-	text := string(data)
 	return gitignoreState{
-		exists:    true,
-		lines:     strings.Split(strings.TrimRight(text, "\n"), "\n"),
-		generated: strings.Contains(text, generatedMarker),
+		lineFile:  file,
+		generated: slices.ContainsFunc(file.lines, func(line string) bool { return strings.Contains(line, generatedMarker) }),
 	}, nil
 }
 
@@ -178,38 +161,8 @@ func (g Gitignore) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil
 	}
 
-	if err := appendLine(t.Path(".gitignore"), change.Item); err != nil {
+	if err := appendBlock(t.Path(".gitignore"), []string{change.Item}, false); err != nil {
 		return reconcile.Outcome{}, err
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "added"}, nil
-}
-
-// appendLine adds one entry, creating the file when it does not exist and
-// guaranteeing a newline first — without it the entry lands glued to whatever
-// the last line was.
-func appendLine(path, entry string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	if info.Size() > 0 {
-		existing, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if !strings.HasSuffix(string(existing), "\n") {
-			if _, err := f.WriteString("\n"); err != nil {
-				return err
-			}
-		}
-	}
-
-	_, err = f.WriteString(entry + "\n")
-	return err
 }

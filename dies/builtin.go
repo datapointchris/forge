@@ -21,6 +21,7 @@ import (
 func Builtin() []reconcile.Die {
 	return []reconcile.Die{
 		Gitignore{},
+		Markdownlintignore{},
 	}
 }
 

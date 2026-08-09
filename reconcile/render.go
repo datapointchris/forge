@@ -79,14 +79,34 @@ func renderPatch(w io.Writer, patch string) {
 	}
 }
 
+// Label is the handle a row is addressed by: the repo and the die that looked
+// at it, which is also what a reader retypes to narrow to that one row.
+func (r Result) Label() string { return r.Repo + "/" + r.Die }
+
+// LabelWidth is the column the labels fit in.
+//
+// Measured rather than fixed: repo names run from `docs` to
+// `zmk-config-corne42` and die names to `markdownlintignore`, so any constant
+// wide enough for the longest is mostly padding, and any narrower one breaks
+// the alignment exactly on the rows that are hardest to read.
+func LabelWidth(results []Result) int {
+	width := 0
+	for _, r := range results {
+		if n := len(r.Label()); n > width {
+			width = n
+		}
+	}
+	return width
+}
+
 // RenderResult writes one repo's row for one die.
-func RenderResult(w io.Writer, r Result) {
+func RenderResult(w io.Writer, r Result, width int) {
 	paint := statusColors[r.Status]
 	if paint == nil {
 		paint = color.New(color.FgWhite)
 	}
 	writeLine(w, "%s %s %s\n",
-		paint.Sprintf("%-9s", r.Status), bold.Sprintf("%-24s", r.Repo+"/"+r.Die), r.Detail)
+		paint.Sprintf("%-9s", r.Status), bold.Sprintf("%-*s", width, r.Label()), r.Detail)
 }
 
 // RenderOutcome writes what apply did with one change.
