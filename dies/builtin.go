@@ -27,6 +27,7 @@ func Builtin() []reconcile.Die {
 		MergeSettings{},
 		BranchProtection{},
 		DefaultBranch{},
+		Pyproject{},
 	}
 }
 
