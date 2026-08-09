@@ -24,6 +24,8 @@ func Builtin() []reconcile.Die {
 		Markdownlintignore{},
 		Planning{},
 		ClaudeMD{},
+		MergeSettings{},
+		BranchProtection{},
 	}
 }
 
