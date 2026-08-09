@@ -78,7 +78,7 @@ func (s gitignoreState) Summary() string {
 	if !s.exists {
 		return "no .gitignore"
 	}
-	return fmt.Sprintf("gitignore current (%s)", plural(len(s.lines), "line"))
+	return fmt.Sprintf("gitignore current (%s)", plural(len(s.lines), "line", "lines"))
 }
 
 func (Gitignore) Observe(t reconcile.Target) (reconcile.Observation, error) {

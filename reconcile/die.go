@@ -31,6 +31,11 @@ type Assets struct {
 type Target struct {
 	Repo   config.Repo
 	Assets Assets
+	// Config is the registry this repo came from, for the dies that need a
+	// fleet-level fact rather than a repo-level one — where synced directories
+	// live, say. Carried whole rather than as a field per die, so one die
+	// needing one setting does not widen this struct for the other eight.
+	Config *config.SyncerConfig
 }
 
 // Path resolves a repo-relative path against this target.

@@ -57,10 +57,19 @@ func testAssets(t *testing.T) reconcile.Assets {
 }
 
 // fixture builds a repo in a temp directory and the Target that addresses it.
+//
+// The sync base is a sibling of the repo inside the same temp directory, so a
+// die that writes outside the repo — planning links .planning into it — is
+// still contained, and a test never reads or writes the real ~/dev/repos.
 func fixture(t *testing.T, declared *config.Toolchain, files map[string]string) reconcile.Target {
 	t.Helper()
 
-	dir := t.TempDir()
+	root := t.TempDir()
+	dir := filepath.Join(root, "repo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %s", dir, err)
+	}
+
 	for name, content := range files {
 		path := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -71,11 +80,17 @@ func fixture(t *testing.T, declared *config.Toolchain, files map[string]string) 
 		}
 	}
 
+	repo := config.Repo{Name: "fixture", Path: dir, Toolchain: declared}
 	return reconcile.Target{
-		Repo:   config.Repo{Name: "fixture", Path: dir, Toolchain: declared},
+		Repo:   repo,
 		Assets: testAssets(t),
+		Config: &config.SyncerConfig{SyncBase: filepath.Join(root, "sync"), Repos: []config.Repo{repo}},
 	}
 }
+
+// sandbox is the temp directory holding both the fixture repo and its sync
+// base — everything a die is allowed to touch.
+func sandbox(target reconcile.Target) string { return filepath.Dir(target.Repo.Path) }
 
 func stacks(names ...string) *config.Toolchain {
 	declared := &config.Toolchain{}

@@ -59,7 +59,7 @@ func (s markdownlintignoreState) Summary() string {
 	if !s.exists {
 		return "no .markdownlintignore"
 	}
-	return fmt.Sprintf("markdownlintignore current (%s)", plural(len(s.lines), "line"))
+	return fmt.Sprintf("markdownlintignore current (%s)", plural(len(s.lines), "line", "lines"))
 }
 
 func (Markdownlintignore) Observe(t reconcile.Target) (reconcile.Observation, error) {

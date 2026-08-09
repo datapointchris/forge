@@ -5,15 +5,6 @@ dies:
   checks/has-pre-commit.sh:
     description: "Check that repo has a .pre-commit-config.yaml and report hook count."
     tags: [checks, pre-commit, scorecard]
-  checks/has-claude-md.sh:
-    description: "Check that repo has a CLAUDE.md and report its size."
-    tags: [checks, claude, scorecard]
-  checks/has-planning-dir.sh:
-    description: "Check that repo has a .planning/ directory and report file count."
-    tags: [checks, planning, scorecard]
-  maintenance/sync-planning.sh:
-    description: "Sync .planning/ to ~/dev/repos/{name}/planning/ via symlink for Syncthing. Migrates real dirs. Idempotent."
-    tags: [planning, symlink, syncthing, setup]
   checks/can-generate.sh:
     description: "Verify forge can generate a valid pre-commit config and CI workflow for the repo, writing nothing. Run across the portfolio before bumping the toolchain manifest."
     tags: [ci, pre-commit, standardization, verification]

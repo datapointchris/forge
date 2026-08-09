@@ -115,7 +115,7 @@ func targets() ([]reconcile.Target, error) {
 
 	selected := make([]reconcile.Target, 0, len(repos))
 	for _, repo := range repos {
-		selected = append(selected, reconcile.Target{Repo: repo, Assets: assets})
+		selected = append(selected, reconcile.Target{Repo: repo, Assets: assets, Config: cfg})
 	}
 	return selected, nil
 }

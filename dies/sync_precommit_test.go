@@ -12,13 +12,7 @@ import (
 	"testing"
 
 	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/runner"
 )
-
-// exitSkip is the bash dies' SKIP contract, shared with the runner that
-// interprets it. It goes when the last script does — a Go die reports a
-// verdict rather than encoding one in an exit code.
-const exitSkip = runner.ExitSkip
 
 // The die scripts shell out to `forge`, so the tests need one on PATH. Taking
 // whatever is installed makes the result depend on the developer's machine and

@@ -32,12 +32,14 @@ func TestReadVerbsWriteNothing(t *testing.T) {
 	for _, die := range Builtin() {
 		t.Run(die.Name(), func(t *testing.T) {
 			target := driftedFixture(t)
-			before := snapshot(t, target.Repo.Path)
+			// The whole sandbox, not just the repo: planning writes into the
+			// sync base, so a property scoped to the repo would miss it.
+			before := snapshot(t, sandbox(target))
 
 			measured := reconcile.Assess(target, die)
 			found += len(measured.Changes)
 
-			if after := snapshot(t, target.Repo.Path); !maps.Equal(before, after) {
+			if after := snapshot(t, sandbox(target)); !maps.Equal(before, after) {
 				t.Errorf("%s wrote to the repo during a read — the exact failure this package exists to prevent:\nbefore %v\nafter  %v",
 					die.Name(), keysOf(before), keysOf(after))
 			}

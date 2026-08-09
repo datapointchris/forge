@@ -84,9 +84,13 @@ func appendBlock(path string, block []string, separate bool) error {
 }
 
 // plural renders a count with its noun, so a summary never reads "1 lines".
-func plural(n int, noun string) string {
+//
+// Both forms are named by the caller. Appending "s" mangled "directory" in the
+// first real run, and every rule that fixes that case breaks another — English
+// inflection is not derivable from the singular.
+func plural(n int, one, many string) string {
 	if n == 1 {
-		return "1 " + noun
+		return "1 " + one
 	}
-	return strconv.Itoa(n) + " " + noun + "s"
+	return strconv.Itoa(n) + " " + many
 }
