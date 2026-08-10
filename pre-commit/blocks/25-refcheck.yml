@@ -5,10 +5,13 @@
   # the whole-tree half — every `source` and `bash` target — found zero real
   # errors, because the portfolio is already clean. The moves half asks the
   # question a rename actually leaves behind, for each one in the changeset,
-  # and that is where the findings were: three live `uv run cli/log_viewer.py`
-  # call sites in ichrisbirch's ops tool pointing at a file that moved to
-  # ops/, and a documented build command in shadows naming a cmd/ directory
-  # that no longer exists.
+  # and that is where the findings were: three live `uv run` call sites in
+  # ichrisbirch's ops tool naming a log viewer that had moved months earlier,
+  # and a documented build command in shadows pointing into a directory the
+  # repo no longer has.
+  #
+  # Deliberately no path spelled out above. A comment naming a real old path
+  # is itself a hit for it, in every repo this block is deployed to.
   #
   # Generic rather than shell-gated, because a pattern is language-agnostic:
   # the hits landed in Go, Vue and Python repos as readily as in dotfiles, in
