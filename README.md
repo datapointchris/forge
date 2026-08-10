@@ -94,7 +94,7 @@ maintained_directories:
       components: []
 ```
 
-`forge config` prints what resolved and which layer set it. A missing file is not
+`forge config show` prints what resolved and which layer set it. A missing file is not
 an error, and an unknown key is — a misspelled key would leave a directory
 undeclared, and an undeclared directory reads as a converged one.
 

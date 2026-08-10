@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -14,8 +14,22 @@ import (
 
 var configJSON bool
 
+// config is a namespace rather than a command that prints, per cli-design.md
+// § "A resource that could ever grow a second command is a namespace today" —
+// whose worked example is this exact name. syncer and dectl already carry
+// `config init|example|path|edit`, so the second verb is foreseeable rather
+// than hypothetical, and the rename is free only until someone types the bare
+// form.
 var configCmd = &cobra.Command{
 	Use:   "config",
+	Short: "The machine config",
+	Long: `Inspect the machine config — the directories forge maintains that git does
+not version, and the paths forge resolves for its own files.`,
+	RunE: requireSubcommand,
+}
+
+var configShowCmd = &cobra.Command{
+	Use:   "show",
 	Short: "Print the resolved config and where each value came from",
 	Long: `Print what forge will actually use, not what the files say.
 
@@ -24,12 +38,18 @@ that set it — a flag, an environment variable, or the built-in default. The
 source is the part that distinguishes "I asked for this" from "something else
 asked for me": a stale XDG_CONFIG_HOME resolves to a perfectly plausible path
 and reads identically to the one you meant.`,
-	Example: "  forge config\n  forge config --json",
-	RunE:    runConfig,
+	Example: `  # What forge will use, and which layer set each value
+  forge config show
+
+  # Whether a directory you declared is actually being seen
+  forge config show --json | jq '.maintained_directories'`,
+	Args: cobra.NoArgs,
+	RunE: runConfig,
 }
 
 func init() {
-	configCmd.Flags().BoolVar(&configJSON, "json", false, "machine-readable output")
+	configShowCmd.Flags().BoolVar(&configJSON, "json", false, "machine-readable output")
+	configCmd.AddCommand(configShowCmd)
 	rootCmd.AddCommand(configCmd)
 }
 
@@ -54,7 +74,7 @@ type directoryResolved struct {
 	Exists bool     `json:"exists"`
 }
 
-func runConfig(_ *cobra.Command, _ []string) error {
+func runConfig(cmd *cobra.Command, _ []string) error {
 	reposPath, reposSource := resolveReposPath()
 	configPath, configSource := resolveConfigPath()
 
@@ -80,9 +100,9 @@ func runConfig(_ *cobra.Command, _ []string) error {
 	}
 
 	if configJSON {
-		return json.NewEncoder(os.Stdout).Encode(report)
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(report)
 	}
-	printConfigReport(report)
+	printConfigReport(cmd.OutOrStdout(), report)
 	return nil
 }
 
@@ -112,26 +132,26 @@ func pathExists(path string) *bool {
 	return &exists
 }
 
-func printConfigReport(report configReport) {
+func printConfigReport(w io.Writer, report configReport) {
 	label := color.New(color.FgHiCyan)
 	source := color.New(color.FgHiBlue)
 	missing := color.New(color.FgHiYellow)
 
-	fmt.Println()
+	row(w, "\n")
 	for _, setting := range report.Settings {
-		fmt.Printf("  %s  %s  %s",
+		row(w, "  %s  %s  %s",
 			label.Sprintf("%-12s", setting.Setting),
 			setting.Value,
 			source.Sprintf("(%s)", setting.Source))
 		if setting.Exists != nil && !*setting.Exists {
-			fmt.Printf("  %s", missing.Sprint("not present"))
+			row(w, "  %s", missing.Sprint("not present"))
 		}
-		fmt.Println()
+		row(w, "\n")
 	}
 
-	fmt.Printf("\n  %s\n", label.Sprintf("maintained directories (%d)", len(report.Directories)))
+	row(w, "\n  %s\n", label.Sprintf("maintained directories (%d)", len(report.Directories)))
 	if len(report.Directories) == 0 {
-		fmt.Printf("    none declared in %s\n", report.Settings[1].Value)
+		row(w, "    none declared in %s\n", report.Settings[1].Value)
 		return
 	}
 	for _, dir := range report.Directories {
@@ -139,10 +159,10 @@ func printConfigReport(report configReport) {
 		if stacks == "" {
 			stacks = "generic blocks only"
 		}
-		fmt.Printf("    %s  %s  %s", label.Sprintf("%-10s", dir.Name), dir.Path, source.Sprint(stacks))
+		row(w, "    %s  %s  %s", label.Sprintf("%-10s", dir.Name), dir.Path, source.Sprint(stacks))
 		if !dir.Exists {
-			fmt.Printf("  %s", missing.Sprint("not present"))
+			row(w, "  %s", missing.Sprint("not present"))
 		}
-		fmt.Println()
+		row(w, "\n")
 	}
 }
