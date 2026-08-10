@@ -47,13 +47,27 @@ type syncedDir struct {
 // linked reports whether the repo already points at the right place.
 func (d syncedDir) linked() bool { return d.link == d.target }
 
-type planningState struct{ dirs []syncedDir }
+type planningState struct {
+	dirs        []syncedDir
+	unversioned bool
+}
 
 func (s planningState) Summary() string {
+	if s.unversioned {
+		return "already synced; nothing to link out of git"
+	}
 	return fmt.Sprintf("%s synced", plural(len(s.dirs), "directory", "directories"))
 }
 
 func (Planning) Observe(t reconcile.Target) (reconcile.Observation, error) {
+	// This die exists to carry a gitignored directory out to where a file-sync
+	// tool can see it. A target that git does not version is already there —
+	// and for ~/dev the sync base is inside the target, so the link would point
+	// from a synced folder into itself.
+	if !t.Versioned() {
+		return planningState{unversioned: true}, nil
+	}
+
 	base, err := syncBase(t)
 	if err != nil {
 		return nil, err

@@ -61,7 +61,37 @@ func testAssets(t *testing.T) reconcile.Assets {
 // The sync base is a sibling of the repo inside the same temp directory, so a
 // die that writes outside the repo — planning links .planning into it — is
 // still contained, and a test never reads or writes the real ~/dev/repos.
+//
+// The .git directory is what makes this a repo rather than a directory, which
+// five dies now ask about. Not a real `git init`: nothing here runs a git
+// command that needs objects.
+//
+// The hook stubs matter. Without them the precommit die correctly reports every
+// declared stage as uninstalled, and applying that runs `pre-commit install
+// --install-hooks` — an external tool and a network fetch, in a suite that must
+// stay runnable with neither. An installed repo is also the steady state the
+// other assertions are about. Written from hookStages so the fixture cannot
+// drift from the die that reads them.
 func fixture(t *testing.T, declared *config.Toolchain, files map[string]string) reconcile.Target {
+	t.Helper()
+
+	target := unversionedFixture(t, declared, files)
+	hooks := target.Path(".git", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatalf("mkdir .git/hooks: %s", err)
+	}
+	for _, stage := range hookStages {
+		stub := "#!/usr/bin/env bash\n# installed by pre-commit\n"
+		if err := os.WriteFile(filepath.Join(hooks, stage), []byte(stub), 0o755); err != nil {
+			t.Fatalf("write hook %s: %s", stage, err)
+		}
+	}
+	return target
+}
+
+// unversionedFixture is the same sandbox without a .git, addressing a directory
+// forge maintains but git does not version.
+func unversionedFixture(t *testing.T, declared *config.Toolchain, files map[string]string) reconcile.Target {
 	t.Helper()
 
 	root := t.TempDir()

@@ -110,6 +110,14 @@ func settingChange(name, observed, want string) reconcile.Change {
 // a non-GitHub remote is out of scope and says so, and anything else that
 // could not be reached is unmeasured.
 func observeGitHub(t reconcile.Target, item string) (ghRepo, []reconcile.Change, string, error) {
+	// A directory with no .git resolves to errNotGitHub anyway, because
+	// `git config --get remote.origin.url` exits 1 outside a repo. Saying so
+	// here rather than relying on that costs one stat instead of a subprocess,
+	// and reports the actual reason rather than a fallback that happens to land
+	// in the right place.
+	if !t.Versioned() {
+		return ghRepo{}, nil, "not a git repo", nil
+	}
 	repo, err := resolveGitHubRepo(t.Repo.Path)
 	switch {
 	case errors.Is(err, errNotGitHub):
