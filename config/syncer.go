@@ -24,19 +24,27 @@ func DefaultReposPath() string {
 	return filepath.Join(home, ".local", "share", "forge", "repos.json")
 }
 
+// Repo is one target: a name, where it lives, and what forge needs to know to
+// generate for it.
+//
+// Every field carries both tags. The registry is JSON and forge's own config is
+// YAML, and yaml.v3's default of lowercasing the Go name silently disagrees with
+// the JSON spelling on any multi-word field — sql_dialect arrives as nil rather
+// than failing. Tagging all of them makes the two formats checkable instead of
+// coincidental.
 type Repo struct {
-	Name        string `json:"name"`
-	Path        string `json:"path"`
-	Status      string `json:"status"`
-	Description string `json:"description,omitempty"`
+	Name        string `json:"name"        yaml:"name"`
+	Path        string `json:"path"        yaml:"path"`
+	Status      string `json:"status"      yaml:"status"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	// Owner marks a third-party reference clone (the upstream GitHub owner).
 	// Empty for repos in the portfolio.
-	Owner string `json:"owner,omitempty"`
+	Owner string `json:"owner,omitempty" yaml:"owner,omitempty"`
 	// Toolchain declares what forge's generators need to know about the repo.
 	// Declared rather than detected: five different conventions for "where the
 	// Go service lives" exist across the portfolio, and facts like the SQL
 	// dialect are not derivable from the layout at all.
-	Toolchain *Toolchain `json:"toolchain,omitempty"`
+	Toolchain *Toolchain `json:"toolchain,omitempty" yaml:"toolchain,omitempty"`
 	// SyncedDirs are extra repo-relative directories kept in the sync base
 	// alongside .planning, which every repo gets.
 	//
@@ -45,22 +53,22 @@ type Repo struct {
 	// tool, which is the thing DefaultReposPath's comment above rules out. The
 	// repo is what knows it keeps generated data outside git; forge only has to
 	// know the operation.
-	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty"`
+	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty" yaml:"synced_dirs,omitempty"`
 	// Binary is the command this repo installs, when that name cannot be read
 	// out of the repo. Declared for the same reason Toolchain is: a Go CLI has
 	// no standard place to state its binary name, so ichrisbirch's `icb` lives
 	// only in a cobra Use: string and a `go build -o` path, and nothing that
 	// reads the registry can find it. Omit it wherever the repo name, a
 	// pyproject [project.scripts] key, or a goreleaser binary: already says so.
-	Binary string `json:"binary,omitempty"`
+	Binary string `json:"binary,omitempty" yaml:"binary,omitempty"`
 }
 
 // Toolchain is a repo's declared build surface.
 type Toolchain struct {
-	Components []Component `json:"components,omitempty"`
+	Components []Component `json:"components,omitempty" yaml:"components,omitempty"`
 	// SQLDialect is the sqlfluff dialect for the repo's .sql files.
 	// Empty means the repo has no SQL worth linting.
-	SQLDialect string `json:"sql_dialect,omitempty"`
+	SQLDialect string `json:"sql_dialect,omitempty" yaml:"sql_dialect,omitempty"`
 	// ShellcheckDisable are rules this repo turns off in its deployed
 	// .shellcheckrc, each with the reason it does not apply.
 	//
@@ -71,7 +79,7 @@ type Toolchain struct {
 	// every one. The choice was between 53 inline suppressions and a lie, so
 	// this is the third option: declared once, in the registry, with a reason
 	// attached, visible to anyone reading what the repo asks for.
-	ShellcheckDisable []ShellcheckException `json:"shellcheck_disable,omitempty"`
+	ShellcheckDisable []ShellcheckException `json:"shellcheck_disable,omitempty" yaml:"shellcheck_disable,omitempty"`
 	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
 	// whose content is invalid on purpose. logsift keeps a tree of deliberately
 	// broken files to generate real hook output for its pattern tests; every
@@ -79,7 +87,7 @@ type Toolchain struct {
 	// first one. Excluding per hook would mean naming the same path in a dozen
 	// generated blocks, and the repo is the only thing that knows the tree is
 	// fixtures rather than source.
-	Exclude string `json:"exclude,omitempty"`
+	Exclude string `json:"exclude,omitempty" yaml:"exclude,omitempty"`
 }
 
 // SyncedDir is one repo-relative directory kept in the sync base, and the name
@@ -90,24 +98,24 @@ type Toolchain struct {
 // the rule — and a tool that guessed would silently point an existing link
 // somewhere new, which reads as drift and repairs into a second copy.
 type SyncedDir struct {
-	Dir string `json:"dir"`
-	As  string `json:"as"`
+	Dir string `json:"dir" yaml:"dir"`
+	As  string `json:"as"  yaml:"as"`
 }
 
 // ShellcheckException is one disabled rule and why it does not apply here.
 // Reason is not optional: an undocumented disable is indistinguishable from
 // one nobody has re-examined since, which is how the previous configs drifted.
 type ShellcheckException struct {
-	Rule   string `json:"rule"`
-	Reason string `json:"reason"`
+	Rule   string `json:"rule"   yaml:"rule"`
+	Reason string `json:"reason" yaml:"reason"`
 }
 
 // Component is one buildable unit: a stack and the directory it lives in.
 // A repo can hold several of the same stack — nomad's api/ and cli/ are both
 // Go modules, deliberately isolated from each other.
 type Component struct {
-	Stack string `json:"stack"`
-	Dir   string `json:"dir"`
+	Stack string `json:"stack" yaml:"stack"`
+	Dir   string `json:"dir"   yaml:"dir"`
 }
 
 // Stacks returns the distinct stacks across a repo's components.
