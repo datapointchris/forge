@@ -3,99 +3,55 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"sort"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v5/assets"
 	"github.com/datapointchris/forge/v5/config"
 	"github.com/datapointchris/forge/v5/dies"
-	"github.com/datapointchris/forge/v5/runner"
+	"github.com/datapointchris/forge/v5/reconcile"
 )
 
 var (
-	diesFilterNames []string
-	diesDryRun      bool
-	diesCheck       bool
-	diesStatsSince  string
-	diesStatsJSON   bool
+	diesStatsSince string
+	diesStatsJSON  bool
 )
 
+// diesCmd is the library, and it executes nothing.
+//
+// Scope is structural: `forge dies` answers what exists, `forge repos` acts on
+// repos. `dies run` was the one verb crossing that line, and it is
+// `forge repos apply` now — a die is what gets applied, not what does the
+// applying.
 var diesCmd = &cobra.Command{
 	Use:   "dies",
-	Short: "Manage and run dies (reusable scripts for repos)",
-	Long: `Browse, search, run, and track dies — reusable scripts executed across repos.
+	Short: "Browse the reusable repo operations",
+	Long: `Browse the dies — the reusable operations forge applies to repos.
 
-A die is a script in the dies directory, organized by category (subdirectory).
-Use 'forge dies list' to see available dies, or 'forge dies run' to execute one.`,
+This is the library. To run one, use a reconcile verb, which takes a die name:
+
+  forge repos plan <die>     what apply would change
+  forge repos check <die>    what is wrong that apply cannot fix
+  forge repos apply <die>    make it so`,
 	RunE: requireSubcommand,
 }
 
 var diesListCmd = &cobra.Command{
-	Use:   "list [category]",
-	Short: "List available dies",
-	Args:  cobra.MaximumNArgs(1),
-	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		reg, err := loadDiesRegistry()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		return reg.Categories(), cobra.ShellCompDirectiveNoFileComp
-	},
-	RunE: runDiesList,
-}
-
-var diesRunCmd = &cobra.Command{
-	Use:   "run <die-path>",
-	Short: "Run a die across repos",
-	Long: `Execute a die script across all (or filtered) repos.
-
-Example:
-  forge dies run maintenance/add-planning-to-gitignore.sh
-  forge dies run maintenance/add-planning-to-gitignore.sh -F dotfiles,homelab
-  forge dies run maintenance/add-planning-to-gitignore.sh -n
-  forge dies run maintenance/sync-pyproject.sh --check
-
---dry-run names the repos a die would visit. --check runs it for real and has it
-report what it would change, which only dies declaring supports_check can do.`,
-	Args: cobra.ExactArgs(1),
-	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		reg, err := loadDiesRegistry()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		return reg.AllDiePaths(), cobra.ShellCompDirectiveNoFileComp
-	},
-	RunE: runDiesRun,
+	Use:   "list",
+	Short: "List the dies",
+	Args:  cobra.NoArgs,
+	RunE:  runDiesList,
 }
 
 var diesShowCmd = &cobra.Command{
-	Use:   "show <die-path>",
-	Short: "Show details about a die",
-	Args:  cobra.ExactArgs(1),
-	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		reg, err := loadDiesRegistry()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		return reg.AllDiePaths(), cobra.ShellCompDirectiveNoFileComp
-	},
-	RunE: runDiesShow,
+	Use:               "show <die>",
+	Short:             "Show one die in full",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeDieNames,
+	RunE:              runDiesShow,
 }
 
 var diesSearchCmd = &cobra.Command{
@@ -106,362 +62,126 @@ var diesSearchCmd = &cobra.Command{
 }
 
 var diesStatsCmd = &cobra.Command{
-	Use:   "stats [die-path]",
-	Short: "Show execution history",
-	Args:  cobra.MaximumNArgs(1),
-	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		reg, err := loadDiesRegistry()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		return reg.AllDiePaths(), cobra.ShellCompDirectiveNoFileComp
-	},
-	RunE: runDiesStats,
+	Use:               "stats [die]",
+	Short:             "Show execution history",
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeDieNames,
+	RunE:              runDiesStats,
 }
 
 func init() {
-	diesRunCmd.Flags().StringSliceVarP(&diesFilterNames, "filter", "F", nil, "comma-separated repo names to include")
-	diesRunCmd.Flags().BoolVarP(&diesDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
-	diesRunCmd.Flags().BoolVar(&diesCheck, "check", false, "report what the die would change instead of changing it")
-
 	diesStatsCmd.Flags().StringVar(&diesStatsSince, "since", "", "only runs at or after this point: \"2 weeks\", \"30 days\", 72h, or 2026-07-01")
 	diesStatsCmd.Flags().BoolVar(&diesStatsJSON, "json", false, "output as JSON to stdout")
 
-	diesCmd.AddCommand(diesListCmd)
-	diesCmd.AddCommand(diesRunCmd)
-	diesCmd.AddCommand(diesShowCmd)
-	diesCmd.AddCommand(diesSearchCmd)
-	diesCmd.AddCommand(diesStatsCmd)
+	diesCmd.AddCommand(diesListCmd, diesShowCmd, diesSearchCmd, diesStatsCmd)
 	rootCmd.AddCommand(diesCmd)
 }
 
-func loadDiesRegistry() (*dies.Registry, error) {
-	if diesDir := os.Getenv("FORGE_DIES_DIR"); diesDir != "" {
-		return dies.LoadRegistry(os.DirFS(diesDir))
+func completeDieNames(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	diesFS, err := fs.Sub(embeddedDies, "dies")
-	if err != nil {
-		return nil, fmt.Errorf("accessing embedded dies: %w", err)
-	}
-	return dies.LoadRegistry(diesFS)
+	return dies.BuiltinNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
-func runDiesList(cmd *cobra.Command, args []string) error {
-	reg, err := loadDiesRegistry()
-	if err != nil {
-		return err
-	}
-
-	var categoryFilter string
-	if len(args) == 1 {
-		categoryFilter = args[0]
-	}
-
-	grouped := reg.ByCategory(categoryFilter)
-	if len(grouped) == 0 {
-		if categoryFilter != "" {
-			return fmt.Errorf("no dies found in category: %s", categoryFilter)
-		}
-		fmt.Println("No dies found.")
-		return nil
-	}
-
-	var summaries map[string]dies.DieSummary
-	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
-	if err == nil {
-		records, err := dies.LoadStats(statsPath)
-		if err == nil && len(records) > 0 {
-			summaries = dies.SummaryByDie(records)
-		}
-	}
-
-	cats := make([]string, 0, len(grouped))
-	for c := range grouped {
-		cats = append(cats, c)
-	}
-	sort.Strings(cats)
-
-	boldMagenta := color.New(color.FgHiMagenta, color.Bold)
-	magenta := color.New(color.FgHiMagenta)
+func runDiesList(cmd *cobra.Command, _ []string) error {
+	summaries := dieSummaries()
 	cyan := color.New(color.FgHiCyan)
 	dim := color.New(color.Faint)
 
-	for _, cat := range cats {
-		boldMagenta.Printf("\n%s\n", cat)
-		magenta.Printf("%s\n", strings.Repeat("─", len(cat)))
-		for _, name := range grouped[cat] {
-			die := reg.Dies[name]
-			base := filepath.Base(name)
-
-			desc := die.Description
-			if desc == "" {
-				desc = dim.Sprint("(no description)")
-			}
-
-			fmt.Printf("  %s %s\n", cyan.Sprintf("%-40s", base), desc)
-
-			if s, ok := summaries[name]; ok {
-				fmt.Printf("  %-40s %s\n", "", dim.Sprintf("runs: %d │ last: %s", s.RunCount, s.LastRun.Format("2006-01-02 15:04")))
-			}
+	out := cmd.OutOrStdout()
+	row(out, "\n")
+	for _, die := range dies.Builtin() {
+		row(out, "  %s %s\n", cyan.Sprintf("%-20s", die.Name()), die.Description())
+		if s, ok := summaries[die.Name()]; ok {
+			row(out, "  %-20s %s\n", "", dim.Sprintf("runs: %d │ last: %s", s.RunCount, s.LastRun.Format("2006-01-02 15:04")))
 		}
 	}
-	fmt.Println()
-
+	row(out, "\n")
 	return nil
-}
-
-func runDiesRun(cmd *cobra.Command, args []string) error {
-	diePath := args[0]
-
-	if diesCheck {
-		if err := requireCheckSupport(diePath); err != nil {
-			return err
-		}
-	}
-
-	// Resolve die source: filesystem (dies_dir configured) or embedded
-	scriptPath, env, cleanup, err := resolveDie(diePath)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	if diesCheck {
-		env = append(env, "FORGE_CHECK=1")
-	}
-
-	var syncerCfg *config.SyncerConfig
-	if cfgPath != "" {
-		syncerCfg, err = config.LoadSyncerConfig(cfgPath)
-	} else {
-		syncerCfg, err = config.LoadRepos()
-	}
-	if err != nil {
-		return err
-	}
-
-	repos := runner.SelectRepos(syncerCfg.Repos, diesFilterNames)
-	if len(repos) == 0 {
-		return fmt.Errorf("no repos matched filter: %s", strings.Join(diesFilterNames, ", "))
-	}
-
-	opts := runner.Opts{
-		ScriptFile:    scriptPath,
-		Env:           env,
-		DryRun:        diesDryRun,
-		CaptureOutput: true,
-	}
-
-	if diesDryRun {
-		runner.PrintDryRunHeader()
-	}
-
-	repoResults := make(map[string]string)
-	var results []runner.Result
-	for _, repo := range repos {
-		r := runner.ExecuteInRepo(repo, opts)
-		results = append(results, r)
-		repoResults[r.Name] = r.Status
-	}
-
-	if diesDryRun {
-		runner.PrintDryRunFooter()
-	}
-
-	if !diesDryRun {
-		printGroupedResults(results)
-	}
-
-	runner.PrintSummary(results)
-	runner.PrintFailures(results)
-
-	if !diesDryRun {
-		var ok, skip, fail int
-		for _, r := range results {
-			switch {
-			case r.Status == "OK":
-				ok++
-			case strings.HasPrefix(r.Status, "SKIP"):
-				skip++
-			case strings.HasPrefix(r.Status, "FAIL"):
-				fail++
-			}
-		}
-
-		statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
-		if err != nil {
-			return fmt.Errorf("expanding stats path: %w", err)
-		}
-
-		record := dies.RunRecord{
-			Die:       diePath,
-			Timestamp: time.Now().UTC(),
-			Results:   repoResults,
-			OK:        ok,
-			Skip:      skip,
-			Fail:      fail,
-		}
-		if err := dies.RecordRun(statsPath, record); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to record stats: %v\n", err)
-		}
-	}
-
-	return nil
-}
-
-// resolveDie returns the script path, env vars, and cleanup function for a die.
-// When dies_dir is configured, it uses the filesystem directly.
-// Otherwise, it extracts from embedded assets.
-// requireCheckSupport refuses --check for a die that does not honor FORGE_CHECK.
-// Passing it to one that ignores it would write to every repo while reporting a
-// preview, which is worse than having no preview at all.
-func requireCheckSupport(diePath string) error {
-	reg, err := loadDiesRegistry()
-	if err != nil {
-		return err
-	}
-
-	die, ok := reg.Dies[diePath]
-	if !ok {
-		return fmt.Errorf("die not found: %s", diePath)
-	}
-	if !die.SupportsCheck {
-		return fmt.Errorf("%s does not support --check; it would write for real", diePath)
-	}
-	return nil
-}
-
-func resolveDie(diePath string) (scriptPath string, env []string, cleanup func(), err error) {
-	noop := func() {}
-
-	if diesDir := os.Getenv("FORGE_DIES_DIR"); diesDir != "" {
-		// Filesystem mode: use FORGE_DIES_DIR env var
-		reg, err := dies.LoadRegistry(os.DirFS(diesDir))
-		if err != nil {
-			return "", nil, noop, err
-		}
-		absScript, err := reg.Resolve(diesDir, diePath)
-		if err != nil {
-			return "", nil, noop, err
-		}
-		return absScript, nil, noop, nil
-	}
-
-	// Embedded mode: extract to temp files
-	diesFS, err := fs.Sub(embeddedDies, "dies")
-	if err != nil {
-		return "", nil, noop, fmt.Errorf("accessing embedded dies: %w", err)
-	}
-
-	reg, err := dies.LoadRegistry(diesFS)
-	if err != nil {
-		return "", nil, noop, err
-	}
-	if _, ok := reg.Dies[diePath]; !ok {
-		return "", nil, noop, fmt.Errorf("die not found: %s", diePath)
-	}
-
-	mgr := assets.NewManager(embeddedDies, embeddedPreCommit)
-
-	script, err := mgr.ExtractScript(diePath)
-	if err != nil {
-		mgr.Cleanup()
-		return "", nil, noop, err
-	}
-
-	dataDir, err := mgr.DataDir()
-	if err != nil {
-		mgr.Cleanup()
-		return "", nil, noop, err
-	}
-
-	return script, []string{"FORGE_DATA_DIR=" + dataDir}, mgr.Cleanup, nil
 }
 
 func runDiesShow(cmd *cobra.Command, args []string) error {
-	reg, err := loadDiesRegistry()
+	die, err := dies.Named(args[0])
 	if err != nil {
 		return err
 	}
 
-	diePath := args[0]
-	die, ok := reg.Dies[diePath]
-	if !ok {
-		return fmt.Errorf("die not found: %s", diePath)
-	}
-
+	out := cmd.OutOrStdout()
 	boldCyan := color.New(color.FgHiCyan, color.Bold)
-	cyan := color.New(color.FgHiCyan)
 	yellow := color.New(color.FgHiYellow)
-	dim := color.New(color.Faint)
-	green := color.New(color.FgHiGreen)
-	red := color.New(color.FgHiRed)
 
-	boldCyan.Printf("\n%s\n", diePath)
-	cyan.Printf("%s\n", strings.Repeat("─", len(diePath)))
+	row(out, "\n%s\n", boldCyan.Sprint(die.Name()))
+	row(out, "%s\n", color.New(color.FgHiCyan).Sprint(strings.Repeat("─", len(die.Name()))))
+	row(out, "  %s %s\n", yellow.Sprint("Description:"), die.Description())
+	row(out, "  %s        %s\n", yellow.Sprint("Tags:"), strings.Join(die.Tags(), ", "))
 
-	if die.Description != "" {
-		fmt.Printf("  %s %s\n", yellow.Sprint("Description:"), die.Description)
+	if s, ok := dieSummaries()[die.Name()]; ok {
+		row(out, "  %s        %d (last %s)\n", yellow.Sprint("Runs:"), s.RunCount, s.LastRun.Format("2006-01-02 15:04"))
 	}
-	if len(die.Tags) > 0 {
-		fmt.Printf("  %s        %s\n", yellow.Sprint("Tags:"), strings.Join(die.Tags, ", "))
-	}
-	if !die.Registered {
-		fmt.Printf("  %s      %s\n", yellow.Sprint("Status:"), dim.Sprint("unregistered (add to registry.yml for metadata)"))
-	}
-
-	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
-	if err == nil {
-		records, err := dies.LoadStats(statsPath)
-		if err == nil {
-			filtered := dies.StatsForDie(records, diePath)
-			if len(filtered) > 0 {
-				last := filtered[len(filtered)-1]
-				fmt.Printf("  %s    %s (%s, %s, %s)\n",
-					yellow.Sprint("Last run:"),
-					last.Timestamp.Format("2006-01-02 15:04"),
-					green.Sprintf("%d ok", last.OK),
-					yellow.Sprintf("%d skip", last.Skip),
-					red.Sprintf("%d fail", last.Fail))
-				fmt.Printf("  %s  %d\n", yellow.Sprint("Total runs:"), len(filtered))
-			}
-		}
-	}
-
-	fmt.Println()
+	row(out, "\n")
 	return nil
 }
 
 func runDiesSearch(cmd *cobra.Command, args []string) error {
-	reg, err := loadDiesRegistry()
-	if err != nil {
-		return err
-	}
-
-	matches := reg.Search(args[0])
+	matches := dies.SearchBuiltin(args[0])
+	out := cmd.OutOrStdout()
 	if len(matches) == 0 {
-		fmt.Printf("No dies matching %q\n", args[0])
+		row(out, "no dies match %q\n", args[0])
 		return nil
 	}
 
-	bold := color.New(color.Bold)
 	cyan := color.New(color.FgHiCyan)
+	for _, die := range matches {
+		row(out, "  %s %s\n", cyan.Sprintf("%-20s", die.Name()), die.Description())
+	}
+	return nil
+}
 
-	fmt.Printf("\nResults for %s:\n\n", bold.Sprintf("%q", args[0]))
-	for _, name := range matches {
-		die := reg.Dies[name]
-		if die.Description != "" {
-			fmt.Printf("  %s %s\n", cyan.Sprintf("%-45s", name), die.Description)
-		} else {
-			cyan.Printf("  %s\n", name)
+// row writes one console line, discarding the write error: there is nothing a
+// caller can do about a failed write to a terminal that has already gone away.
+func row(w io.Writer, format string, a ...any) {
+	_, _ = fmt.Fprintf(w, format, a...)
+}
+
+func dieSummaries() map[string]dies.DieSummary {
+	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
+	if err != nil {
+		return nil
+	}
+	records, err := dies.LoadStats(statsPath)
+	if err != nil || len(records) == 0 {
+		return nil
+	}
+	return dies.SummaryByDie(records)
+}
+
+// recordRun appends what a reconcile run did, so `dies stats` answers which
+// operations are actually used and when each last ran.
+//
+// Verdicts rather than the old OK/SKIP/FAIL counts, which came from exit codes
+// no die produces any more. The field names stay so records written before this
+// still load.
+func recordRun(dieName string, results []reconcile.Result) {
+	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
+	if err != nil {
+		return
+	}
+
+	record := dies.RunRecord{Die: dieName, Timestamp: time.Now().UTC(), Results: map[string]string{}}
+	for _, result := range results {
+		record.Results[result.Repo] = string(result.Status)
+		switch result.Status {
+		case reconcile.Converged:
+			record.OK++
+		case reconcile.Drift:
+			record.Skip++
+		case reconcile.Issue:
+			record.Fail++
 		}
 	}
-	fmt.Println()
 
-	return nil
+	_ = dies.RecordRun(statsPath, record)
 }
 
 func runDiesStats(cmd *cobra.Command, args []string) error {
@@ -584,47 +304,4 @@ func printDieRunHistory(diePath, window string, records []dies.RunRecord) {
 			red.Sprintf("%5d", r.Fail))
 	}
 	fmt.Println()
-}
-
-func printGroupedResults(results []runner.Result) {
-	var oks, skips []runner.Result
-	for _, r := range results {
-		switch {
-		case r.Status == "OK":
-			oks = append(oks, r)
-		case strings.HasPrefix(r.Status, "SKIP"):
-			skips = append(skips, r)
-		}
-	}
-
-	yellow := color.New(color.FgHiYellow)
-	green := color.New(color.FgHiGreen)
-	dim := color.New(color.Faint)
-
-	if len(skips) > 0 {
-		yellow.Printf("\n  %s  %d repos skipped\n", runner.IconWarn, len(skips))
-	}
-
-	detailed := false
-	for _, r := range oks {
-		if strings.Contains(strings.TrimRight(r.Output, "\n"), "\n") {
-			detailed = true
-			break
-		}
-	}
-
-	for _, r := range oks {
-		if detailed {
-			fmt.Println()
-			green.Printf("  %s  %s\n", runner.IconOK, r.Name)
-			output := strings.TrimRight(r.Output, "\n")
-			if output != "" {
-				for _, line := range strings.Split(output, "\n") {
-					dim.Printf("      %s\n", line)
-				}
-			}
-		} else {
-			runner.PrintResult(r)
-		}
-	}
 }

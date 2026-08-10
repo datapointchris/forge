@@ -135,8 +135,8 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 					t.Fatalf("write: %v", err)
 				}
 			}
-			if got := ReleaseGatesOnValidate(); got != tc.want {
-				t.Errorf("ReleaseGatesOnValidate() = %v, want %v", got, tc.want)
+			if got := ReleaseGatesOnValidate("."); got != tc.want {
+				t.Errorf("ReleaseGatesOnValidate = %v, want %v", got, tc.want)
 			}
 		})
 	}

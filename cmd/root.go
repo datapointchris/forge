@@ -6,19 +6,20 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 
 	"github.com/datapointchris/goselfupdate/autoupdate"
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/v5/config"
+	"github.com/datapointchris/forge/v5/reconcile"
 )
 
 var cfgPath string
 
 // Embedded asset filesystems, set by main before Execute().
 var (
-	embeddedDies      fs.FS
 	embeddedPreCommit fs.FS
 	embeddedCI        fs.FS
 )
@@ -38,8 +39,7 @@ func requireSubcommand(cmd *cobra.Command, args []string) error {
 }
 
 // SetEmbeddedAssets stores the embedded filesystems for use by subcommands.
-func SetEmbeddedAssets(dies, preCommit, ciBlocks fs.FS) {
-	embeddedDies = dies
+func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
 	embeddedPreCommit = preCommit
 	embeddedCI = ciBlocks
 }
@@ -59,6 +59,14 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	autoConfig := autoupdate.Config{Update: updateConfig()}
 	if err := cobracmd.Execute(context.Background(), rootCmd, autoConfig); err != nil {
+		// A reconcile verb has already printed its rows, so what is left is the
+		// number, not a message. Checked before the printer below: `plan` that
+		// found drift exits 1 and prints nothing extra, because pending changes
+		// are its answer rather than an error.
+		var verdict *reconcile.ExitError
+		if errors.As(err, &verdict) {
+			os.Exit(int(verdict.Code))
+		}
 		// The update command writes its own ✗ line; printing here too would
 		// report the same failure twice.
 		if !errors.Is(err, cobracmd.ErrReported) {
@@ -84,4 +92,12 @@ func loadRepos() (*config.SyncerConfig, error) {
 		return config.LoadSyncerConfig(cfgPath)
 	}
 	return config.LoadRepos()
+}
+
+// runCommand runs a command in a directory and returns its combined output.
+func runCommand(dir, name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }

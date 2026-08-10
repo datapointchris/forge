@@ -37,6 +37,15 @@ type Repo struct {
 	// Go service lives" exist across the portfolio, and facts like the SQL
 	// dialect are not derivable from the layout at all.
 	Toolchain *Toolchain `json:"toolchain,omitempty"`
+	// SyncedDirs are extra repo-relative directories kept in the sync base
+	// alongside .planning, which every repo gets.
+	//
+	// Declared because the planning die hardcoded `if repo_name = ichrisbirch`
+	// to reach that repo's stats/data — a fleet-specific fact inside a generic
+	// tool, which is the thing DefaultReposPath's comment above rules out. The
+	// repo is what knows it keeps generated data outside git; forge only has to
+	// know the operation.
+	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty"`
 	// Binary is the command this repo installs, when that name cannot be read
 	// out of the repo. Declared for the same reason Toolchain is: a Go CLI has
 	// no standard place to state its binary name, so ichrisbirch's `icb` lives
@@ -71,6 +80,18 @@ type Toolchain struct {
 	// generated blocks, and the repo is the only thing that knows the tree is
 	// fixtures rather than source.
 	Exclude string `json:"exclude,omitempty"`
+}
+
+// SyncedDir is one repo-relative directory kept in the sync base, and the name
+// it takes there.
+//
+// As is explicit rather than derived. ichrisbirch syncs `stats/data` into a
+// directory called `stats`, so neither the basename nor the first segment is
+// the rule — and a tool that guessed would silently point an existing link
+// somewhere new, which reads as drift and repairs into a second copy.
+type SyncedDir struct {
+	Dir string `json:"dir"`
+	As  string `json:"as"`
 }
 
 // ShellcheckException is one disabled rule and why it does not apply here.
@@ -110,6 +131,27 @@ type SyncerConfig struct {
 	Host        string   `json:"host"`
 	SearchPaths []string `json:"search_paths"`
 	Repos       []Repo   `json:"repos"`
+	// SyncBase is where per-repo directories are kept so a file-sync tool can
+	// see them — the target every .planning symlink points into.
+	//
+	// Declared rather than compiled in. The path is a fact about one fleet's
+	// Syncthing layout, and a generic tool carrying it has no way to be pointed
+	// somewhere else. Empty means DefaultSyncBase, which preserves what the
+	// bash die did and asks nobody to edit a registry to keep working.
+	SyncBase string `json:"sync_base,omitempty"`
+}
+
+// DefaultSyncBase is where synced repo directories live when the registry does
+// not say. Kept as the historical value so an existing registry needs no edit.
+const DefaultSyncBase = "~/dev/repos"
+
+// ResolvedSyncBase returns the sync base as an absolute path.
+func (c *SyncerConfig) ResolvedSyncBase() (string, error) {
+	base := c.SyncBase
+	if base == "" {
+		base = DefaultSyncBase
+	}
+	return ExpandTilde(base)
 }
 
 func LoadSyncerConfig(path string) (*SyncerConfig, error) {
