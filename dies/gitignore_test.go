@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 // applyAll runs the die end to end, the way `forge repos apply` does.

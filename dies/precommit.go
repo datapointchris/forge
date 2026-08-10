@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/precommit"
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v6/precommit"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 const preCommitConfigPath = ".pre-commit-config.yaml"

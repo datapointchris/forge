@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/toolchain"
+	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v6/toolchain"
 )
 
 // Both marker regexes tolerate leading whitespace because the same extractor

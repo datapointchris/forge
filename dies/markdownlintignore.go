@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 // Markdownlintignore asserts the standard .markdownlintignore entries.

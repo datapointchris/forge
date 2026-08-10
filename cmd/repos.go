@@ -13,10 +13,10 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v5/dies"
-	"github.com/datapointchris/forge/v5/reconcile"
-	"github.com/datapointchris/forge/v5/runner"
-	"github.com/datapointchris/forge/v5/toolchain"
+	"github.com/datapointchris/forge/v6/dies"
+	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v6/runner"
+	"github.com/datapointchris/forge/v6/toolchain"
 )
 
 var (

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 func requireUV(t *testing.T) {

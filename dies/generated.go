@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 // toolchainStamp marks a file as generated. Its absence on an existing file is

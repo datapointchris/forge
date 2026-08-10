@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 // DefaultBranch renames a repo's master branch to main, locally, on the remote,

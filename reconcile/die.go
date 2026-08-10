@@ -4,8 +4,8 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/toolchain"
+	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v6/toolchain"
 )
 
 // Assets is everything embedded in the binary that a die may need.
