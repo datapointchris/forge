@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,11 +185,11 @@ func (i Index) Discard() error {
 // than assumed, because the failure is silent: a .git appearing in a Syncthing
 // folder does not announce itself until two machines have both written to it.
 func (i Index) insideWorkTree() (bool, error) {
-	gitDir, err := filepath.Abs(i.GitDir)
+	gitDir, err := realPath(i.GitDir)
 	if err != nil {
 		return false, err
 	}
-	workTree, err := filepath.Abs(i.WorkTree)
+	workTree, err := realPath(i.WorkTree)
 	if err != nil {
 		return false, err
 	}
@@ -201,6 +202,38 @@ func (i Index) insideWorkTree() (bool, error) {
 		return false, fmt.Errorf("comparing %s to %s: %w", i.GitDir, i.WorkTree, err)
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)), nil
+}
+
+// realPath resolves a path through symlinks, which is what makes the check
+// above physical rather than lexical. filepath.Abs cleans `..` and nothing
+// else, so an XDG_CACHE_HOME that is itself a link into a maintained directory
+// yields a git dir reading as outside the tree while landing inside it — the
+// one arrangement that defeats a string comparison, and silently.
+//
+// Resolves the deepest component that exists and rejoins the rest, because the
+// git dir is checked before it is created and EvalSymlinks fails on what is not
+// there. The unresolved tail cannot be a link itself: it does not exist yet.
+func realPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	var tail string
+	for current := abs; ; {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			return filepath.Join(resolved, tail), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("resolving %s: %w", path, err)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return abs, nil
+		}
+		tail = filepath.Join(filepath.Base(current), tail)
+		current = parent
+	}
 }
 
 func (i Index) git(args ...string) error {

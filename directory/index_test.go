@@ -46,6 +46,53 @@ func TestIndexIsNeverInsideTheWorkTree(t *testing.T) {
 	}
 }
 
+// The one arrangement a string comparison gets wrong: a cache reached through a
+// link that lands inside the tree. Lexically the two paths diverge immediately,
+// so filepath.Abs alone reports "outside" and a .git is created in a Syncthing
+// folder — the exact failure the package exists to prevent.
+func TestSymlinkedCacheIsSeenAsInsideTheWorkTree(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tree, "cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "cache-link")
+	if err := os.Symlink(filepath.Join(tree, "cache"), link); err != nil {
+		t.Skipf("symlinks are unavailable: %s", err)
+	}
+
+	index := Index{Name: "sample", GitDir: filepath.Join(link, "sample.git"), WorkTree: tree}
+	inside, err := index.insideWorkTree()
+	if err != nil {
+		t.Fatalf("insideWorkTree: %s", err)
+	}
+	if !inside {
+		t.Errorf("a git dir resolving to %s was not seen as inside %s",
+			filepath.Join(tree, "cache", "sample.git"), tree)
+	}
+	if err := index.Ensure(); err == nil {
+		t.Error("Ensure created an index inside the tree it indexes")
+	}
+}
+
+// The work tree side of the same problem, and the reason realPath resolves both:
+// a declared path reached through a link must compare as the directory it names.
+func TestASymlinkedWorkTreeStillMatchesItsOwnIndex(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "tree-link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks are unavailable: %s", err)
+	}
+
+	index := Index{Name: "sample", GitDir: filepath.Join(real, ".git"), WorkTree: link}
+	inside, err := index.insideWorkTree()
+	if err != nil {
+		t.Fatalf("insideWorkTree: %s", err)
+	}
+	if !inside {
+		t.Errorf("%s was not seen as inside %s, which is the same directory", index.GitDir, link)
+	}
+}
+
 // And when one would be, every write path refuses rather than proceeding.
 func TestEnsureAndDiscardRefuseAnIndexInsideTheWorkTree(t *testing.T) {
 	tree := t.TempDir()
