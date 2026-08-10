@@ -107,12 +107,17 @@ func TestEveryChangeIsClassified(t *testing.T) {
 
 // TestGitDiesFindNothingInAnUnversionedDirectory is the guard on the guards.
 //
-// Each of these reads a remote, a branch, or a workflow that only exists in a
-// git repo. ci is the one that would do damage rather than waste a subprocess:
-// a directory declaring python and shell would otherwise grow a
-// .github/workflows/validate.yml that nothing will ever run.
+// Each of these asserts something only a git repo can have. ci is the one that
+// would do damage rather than waste a subprocess: a directory declaring python
+// and shell would otherwise grow a .github/workflows/validate.yml that nothing
+// will ever run. markdownlintignore is here for a subtler reason — its only
+// entry protects a file semantic-release regenerates, and a target with no
+// commits has no release to be seeded before.
 func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
-	gitOnly := []string{"ci", "planning", "branch-protection", "default-branch", "merge-settings"}
+	gitOnly := []string{
+		"ci", "planning", "branch-protection", "default-branch", "merge-settings",
+		"markdownlintignore",
+	}
 
 	for _, name := range gitOnly {
 		t.Run(name, func(t *testing.T) {
@@ -141,7 +146,7 @@ func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
 // The same fixture must still be measured by the dies that do apply, or the
 // test above is passing because nothing ran at all.
 func TestFilesystemDiesStillMeasureAnUnversionedDirectory(t *testing.T) {
-	for _, name := range []string{"gitignore", "markdownlintignore", "claude-md", "pyproject", "precommit"} {
+	for _, name := range []string{"gitignore", "claude-md", "pyproject", "precommit"} {
 		t.Run(name, func(t *testing.T) {
 			die, err := Named(name)
 			if err != nil {

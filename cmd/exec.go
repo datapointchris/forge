@@ -41,7 +41,6 @@ func init() {
 	execCmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
 	execCmd.Flags().BoolVarP(&execDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
 	execCmd.Flags().StringVarP(&scriptFile, "file", "f", "", "path to script file to execute in each repo")
-	reposCmd.AddCommand(execCmd)
 }
 
 func runExec(cmd *cobra.Command, args []string) error {
