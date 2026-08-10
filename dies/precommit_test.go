@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // plannedItems is what a plan would change, by item, for readable assertions.

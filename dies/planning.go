@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/datapointchris/forge/v6/config"
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // Planning keeps a repo's local-only directories inside the sync base, by

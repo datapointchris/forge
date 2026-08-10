@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/datapointchris/forge/v6/config"
-	"github.com/datapointchris/forge/v6/runner"
+	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/v7/runner"
 )
 
 // directories are the targets forge maintains that git does not version,

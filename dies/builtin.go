@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // Builtin returns every die, in the order a walk presents them.

@@ -10,9 +10,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v6/config"
-	"github.com/datapointchris/forge/v6/dies"
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/v7/dies"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 var (

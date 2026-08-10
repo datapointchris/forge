@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // MergeSettings makes a merged PR read as the work, not as "Merge pull request

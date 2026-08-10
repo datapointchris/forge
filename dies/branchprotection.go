@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // BranchProtection makes "never force-push main" mechanical instead of a rule

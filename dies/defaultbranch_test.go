@@ -3,7 +3,7 @@ package dies
 import (
 	"testing"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // initRepo makes the fixture a real git repo with one commit on the named branch.

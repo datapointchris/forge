@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v6/directory"
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/directory"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // directoriesOnly is the verb set directories carry that repos do not.

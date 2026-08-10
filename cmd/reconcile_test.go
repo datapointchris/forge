@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/datapointchris/forge/v6/config"
-	"github.com/datapointchris/forge/v6/runner"
+	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/v7/runner"
 )
 
 // The two nouns are one implementation, and this is what keeps them one.

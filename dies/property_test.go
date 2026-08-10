@@ -4,7 +4,7 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // driftedFixture is a repo missing everything the standards assert, so every

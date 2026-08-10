@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v7/config"
 )
 
 // Candidate is a repo that ships a CLI, resolved to the binary on PATH.

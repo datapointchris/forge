@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // Pyproject merges the standard [tool.*] sections into a Python repo's

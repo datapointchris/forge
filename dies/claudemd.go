@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // ClaudeMD reports whether a repo carries the file that tells an agent how to

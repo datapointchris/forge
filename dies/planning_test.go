@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/datapointchris/forge/v6/config"
-	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/v7/reconcile"
 )
 
 // syncedPath is where the die should put a repo-relative directory.

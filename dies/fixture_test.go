@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/datapointchris/forge/v6/config"
-	"github.com/datapointchris/forge/v6/reconcile"
-	"github.com/datapointchris/forge/v6/toolchain"
+	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/v7/toolchain"
 )
 
 // repoRoot walks up to the directory holding go.mod.
