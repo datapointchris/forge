@@ -59,6 +59,7 @@ var genericBlocks = map[string]bool{
 	"markdown":    true,
 	"shell":       true,
 	"codespell":   true,
+	"refcheck":    true,
 }
 
 // knownAliases are hook IDs that standard blocks intentionally replace, listed
