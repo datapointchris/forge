@@ -126,21 +126,33 @@ This is what --dry-run used to answer on a die run. It is its own question —
 	return root
 }
 
-// targets resolves what to walk, with the assets every die may need.
-func (n *reconcileNoun) targets() ([]reconcile.Target, error) {
+// selected answers which of this noun's members the filter names, and is where
+// an empty selection becomes an error. Separate from targets because the verbs
+// that need no die — `run` — must answer a typo the same way the ones that do
+// already answer it, and they would otherwise pay for assets they never read.
+func (n *reconcileNoun) selected() ([]config.Repo, *config.SyncerConfig, error) {
 	selected, cfg, err := n.resolve(n.filterNames)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(selected) == 0 {
 		// A usage error, not a runtime one: naming something that does not exist
 		// is the one failure worth retrying with different arguments, and it is
 		// almost always a typo or a shell that did not split the list.
 		if len(n.filterNames) > 0 {
-			return nil, cobracmd.UsageError(fmt.Errorf("no %s matched: %s",
+			return nil, nil, cobracmd.UsageError(fmt.Errorf("no %s matched: %s",
 				n.many, strings.Join(n.filterNames, ", ")))
 		}
-		return nil, cobracmd.UsageError(fmt.Errorf("no %s are declared", n.many))
+		return nil, nil, cobracmd.UsageError(fmt.Errorf("no %s are declared", n.many))
+	}
+	return selected, cfg, nil
+}
+
+// targets resolves what to walk, with the assets every die may need.
+func (n *reconcileNoun) targets() ([]reconcile.Target, error) {
+	selected, cfg, err := n.selected()
+	if err != nil {
+		return nil, err
 	}
 
 	assets, err := loadAssets()

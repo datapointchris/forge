@@ -63,13 +63,9 @@ could not happen.`,
 }
 
 func runDirectories(n *reconcileNoun, cmd *cobra.Command, rebuild bool) error {
-	selected, _, err := n.resolve(n.filterNames)
+	selected, _, err := n.selected()
 	if err != nil {
 		return err
-	}
-	if len(selected) == 0 {
-		row(cmd.ErrOrStderr(), "no %s to run\n", n.many)
-		return &reconcile.ExitError{Code: reconcile.ExitIssue}
 	}
 
 	results := make([]directory.Result, 0, len(selected))
