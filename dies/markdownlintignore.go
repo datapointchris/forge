@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 // Markdownlintignore asserts the standard .markdownlintignore entries.
@@ -53,9 +53,17 @@ type markdownlintignoreState struct {
 	// seeding a repo before it cuts its first release is the point, since the
 	// conflict this prevents shows up at exactly that moment.
 	hasChangelog bool
+	// releasable is the one thing that does gate it. Every entry here exists
+	// because semantic-release regenerates a file and a local commit lands on
+	// top of the release commit — which needs commits. A target git does not
+	// version has no first release to be seeded before.
+	releasable bool
 }
 
 func (s markdownlintignoreState) Summary() string {
+	if !s.releasable {
+		return "no releases here, so nothing to protect from one"
+	}
 	if !s.exists {
 		return "no .markdownlintignore"
 	}
@@ -73,7 +81,7 @@ func (Markdownlintignore) Observe(t reconcile.Target) (reconcile.Observation, er
 		return nil, err
 	}
 
-	return markdownlintignoreState{lineFile: file, hasChangelog: err == nil}, nil
+	return markdownlintignoreState{lineFile: file, hasChangelog: err == nil, releasable: t.Versioned()}, nil
 }
 
 func (Markdownlintignore) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
@@ -83,6 +91,9 @@ func (Markdownlintignore) Diff(_ reconcile.Target, observed reconcile.Observatio
 	}
 
 	var changes []reconcile.Change
+	if !state.releasable {
+		return nil, nil
+	}
 	for _, entry := range markdownlintIgnores {
 		switch count := state.count(entry.line); {
 		case count == 0:

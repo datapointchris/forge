@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/toolchain"
+	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v6/toolchain"
 )
 
 // Both marker regexes tolerate leading whitespace because the same extractor
@@ -29,30 +29,36 @@ var (
 )
 
 // categoryMap maps a block to the declared stack category that pulls it in.
+//
+// git is the second category not gated by a component, alongside sql. Its two
+// blocks hook commit-msg and prepare-commit-msg, which only fire on a commit, so
+// a target git does not version would carry two hooks that can never run — and
+// nothing would say so, because uninstalledHooks reports no missing stages when
+// there is no .git to install them into.
 var categoryMap = map[string]string{
-	"python-format":  "python",
-	"python-lint":    "python",
-	"go":             "go",
-	"vue":            "vue",
-	"rust":           "rust",
-	"lua":            "lua",
-	"docker":         "docker",
-	"sql":            "sql",
-	"github-actions": "actions",
-	"terraform":      "terraform",
+	"conventional-commits": "git",
+	"commit-branding":      "git",
+	"python-format":        "python",
+	"python-lint":          "python",
+	"go":                   "go",
+	"vue":                  "vue",
+	"rust":                 "rust",
+	"lua":                  "lua",
+	"docker":               "docker",
+	"sql":                  "sql",
+	"github-actions":       "actions",
+	"terraform":            "terraform",
 }
 
-// genericBlocks apply to every repo regardless of stack. Membership is declared
-// rather than inferred from categoryMap's gaps: rust and lua were absent from
-// both for months, which read as generic, and every Go repo was being handed
-// cargo-clippy and stylua hooks.
+// genericBlocks apply to every target regardless of stack. Membership is
+// declared rather than inferred from categoryMap's gaps: rust and lua were
+// absent from both for months, which read as generic, and every Go repo was
+// being handed cargo-clippy and stylua hooks.
 var genericBlocks = map[string]bool{
-	"conventional-commits": true,
-	"commit-branding":      true,
-	"file-checks":          true,
-	"markdown":             true,
-	"shell":                true,
-	"codespell":            true,
+	"file-checks": true,
+	"markdown":    true,
+	"shell":       true,
+	"codespell":   true,
 }
 
 // knownAliases are hook IDs that standard blocks intentionally replace, listed
@@ -359,13 +365,25 @@ type block struct {
 // directory it was declared in. A repo whose frontend is in web/ and one whose
 // frontend is in frontend/ get hooks that enter the right directory — the block
 // itself names neither.
-func Generate(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.Toolchain, customSections map[string]string) (string, error) {
+func Generate(
+	blocksFS fs.FS,
+	manifest *toolchain.Toolchain,
+	declared *config.Toolchain,
+	customSections map[string]string,
+	versioned bool,
+) (string, error) {
 	dirs := dirsByCategory(declared.Components)
 	// The SQL block is gated by a declared dialect rather than by a component:
 	// a repo's .sql files are not a build surface with a directory of their own,
 	// and no probe can tell postgres from sqlite by looking at them.
 	if declared.SQLDialect != "" {
 		dirs["sql"] = []string{"."}
+	}
+	// The commit-stage blocks are gated by git being present, for the reason in
+	// categoryMap. Seeded exactly as sql is: neither has a build directory of
+	// its own, so both take the root.
+	if versioned {
+		dirs["git"] = []string{"."}
 	}
 	blocks, err := loadBlocks(blocksFS, dirs)
 	if err != nil {
@@ -542,62 +560,6 @@ func Check(blocksFS fs.FS, declared *config.Toolchain) ([]string, error) {
 	}
 	configText := string(data)
 	return SafetyCheck(configText, blocksFS, declared, ExtractCustomSections(configText))
-}
-
-// DryRun returns what Run would write, without touching the filesystem and
-// without the safety abort — for verifying generation across the portfolio
-// before a rollout.
-func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.Toolchain) (string, error) {
-	var configText string
-	if data, err := os.ReadFile(".pre-commit-config.yaml"); err == nil {
-		configText = string(data)
-	}
-	return Generate(blocksFS, manifest, declared, ExtractCustomSections(configText))
-}
-
-// Run executes the full generation pipeline: read existing config from CWD,
-// extract custom sections, run safety check, generate, write if changed.
-// Returns a status message and error.
-func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, declared *config.Toolchain) (string, error) {
-	configPath := ".pre-commit-config.yaml"
-
-	var configText string
-	data, err := os.ReadFile(configPath)
-	if err == nil {
-		configText = string(data)
-	}
-
-	customSections := ExtractCustomSections(configText)
-
-	// Safety check
-	if configText != "" {
-		unknown, err := SafetyCheck(configText, blocksFS, declared, customSections)
-		if err != nil {
-			return "", fmt.Errorf("safety check: %w", err)
-		}
-		if len(unknown) > 0 {
-			return "", fmt.Errorf("ABORT: %d unrecognized hooks with no custom markers: %s\nAdd # > custom:POSITION markers to preserve them, then re-run",
-				len(unknown), strings.Join(unknown, ", "))
-		}
-	}
-
-	generated, err := Generate(blocksFS, manifest, declared, customSections)
-	if err != nil {
-		return "", err
-	}
-
-	if configText == generated {
-		return "no changes", nil
-	}
-
-	if err := os.WriteFile(configPath, []byte(generated), 0o644); err != nil {
-		return "", fmt.Errorf("writing config: %w", err)
-	}
-
-	if len(customSections) > 0 {
-		return fmt.Sprintf("%d custom sections preserved", len(customSections)), nil
-	}
-	return "generated", nil
 }
 
 // loadBlocks reads and filters block files from the filesystem.

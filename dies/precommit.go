@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/precommit"
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v6/precommit"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 const preCommitConfigPath = ".pre-commit-config.yaml"
@@ -108,7 +108,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 	customSections := precommit.ExtractCustomSections(existing)
 
-	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain, customSections)
+	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain, customSections, t.Versioned())
 	if err != nil {
 		return nil, err
 	}

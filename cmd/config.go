@@ -1,0 +1,168 @@
+package cmd
+
+import (
+	"encoding/json"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/fatih/color"
+	"github.com/spf13/cobra"
+
+	"github.com/datapointchris/forge/v6/config"
+)
+
+var configJSON bool
+
+// config is a namespace rather than a command that prints, per cli-design.md
+// § "A resource that could ever grow a second command is a namespace today" —
+// whose worked example is this exact name. syncer and dectl already carry
+// `config init|example|path|edit`, so the second verb is foreseeable rather
+// than hypothetical, and the rename is free only until someone types the bare
+// form.
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "The machine config",
+	Long: `Inspect the machine config — the directories forge maintains that git does
+not version, and the paths forge resolves for its own files.`,
+	RunE: requireSubcommand,
+}
+
+var configShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Print the resolved config and where each value came from",
+	Long: `Print what forge will actually use, not what the files say.
+
+Tildes are expanded, defaults are filled in, and every path reports the layer
+that set it — a flag, an environment variable, or the built-in default. The
+source is the part that distinguishes "I asked for this" from "something else
+asked for me": a stale XDG_CONFIG_HOME resolves to a perfectly plausible path
+and reads identically to the one you meant.`,
+	Example: `  # What forge will use, and which layer set each value
+  forge config show
+
+  # Whether a directory you declared is actually being seen
+  forge config show --json | jq '.maintained_directories'`,
+	Args: cobra.NoArgs,
+	RunE: runConfig,
+}
+
+func init() {
+	configShowCmd.Flags().BoolVar(&configJSON, "json", false, "machine-readable output")
+	configCmd.AddCommand(configShowCmd)
+	rootCmd.AddCommand(configCmd)
+}
+
+// resolved is one setting, what it came out as, and what set it.
+type resolved struct {
+	Setting string `json:"setting"`
+	Value   string `json:"value"`
+	Source  string `json:"source"`
+	// Exists is nil for settings that are not paths.
+	Exists *bool `json:"exists,omitempty"`
+}
+
+type configReport struct {
+	Settings    []resolved          `json:"settings"`
+	Directories []directoryResolved `json:"maintained_directories"`
+}
+
+type directoryResolved struct {
+	Name   string   `json:"name"`
+	Path   string   `json:"path"`
+	Stacks []string `json:"stacks"`
+	Exists bool     `json:"exists"`
+}
+
+func runConfig(cmd *cobra.Command, _ []string) error {
+	reposPath, reposSource := resolveReposPath()
+	configPath, configSource := resolveConfigPath()
+
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	report := configReport{
+		Settings: []resolved{
+			{Setting: "repos file", Value: reposPath, Source: reposSource, Exists: pathExists(reposPath)},
+			{Setting: "config file", Value: configPath, Source: configSource, Exists: pathExists(configPath)},
+		},
+		Directories: make([]directoryResolved, 0, len(cfg.MaintainedDirectories)),
+	}
+	for _, dir := range cfg.MaintainedDirectories {
+		report.Directories = append(report.Directories, directoryResolved{
+			Name:   dir.Name,
+			Path:   dir.Path,
+			Stacks: dir.Toolchain.Stacks(),
+			Exists: *pathExists(dir.Path),
+		})
+	}
+
+	if configJSON {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(report)
+	}
+	printConfigReport(cmd.OutOrStdout(), report)
+	return nil
+}
+
+// resolveReposPath answers where the registry comes from. The -c flag is the
+// only override by design: LoadRepos' comment rules out a config key naming it,
+// because a tool that resolves its own data directory does not need one.
+func resolveReposPath() (string, string) {
+	if cfgPath != "" {
+		return cfgPath, "--config flag"
+	}
+	if os.Getenv("XDG_DATA_HOME") != "" {
+		return config.DefaultReposPath(), "$XDG_DATA_HOME"
+	}
+	return config.DefaultReposPath(), "default"
+}
+
+func resolveConfigPath() (string, string) {
+	if os.Getenv("XDG_CONFIG_HOME") != "" {
+		return config.DefaultConfigPath(), "$XDG_CONFIG_HOME"
+	}
+	return config.DefaultConfigPath(), "default"
+}
+
+func pathExists(path string) *bool {
+	_, err := os.Stat(path)
+	exists := err == nil
+	return &exists
+}
+
+func printConfigReport(w io.Writer, report configReport) {
+	label := color.New(color.FgHiCyan)
+	source := color.New(color.FgHiBlue)
+	missing := color.New(color.FgHiYellow)
+
+	row(w, "\n")
+	for _, setting := range report.Settings {
+		row(w, "  %s  %s  %s",
+			label.Sprintf("%-12s", setting.Setting),
+			setting.Value,
+			source.Sprintf("(%s)", setting.Source))
+		if setting.Exists != nil && !*setting.Exists {
+			row(w, "  %s", missing.Sprint("not present"))
+		}
+		row(w, "\n")
+	}
+
+	row(w, "\n  %s\n", label.Sprintf("maintained directories (%d)", len(report.Directories)))
+	if len(report.Directories) == 0 {
+		row(w, "    none declared in %s\n", report.Settings[1].Value)
+		return
+	}
+	for _, dir := range report.Directories {
+		stacks := strings.Join(dir.Stacks, ", ")
+		if stacks == "" {
+			stacks = "generic blocks only"
+		}
+		row(w, "    %s  %s  %s", label.Sprintf("%-10s", dir.Name), dir.Path, source.Sprint(stacks))
+		if !dir.Exists {
+			row(w, "  %s", missing.Sprint("not present"))
+		}
+		row(w, "\n")
+	}
+}

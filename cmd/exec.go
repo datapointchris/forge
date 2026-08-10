@@ -9,8 +9,8 @@ import (
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/runner"
+	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v6/runner"
 )
 
 var (
@@ -41,7 +41,6 @@ func init() {
 	execCmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
 	execCmd.Flags().BoolVarP(&execDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
 	execCmd.Flags().StringVarP(&scriptFile, "file", "f", "", "path to script file to execute in each repo")
-	reposCmd.AddCommand(execCmd)
 }
 
 func runExec(cmd *cobra.Command, args []string) error {

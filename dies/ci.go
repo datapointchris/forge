@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/datapointchris/forge/v5/ci"
-	"github.com/datapointchris/forge/v5/precommit"
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/ci"
+	"github.com/datapointchris/forge/v6/precommit"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 // CI generates .github/workflows/validate.yml from the standard blocks.
@@ -49,6 +49,13 @@ func (s ciState) Summary() string {
 }
 
 func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
+	// Checked before the components are, because a maintained directory declares
+	// components too. Without this, a directory declaring python and shell grows
+	// a .github/workflows/validate.yml that nothing will ever run — the one
+	// guard here that prevents a write rather than a wasted read.
+	if !t.Versioned() {
+		return ciState{reason: "not a git repo, so no workflow would run"}, nil
+	}
 	if t.Repo.Toolchain == nil || len(t.Repo.Toolchain.Components) == 0 {
 		return ciState{reason: "declares no toolchain components"}, nil
 	}

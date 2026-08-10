@@ -2,10 +2,11 @@ package reconcile
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 
-	"github.com/datapointchris/forge/v5/config"
-	"github.com/datapointchris/forge/v5/toolchain"
+	"github.com/datapointchris/forge/v6/config"
+	"github.com/datapointchris/forge/v6/toolchain"
 )
 
 // Assets is everything embedded in the binary that a die may need.
@@ -41,6 +42,22 @@ type Target struct {
 // Path resolves a repo-relative path against this target.
 func (t Target) Path(rel ...string) string {
 	return filepath.Join(append([]string{t.Repo.Path}, rel...)...)
+}
+
+// Versioned reports whether git tracks this target, which decides whether the
+// dies reading a remote, a branch or a workflow have anything to measure.
+//
+// Read from the filesystem rather than declared, for the reason
+// ci.ReleaseGatesOnValidate is: the failure worth preventing is someone
+// registering a directory and forgetting to say what it is, which a flag cannot
+// prevent and a file read cannot get wrong. It also re-derives every run, so a
+// directory that later becomes a repo starts getting the git dies by itself.
+//
+// Stat, not IsDir: .git is a file in a worktree and in a submodule, and both of
+// those are repos.
+func (t Target) Versioned() bool {
+	_, err := os.Stat(t.Path(".git"))
+	return err == nil
 }
 
 // Observation is whatever a die measured. Opaque to everything but its own Diff.

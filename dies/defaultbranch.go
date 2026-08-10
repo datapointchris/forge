@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/datapointchris/forge/v5/reconcile"
+	"github.com/datapointchris/forge/v6/reconcile"
 )
 
 // DefaultBranch renames a repo's master branch to main, locally, on the remote,
@@ -42,9 +42,13 @@ type defaultBranchState struct {
 	remoteHasMaster bool
 	repo            ghRepo
 	unreachable     string
+	unversioned     bool
 }
 
 func (s defaultBranchState) Summary() string {
+	if s.unversioned {
+		return "not a git repo"
+	}
 	if s.hasMain && !s.hasMaster {
 		return "on main"
 	}
@@ -55,6 +59,13 @@ func (s defaultBranchState) Summary() string {
 }
 
 func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) {
+	// Without this the two branchExists calls below both answer false and the
+	// row reads "no master branch to rename", which is true of a directory that
+	// has no branches at all and says nothing about why.
+	if !t.Versioned() {
+		return defaultBranchState{unversioned: true}, nil
+	}
+
 	state := defaultBranchState{}
 
 	state.hasMaster = branchExists(t.Repo.Path, "master")

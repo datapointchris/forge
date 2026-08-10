@@ -23,7 +23,7 @@ Download the latest binary from [Releases](https://github.com/datapointchris/for
 ### From Source
 
 ```bash
-go install github.com/datapointchris/forge/v5@latest
+go install github.com/datapointchris/forge/v6@latest
 ```
 
 ### Self-Update
@@ -64,6 +64,39 @@ Dies are Go, compiled into the binary, so a development build is the current die
 ```
 
 Valid statuses: `active` (the default when the field is absent), `dormant`, `retired`. Only `active` repos are swept implicitly — `dormant` is reachable by naming it with `-F`, `retired` is not reachable at all. The optional `description` field is shown by `forge status`.
+
+### Machine config
+
+`$XDG_CONFIG_HOME/forge/config.yml` — the directories forge maintains that git does
+not version. A Syncthing folder, a home directory, anything held to the same
+standard without a remote.
+
+These are declared here rather than in the registry on purpose. A repo registry is
+usually read by more than one tool, and each of them takes an entry to be a git
+repo with a remote — a key only forge can act on does not just add a concept the
+others ignore, it changes what iterating the collection means for all of them.
+
+```yaml
+maintained_directories:
+  - name: claude
+    path: ~/.claude
+    description: Editor and agent configuration. Synced, not versioned.
+    toolchain:
+      components:
+        - {stack: python, dir: .}
+        - {stack: shell, dir: .}
+
+  # An empty components list is not the same as none: it asks for the generic
+  # blocks and nothing else, where omitting toolchain skips the directory.
+  - name: notes
+    path: ~/notes
+    toolchain:
+      components: []
+```
+
+`forge config show` prints what resolved and which layer set it. A missing file is not
+an error, and an unknown key is — a misspelled key would leave a directory
+undeclared, and an undeclared directory reads as a converged one.
 
 ## Usage
 
@@ -142,6 +175,40 @@ forge repos exec -f ./one-off.sh
 
 Exit codes: `0` converged, `1` changes pending (`plan` only), `2` usage, `3` something
 is wrong. `check` never returns 1 — a repo behind the standard is drift, not a fault.
+
+### Reconcile the maintained directories
+
+The same verbs, spelled the same way, over the targets git does not version.
+
+```bash
+forge directories list
+forge directories check
+forge directories plan -F claude
+forge directories apply precommit -F claude
+```
+
+Dies that read a remote, a branch or a workflow report themselves not-applicable
+rather than being hidden, so a row says why it found nothing.
+
+`run` is the verb repos do not have. A repo's config is executed twice already —
+by the git hook on every commit, and by CI on every pull request — while a
+directory has neither, so its generated config would otherwise never run at all.
+
+```bash
+forge directories run
+forge directories run -F claude
+forge directories run --rebuild --json
+```
+
+pre-commit needs a git index to know which files exist. A directory that git does
+not version has none, so forge builds a throwaway one in its cache: a bare
+repository outside the tree, with the directory as its work tree. Nothing is
+written inside the directory itself, because a `.git` in a file-synced folder
+conflicts on every peer. Which files are examined is decided the ordinary way, by
+the directory's `.gitignore`.
+
+Exit codes: `0` everything passed, `1` a hook failed or rewrote a file, `3` the run
+could not happen.
 
 ### Browse the dies
 

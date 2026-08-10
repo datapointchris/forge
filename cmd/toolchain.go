@@ -9,8 +9,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v5/reconcile"
-	"github.com/datapointchris/forge/v5/toolchain"
+	"github.com/datapointchris/forge/v6/reconcile"
+	"github.com/datapointchris/forge/v6/toolchain"
 )
 
 // toolchainCmd operates on forge's own manifest, not on a repo — which is why
