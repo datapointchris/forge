@@ -148,11 +148,21 @@ func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
 func TestFilesystemDiesStillMeasureAnUnversionedDirectory(t *testing.T) {
 	for _, name := range []string{"gitignore", "claude-md", "pyproject", "precommit"} {
 		t.Run(name, func(t *testing.T) {
+			if name == "pyproject" {
+				requireUV(t)
+			}
 			die, err := Named(name)
 			if err != nil {
 				t.Fatalf("%s is not registered: %s", name, err)
 			}
-			if measured := reconcile.Assess(driftedDirectory(t), die); len(measured.Changes) == 0 {
+			measured := reconcile.Assess(driftedDirectory(t), die)
+			// Asserted before the count, because a die that could not run
+			// reports zero changes and would otherwise read as one that ran and
+			// found nothing — the wrong diagnosis, on a machine missing a tool.
+			if measured.Refusal != "" {
+				t.Fatalf("%s could not measure the directory: %s", name, measured.Refusal)
+			}
+			if len(measured.Changes) == 0 {
 				t.Errorf("%s found nothing in a drifted directory, so it is not covering one", name)
 			}
 		})
