@@ -14,3 +14,22 @@
         # repo with DB integration tests has to keep a hook of its own.
         args: [-short]
       - id: golangci-lint-repo-mod
+
+  # A breaking commit must carry its go.mod major, because the tag is cut from
+  # this tree after the merge and a tag whose go.mod declares a lower major is
+  # unservable forever. The failure is silent: `go install ...@latest` then
+  # returns the old major's newest version instead of erroring. Five repos were
+  # doing exactly that before anyone asked the proxy.
+  #
+  # commit-msg, not CI: CI runs after the commit exists, and the whole point is
+  # that the bump has to be IN the commit that triggers the major.
+  - repo: local
+    hooks:
+      - id: go-module-major
+        name: Breaking commit carries its go.mod major
+        # $HOME, not a literal path: pre-commit execs entry without a shell, and
+        # the same repo is committed from both /Users/chris and /home/chris.
+        entry: bash -c 'exec "$HOME/.local/bin/go-module-major-check" "$@"' --
+        language: system
+        always_run: true
+        stages: [commit-msg]
