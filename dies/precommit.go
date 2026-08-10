@@ -66,6 +66,7 @@ var toolConfigs = []toolConfig{
 	{asset: "configs/shellcheckrc.ini", rel: ".shellcheckrc"},
 	{asset: "configs/golangci.yml", rel: ".golangci.yml", category: "go"},
 	{asset: "configs/prettierrc.json", rel: ".prettierrc.json", category: "vue"},
+	{asset: "configs/prettierignore.txt", rel: ".prettierignore", category: "vue"},
 	{asset: "configs/sqlfluff.ini", rel: ".sqlfluff", category: "sql"},
 }
 
