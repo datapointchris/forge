@@ -108,7 +108,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 	customSections := precommit.ExtractCustomSections(existing)
 
-	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain, customSections)
+	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain, customSections, t.Versioned())
 	if err != nil {
 		return nil, err
 	}
