@@ -36,13 +36,13 @@ repos, meant to prime a Claude Code session.
 
 This is the AI's dev brief across REPOS — full cross-project status and the items
 that need actual computer work. It is NOT the human single pane of glass: that is
-'menu dashboard', which is a glance across all life apps (tasks, habits, next book,
+'doit dashboard', which is a glance across all life apps (tasks, habits, next book,
 current learning). Two audiences, two scopes — they are not built to cover each other.
 
 It joins three layers:
 
-  - Planning   — each repo's .planning/status.md (Current State / In Progress /
-                 What's Next / Not Doing) and design docs.
+  - Planning   — each repo's .planning/status.md (Current State / Decisions Made /
+                 Not Doing) and design docs.
   - Roadmap    — your ordered ichrisbirch projects and their open items, via the
                  icb CLI. This is the "do the next thing, in order" queue.
   - Inbox      — Computer-category icb tasks. The task list is a capture inbox, so
