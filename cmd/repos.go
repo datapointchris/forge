@@ -44,7 +44,7 @@ Exit codes: 0 converged, 1 changes pending (plan only), 3 something is wrong.`,
 		}
 		return runner.SelectRepos(cfg.Repos, names), cfg, nil
 	},
-	only: []*cobra.Command{execCmd},
+	only: func(*reconcileNoun) []*cobra.Command { return []*cobra.Command{execCmd} },
 }
 
 func init() {

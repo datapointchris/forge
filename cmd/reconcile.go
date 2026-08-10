@@ -41,7 +41,11 @@ type reconcileNoun struct {
 	// deliberate and small: exec sweeps repos, run executes a directory's hooks
 	// because nothing else will. Declared here so both stay visible in one place
 	// rather than being attached from whichever file happens to define them.
-	only []*cobra.Command
+	//
+	// Built from the noun rather than referencing it: run needs the same
+	// selection and flags these four use, and a verb reaching back for the
+	// package variable is an initialization cycle the compiler rejects.
+	only func(*reconcileNoun) []*cobra.Command
 
 	filterNames []string
 	asJSON      bool
@@ -113,8 +117,10 @@ This is what --dry-run used to answer on a die run. It is its own question —
 	}
 	apply.Flags().BoolVar(&n.yes, "yes", false, "apply without confirming, for the unaliased form")
 
-	for _, cmd := range n.only {
-		root.AddCommand(cmd)
+	if n.only != nil {
+		for _, cmd := range n.only(n) {
+			root.AddCommand(cmd)
+		}
 	}
 
 	return root

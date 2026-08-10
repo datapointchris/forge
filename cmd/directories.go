@@ -45,6 +45,7 @@ Exit codes: 0 converged, 1 changes pending (plan only), 3 something is wrong.`,
 		}
 		return runner.SelectRepos(cfg.MaintainedDirectories, names), registry, nil
 	},
+	only: directoriesOnly,
 }
 
 func init() {
