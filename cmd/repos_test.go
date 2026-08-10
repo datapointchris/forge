@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/reconcile"
 )
 
 func TestPendingSummaryCountsChangesAndDistinctRepos(t *testing.T) {

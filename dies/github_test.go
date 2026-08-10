@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/reconcile"
 )
 
 // githubDies are the ones whose answer depends on reaching GitHub, and which

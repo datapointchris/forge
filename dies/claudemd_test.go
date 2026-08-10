@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/reconcile"
 )
 
 // The old check exited 1 — a failure — for a repo that simply had not been

@@ -9,8 +9,8 @@ import (
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v7/config"
-	"github.com/datapointchris/forge/v7/runner"
+	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/runner"
 )
 
 var (

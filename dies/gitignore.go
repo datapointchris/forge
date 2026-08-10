@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/reconcile"
 )
 
 // generatedMarker is the giveaway left by a gitignore.io / toptal download.

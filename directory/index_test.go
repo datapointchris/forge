@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/config"
 )
 
 func TestCacheHomeFollowsXDG(t *testing.T) {

@@ -239,7 +239,7 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 
 - `.goreleaser.yaml` — goreleaser config with ldflags injecting version/commit/date into the binary
 - `.github/workflows/release.yml` — release workflow, triggered on push to `main`. go-semantic-release decides the version and creates the tag; triggering on the tag instead is the broken pattern `~/dev/standards/release.md` rejects, because a `GITHUB_TOKEN` tag push does not retrigger Actions
-- Installed via `go install github.com/datapointchris/forge/v7@latest` or dotfiles `go-tools.sh`
+- Installed via `go install github.com/datapointchris/forge@latest` or dotfiles `go-tools.sh`
 - `forge update` — self-updates by downloading the latest release binary from GitHub (no Go toolchain needed)
 - `forge version` — shows version, commit SHA, and build date (`dev` when built without ldflags)
 

@@ -24,7 +24,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/config"
 )
 
 // ConfigPath is the generated file whose hooks a run executes.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/config"
 )
 
 func repoNamed(name string) config.Repo {

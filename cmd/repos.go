@@ -6,10 +6,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v7/config"
-	"github.com/datapointchris/forge/v7/reconcile"
-	"github.com/datapointchris/forge/v7/runner"
-	"github.com/datapointchris/forge/v7/toolchain"
+	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/runner"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 // repos is the portfolio: everything in the registry that git versions.

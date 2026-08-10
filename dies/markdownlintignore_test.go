@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/reconcile"
 )
 
 func TestMarkdownlintignoreCreatesTheFileWhenAbsent(t *testing.T) {

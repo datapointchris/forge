@@ -12,9 +12,9 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v7/config"
-	"github.com/datapointchris/forge/v7/dies"
-	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/dies"
+	"github.com/datapointchris/forge/reconcile"
 )
 
 // reconcileNoun is one kind of target and the four verbs over it.

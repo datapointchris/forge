@@ -1,0 +1,1 @@
+{"plugins":{"commit-analyzer":{"name":"default","options":{"major_release_rules":"chore(release-major)","minor_release_rules":"feat,*!"}}}}

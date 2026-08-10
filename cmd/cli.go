@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/v7/cliaudit"
-	"github.com/datapointchris/forge/v7/config"
+	"github.com/datapointchris/forge/cliaudit"
+	"github.com/datapointchris/forge/config"
 )
 
 var cliCmd = &cobra.Command{

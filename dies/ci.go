@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/datapointchris/forge/v7/ci"
-	"github.com/datapointchris/forge/v7/precommit"
-	"github.com/datapointchris/forge/v7/reconcile"
+	"github.com/datapointchris/forge/ci"
+	"github.com/datapointchris/forge/precommit"
+	"github.com/datapointchris/forge/reconcile"
 )
 
 // CI generates .github/workflows/validate.yml from the standard blocks.
