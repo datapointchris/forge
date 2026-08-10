@@ -106,12 +106,16 @@ func runConfig(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// resolveReposPath answers where the registry comes from. The -c flag is the
-// only override by design: LoadRepos' comment rules out a config key naming it,
-// because a tool that resolves its own data directory does not need one.
+// resolveReposPath answers where the registry comes from, in the order
+// LoadRepos resolves it. The layer is the whole point of this command: a
+// registry read from somewhere unexpected is indistinguishable from an empty
+// one until something says which file was opened.
 func resolveReposPath() (string, string) {
 	if cfgPath != "" {
 		return cfgPath, "--config flag"
+	}
+	if cfg, err := config.LoadConfig(config.DefaultConfigPath()); err == nil && cfg.ReposFile != "" {
+		return cfg.ReposFile, "repos_file in " + config.DefaultConfigPath()
 	}
 	if os.Getenv("XDG_DATA_HOME") != "" {
 		return config.DefaultReposPath(), "$XDG_DATA_HOME"

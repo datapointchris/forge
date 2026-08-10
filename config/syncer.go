@@ -9,10 +9,12 @@ import (
 	"strings"
 )
 
-// DefaultReposPath is forge's own XDG data directory. A generic tool must not
-// carry a fleet-specific path, so it asks for the registry where its own data
-// lives and knows nothing about where the file is actually maintained — the
-// fleet points this at a shared registry with a symlink.
+// DefaultReposPath is forge's own XDG data directory: where the registry lives
+// on a machine that says nothing about it.
+//
+// A generic tool must not carry a fleet-specific path, which is why this one
+// resolves its own. Where the registry is actually maintained is the machine's
+// to state, in the config's repos_file — see ReposPath.
 func DefaultReposPath() string {
 	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
 		return filepath.Join(dir, "forge", "repos.json")
@@ -214,12 +216,31 @@ func ExpandTilde(path string) (string, error) {
 	return "", fmt.Errorf("expanding ~user paths is not supported: %s", path)
 }
 
-// LoadRepos reads the registry from DefaultReposPath. Callers wanting a
-// different one pass --config, which is the only override: a config file naming
-// the registry's location was a second place for the path to live, and a tool
-// that resolves its own data directory does not need one.
+// LoadRepos reads the registry from wherever this machine keeps it: the
+// config's repos_file, else DefaultReposPath. --config still beats both.
+//
+// The key exists because the alternative was a symlink from forge's data
+// directory to the real registry, made by hand on every machine and reported by
+// nothing. That was the documented answer here, on the grounds that a tool
+// resolving its own data directory needs no config key — which conflates
+// carrying a path with accepting one. A path compiled in is what would make
+// this tool fleet-specific; a path it is told is what keeps it generic, and it
+// is the answer syncer and indy both already give.
+//
+// A config that cannot be read is not an error. It is optional by design, and
+// failing here would break every machine that keeps its registry exactly where
+// forge expects it — the case that needs no config at all.
 func LoadRepos() (*SyncerConfig, error) {
-	return LoadSyncerConfig(DefaultReposPath())
+	return LoadSyncerConfig(ReposPath())
+}
+
+// ReposPath is the registry this machine reads, ignoring the --config flag,
+// which is the caller's to apply.
+func ReposPath() string {
+	if cfg, err := LoadConfig(DefaultConfigPath()); err == nil && cfg.ReposFile != "" {
+		return cfg.ReposFile
+	}
+	return DefaultReposPath()
 }
 
 // FindRepoByPath returns the repo whose path contains dir, preferring the

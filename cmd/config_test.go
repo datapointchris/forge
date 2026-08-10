@@ -149,3 +149,51 @@ func writeDeclaredDirectory(t *testing.T, configHome string) {
 		t.Fatal(err)
 	}
 }
+
+// TestReposFileFromConfigBeatsTheDataDirectory covers the layer added when the
+// symlink went away: a machine sharing one registry between tools names the path
+// here, and forge's own data directory becomes the answer for a machine that
+// says nothing.
+func TestReposFileFromConfigBeatsTheDataDirectory(t *testing.T) {
+	configHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(configHome, "forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	written := filepath.Join(configHome, "forge", "config.yml")
+	if err := os.WriteFile(written, []byte("repos_file: /shared/repos.json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("XDG_DATA_HOME", "/xdg/data")
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	path, source := resolveReposPath()
+	if path != "/shared/repos.json" {
+		t.Errorf("repos path = %q, want /shared/repos.json", path)
+	}
+	if source != "repos_file in "+written {
+		t.Errorf("repos source = %q, want the config that set it", source)
+	}
+}
+
+// TestTheFlagStillBeatsAConfiguredReposFile keeps -c the last word. It is what a
+// caller reaches for to read a registry the machine does not use at all, and a
+// config key that could shadow it would make that unreliable.
+func TestTheFlagStillBeatsAConfiguredReposFile(t *testing.T) {
+	configHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(configHome, "forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, "forge", "config.yml"), []byte("repos_file: /shared/repos.json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	original := cfgPath
+	cfgPath = "/elsewhere/repos.json"
+	t.Cleanup(func() { cfgPath = original })
+
+	if path, source := resolveReposPath(); path != "/elsewhere/repos.json" || source != "--config flag" {
+		t.Errorf("got %q from %q, want the flag to win", path, source)
+	}
+}
