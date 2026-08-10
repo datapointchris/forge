@@ -31,6 +31,10 @@ func TestResolvedPathsReportTheLayerThatSetThem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// An empty XDG_CONFIG_HOME resolves against $HOME, and resolveReposPath
+			// now reads the config it finds there — so without this the table reads
+			// the developer's own file and its answer depends on the machine.
+			t.Setenv("HOME", t.TempDir())
 			t.Setenv("XDG_DATA_HOME", tt.dataHome)
 			t.Setenv("XDG_CONFIG_HOME", tt.configHome)
 			original := cfgPath
@@ -195,5 +199,28 @@ func TestTheFlagStillBeatsAConfiguredReposFile(t *testing.T) {
 
 	if path, source := resolveReposPath(); path != "/elsewhere/repos.json" || source != "--config flag" {
 		t.Errorf("got %q from %q, want the flag to win", path, source)
+	}
+}
+
+// A hand-edited config carries ~, and the report stats what this returns to say
+// whether the registry is present. An unexpanded path made a file that was there
+// report as missing — the one question this command exists to answer.
+func TestTheReportedReposPathIsExpanded(t *testing.T) {
+	configHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(configHome, "forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, "forge", "config.yml"), []byte("repos_file: ~/dev/repos.json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	original := cfgPath
+	cfgPath = ""
+	t.Cleanup(func() { cfgPath = original })
+
+	path, _ := resolveReposPath()
+	if strings.HasPrefix(path, "~") {
+		t.Errorf("reported path %q still carries a literal tilde", path)
 	}
 }

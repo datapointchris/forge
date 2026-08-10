@@ -236,11 +236,21 @@ func LoadRepos() (*SyncerConfig, error) {
 
 // ReposPath is the registry this machine reads, ignoring the --config flag,
 // which is the caller's to apply.
+//
+// Expanded here rather than left to the loader. LoadSyncerConfig expands too, so
+// reading worked either way — but `forge config` stats what this returns to say
+// whether the registry is present, and a literal ~ made it report a file that
+// was there as missing, which is the one question that command exists to answer.
 func ReposPath() string {
-	if cfg, err := LoadConfig(DefaultConfigPath()); err == nil && cfg.ReposFile != "" {
+	cfg, err := LoadConfig(DefaultConfigPath())
+	if err != nil || cfg.ReposFile == "" {
+		return DefaultReposPath()
+	}
+	expanded, err := ExpandTilde(cfg.ReposFile)
+	if err != nil {
 		return cfg.ReposFile
 	}
-	return DefaultReposPath()
+	return expanded
 }
 
 // FindRepoByPath returns the repo whose path contains dir, preferring the
