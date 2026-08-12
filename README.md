@@ -11,8 +11,9 @@ belong to [fleet](https://github.com/datapointchris/fleet), whose unit is the fl
 The test is what a command operates on, not whether it writes: a per-repo read still belongs here,
 and a fleet-level question belongs in fleet even if answering it means writing something.
 
-`status` and `brief` predate that line and are on the wrong side of it — both answer a question
-about the portfolio, and `fleet status` already covers the first.
+`status` and `brief` used to sit here on the wrong side of that line, both answering a question
+about the portfolio rather than operating on a repo. They are `fleet status` and `fleet info` now,
+and forge has no read side left. Do not add a third.
 
 ## Installation
 
@@ -63,7 +64,7 @@ Dies are Go, compiled into the binary, so a development build is the current die
 }
 ```
 
-Valid statuses: `active` (the default when the field is absent), `dormant`, `retired`. Only `active` repos are swept implicitly — `dormant` is reachable by naming it with `-F`, `retired` is not reachable at all. The optional `description` field is shown by `forge status`.
+Valid statuses: `active` (the default when the field is absent), `dormant`, `retired`. Only `active` repos are swept implicitly — `dormant` is reachable by naming it with `-F`, `retired` is not reachable at all. The optional `description` field is shown by `fleet status`.
 
 ### Machine config
 
@@ -99,52 +100,6 @@ an error, and an unknown key is — a misspelled key would leave a directory
 undeclared, and an undeclared directory reads as a converged one.
 
 ## Usage
-
-### Cross-project status
-
-```bash
-# Show repos with planning content (status.md, design docs)
-forge status
-
-# Include all active repos (even description-only)
-forge status --all
-
-# Filter to specific repos
-forge status -F ichrisbirch,homelab
-
-# Machine-readable output
-forge status --json
-```
-
-`status.md` is printed verbatim — the docs are kept short at the source (a
-current-state snapshot, not a changelog), so there is nothing to summarize.
-
-### Session brief
-
-`forge brief` composes a single, text-dense briefing to prime an AI coding
-session: each repo's planning status and design docs, your ordered ichrisbirch
-project roadmap and open items (via the `icb` CLI), the Computer-category `icb`
-task list surfaced as a capture inbox to triage into the right project, and each
-repo's open GitHub issues (via `gh`). The `icb` and `gh` layers degrade
-gracefully — a missing or unauthenticated tool is noted under warnings rather
-than failing the brief.
-
-This is the AI's dev brief across **repos** and computer work. It is a different
-tool from the human single pane of glass (`doit dashboard`), which is
-a glance across all life apps — tasks, habits, next book, current learning. Two
-audiences, two scopes; neither is built to cover the other.
-
-```bash
-# Full brief across all repos with planning content
-forge brief
-
-# Filter, or skip the remote layers
-forge brief -F dotfiles,indy
-forge brief --no-issues --no-tasks
-
-# Machine-readable output
-forge brief --json
-```
 
 ### Reconcile the repos
 
