@@ -235,7 +235,17 @@ func LoadRepos() (*SyncerConfig, error) {
 }
 
 // ReposPath is the registry this machine reads, ignoring the --config flag,
-// which is the caller's to apply.
+// which is the caller's to apply. The order is the config's repos_file, then
+// $REPOS_JSON, then DefaultReposPath.
+//
+// $REPOS_JSON is the machine-wide answer every reader of the registry consults,
+// so a machine declares the path once instead of repeating it in each tool's
+// config. It sits below the config, so naming a different file for forge alone
+// still works, and above the compiled default, so an unset value is the only
+// route to one. dotfiles declares it in install/flags.yml under `required:` and
+// `dotfiles check` fails while it is unset — which is what separates it from the
+// bare environment variable standards/data.md § "A shared file is named in
+// config; only the tool's own default is compiled in" rejects.
 //
 // Expanded here rather than left to the loader. LoadSyncerConfig expands too, so
 // reading worked either way — but `forge config` stats what this returns to say
@@ -243,12 +253,19 @@ func LoadRepos() (*SyncerConfig, error) {
 // was there as missing, which is the one question that command exists to answer.
 func ReposPath() string {
 	cfg, err := LoadConfig(DefaultConfigPath())
-	if err != nil || cfg.ReposFile == "" {
+	declared := ""
+	if err == nil {
+		declared = cfg.ReposFile
+	}
+	if declared == "" {
+		declared = os.Getenv("REPOS_JSON")
+	}
+	if declared == "" {
 		return DefaultReposPath()
 	}
-	expanded, err := ExpandTilde(cfg.ReposFile)
+	expanded, err := ExpandTilde(declared)
 	if err != nil {
-		return cfg.ReposFile
+		return declared
 	}
 	return expanded
 }

@@ -20,13 +20,15 @@ func TestResolvedPathsReportTheLayerThatSetThem(t *testing.T) {
 		name       string
 		dataHome   string
 		configHome string
+		reposJSON  string
 		flag       string
 		wantRepos  string
 		wantConfig string
 	}{
-		{"nothing set", "", "", "", "default", "default"},
-		{"xdg set", "/xdg/data", "/xdg/config", "", "$XDG_DATA_HOME", "$XDG_CONFIG_HOME"},
-		{"flag beats xdg", "/xdg/data", "/xdg/config", "/elsewhere/repos.json", "--config flag", "$XDG_CONFIG_HOME"},
+		{"nothing set", "", "", "", "", "default", "default"},
+		{"xdg set", "/xdg/data", "/xdg/config", "", "", "$XDG_DATA_HOME", "$XDG_CONFIG_HOME"},
+		{"declared beats xdg", "/xdg/data", "/xdg/config", "/declared/repos.json", "", "$REPOS_JSON", "$XDG_CONFIG_HOME"},
+		{"flag beats xdg", "/xdg/data", "/xdg/config", "", "/elsewhere/repos.json", "--config flag", "$XDG_CONFIG_HOME"},
 	}
 
 	for _, tt := range tests {
@@ -37,6 +39,9 @@ func TestResolvedPathsReportTheLayerThatSetThem(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("XDG_DATA_HOME", tt.dataHome)
 			t.Setenv("XDG_CONFIG_HOME", tt.configHome)
+			// Cleared per case for the same reason: it is set on a real fleet
+			// machine, so leaving it makes every row resolve to $REPOS_JSON.
+			t.Setenv("REPOS_JSON", tt.reposJSON)
 			original := cfgPath
 			cfgPath = tt.flag
 			t.Cleanup(func() { cfgPath = original })

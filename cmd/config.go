@@ -117,6 +117,9 @@ func resolveReposPath() (string, string) {
 	if cfg, err := config.LoadConfig(config.DefaultConfigPath()); err == nil && cfg.ReposFile != "" {
 		return config.ReposPath(), "repos_file in " + config.DefaultConfigPath()
 	}
+	if os.Getenv("REPOS_JSON") != "" {
+		return config.ReposPath(), "$REPOS_JSON"
+	}
 	if os.Getenv("XDG_DATA_HOME") != "" {
 		return config.DefaultReposPath(), "$XDG_DATA_HOME"
 	}
