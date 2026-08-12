@@ -47,7 +47,19 @@ func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
 var rootCmd = &cobra.Command{
 	Use:   "forge",
 	Short: "Run commands across all your git repos",
-	Long:  "forge reads your syncer config and executes commands across all (or a subset of) repos.",
+	Long: "forge reads the repo registry and operates on each repo: reconciling it\n" +
+		"against the standards, running a die or an arbitrary command in it, and\n" +
+		"testing what it declares it is built from.\n" +
+		"\n" +
+		"The unit of work is one repo. Reaching many of them is machinery, not a\n" +
+		"different kind of operation, so the test for a command is what it\n" +
+		"operates on rather than whether it writes.\n" +
+		"\n" +
+		"Questions about the portfolio as a whole belong to fleet: `fleet status`\n" +
+		"for what each repo's planning says, `fleet info` for everything in\n" +
+		"flight on one page, `fleet stats` for the shape of the set.\n" +
+		"\n" +
+		"`forge config` prints the registry it resolved and which layer named it.",
 	// Execute prints the error itself; cobra's own printer would double every line.
 	SilenceErrors: true,
 	// A command that fails at runtime — no registry entry, an aborting safety
