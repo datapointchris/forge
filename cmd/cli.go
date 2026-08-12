@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
+	"time"
 
+	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/cliaudit"
@@ -13,20 +17,26 @@ import (
 var cliCmd = &cobra.Command{
 	Use:   "cli",
 	Short: "Read the fleet's command surfaces and compare them",
-	Long: `Read what the installed CLIs actually present, and report where their
-grammar varies from the rest of the fleet.
+	Long: `Read what the installed CLIs actually present, and compare it two ways:
+against the rest of the fleet, and against what they presented before.
 
 Everything is read from the outside — --help, and cobra's __complete callback
 where a tool has one. No bare subcommand is ever run, because the shape most
 worth finding is a noun that performs a read when invoked with no verb, and
 running it to find out would fire that read.
 
-Variation is reported, never failed. ~/dev/standards/cli-design.md holds two
-registers: machine contracts that bind, and design guidance that names a
-default and its alternatives. These commands cover the second, so a difference
-here is worth a look, not a bug — read the distribution, since one tool
-differing from ten is drift while an even split usually means the fleet found a
-distinction the standard has not written down yet.`,
+` + "`audit`" + ` compares tools to each other, and variation there is reported, never
+failed. ~/dev/standards/cli-design.md holds two registers: machine contracts
+that bind, and design guidance that names a default and its alternatives. audit
+covers the second, so a difference is worth a look, not a bug — read the
+distribution, since one tool differing from ten is drift while an even split
+usually means the fleet found a distinction the standard has not written down
+yet.
+
+` + "`snapshot`" + ` and ` + "`diff`" + ` compare one tool to its own past. That is the register
+that does bind: a command or flag that was there and is not is a broken
+contract for whatever called it, which is why it is worth keeping a surface
+around to subtract from.`,
 	RunE: requireSubcommand,
 }
 
@@ -58,13 +68,136 @@ Exits 0 whatever it finds.`,
 	RunE:    runCLIAudit,
 }
 
+var cliSnapshotCmd = &cobra.Command{
+	Use:   "snapshot [tool...]",
+	Short: "Save the current command surface as the next version",
+	Long: `Read the surfaces and keep them, so a later reading can be subtracted.
+
+Saved under forge's own data directory as an incrementing integer — the number
+is what gets typed at ` + "`forge cli diff`" + `. Nothing is pruned; a surface is a few
+hundred kilobytes and the whole value is having the old one.
+
+Take one before a change that touches a command or a flag, and diff after.`,
+	Example: "  forge cli snapshot\n  forge cli snapshot --json",
+	RunE:    runCLISnapshot,
+}
+
+var cliDiffCmd = &cobra.Command{
+	Use:   "diff [from] [to]",
+	Short: "Report what changed between two command surfaces",
+	Long: `Subtract one surface from another and report the commands and flags that
+moved.
+
+Each argument is a saved version number or a path to a surface file. With one
+argument, it is compared against the installed tools as they are now; with none,
+the newest saved version is. So the common form is a bare ` + "`forge cli diff`" + `.
+
+Tools present on only one side are reported whole rather than as every command
+they carry — a tool that was not installed when the snapshot was taken would
+otherwise bury the renamed flag this exists to surface.
+
+Exits 0 whatever it finds. A removed command is a fact, not a verdict: whether
+it broke anything depends on whether something called it.`,
+	Args:    cobra.MaximumNArgs(2),
+	Example: "  forge cli diff\n  forge cli diff 3 4\n  forge cli diff surface.json --json",
+	RunE:    runCLIDiff,
+}
+
 var cliJSON bool
 
 func init() {
 	cliSpecCmd.Flags().BoolVar(&cliJSON, "json", false, "Output as JSON to stdout")
 	cliAuditCmd.Flags().BoolVar(&cliJSON, "json", false, "Output as JSON to stdout")
-	cliCmd.AddCommand(cliSpecCmd, cliAuditCmd)
+	cliSnapshotCmd.Flags().BoolVar(&cliJSON, "json", false, "Output as JSON to stdout")
+	cliDiffCmd.Flags().BoolVar(&cliJSON, "json", false, "Output as JSON to stdout")
+	cliCmd.AddCommand(cliSpecCmd, cliAuditCmd, cliSnapshotCmd, cliDiffCmd)
 	rootCmd.AddCommand(cliCmd)
+}
+
+func runCLISnapshot(cmd *cobra.Command, args []string) error {
+	tools, unresolved, err := resolveTools(args)
+	if err != nil {
+		return err
+	}
+	dir, err := cliaudit.SnapshotDir()
+	if err != nil {
+		return err
+	}
+	snap, err := cliaudit.Save(dir, tools, unresolved, time.Now())
+	if err != nil {
+		return err
+	}
+
+	if cliJSON {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(snap)
+	}
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "v%d  %d tools\n", snap.Version, len(snap.Tools))
+	return err
+}
+
+// resolveSurface turns one diff argument into a surface. An empty argument means
+// read the installed tools now, which is what makes a one-sided diff the useful
+// default.
+func resolveSurface(arg string) (*cliaudit.Snapshot, error) {
+	if arg == "" {
+		tools, unresolved, err := resolveTools(nil)
+		if err != nil {
+			return nil, err
+		}
+		return &cliaudit.Snapshot{Tools: tools, Unresolved: unresolved}, nil
+	}
+	if version, err := strconv.Atoi(arg); err == nil {
+		dir, err := cliaudit.SnapshotDir()
+		if err != nil {
+			return nil, err
+		}
+		return cliaudit.Load(dir, version)
+	}
+	return cliaudit.LoadFile(arg)
+}
+
+func runCLIDiff(cmd *cobra.Command, args []string) error {
+	from, to := "", ""
+	switch len(args) {
+	case 1:
+		from = args[0]
+	case 2:
+		from, to = args[0], args[1]
+	}
+
+	if from == "" {
+		dir, err := cliaudit.SnapshotDir()
+		if err != nil {
+			return err
+		}
+		versions, err := cliaudit.Versions(dir)
+		if err != nil {
+			return err
+		}
+		if len(versions) == 0 {
+			return cobracmd.UsageError(errors.New("no saved surface to compare against: run `forge cli snapshot` first"))
+		}
+		from = strconv.Itoa(versions[len(versions)-1])
+	}
+
+	before, err := resolveSurface(from)
+	if err != nil {
+		return err
+	}
+	after, err := resolveSurface(to)
+	if err != nil {
+		return err
+	}
+	d := cliaudit.Compare(before, after)
+
+	if cliJSON {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(d)
+	}
+	return cliaudit.WriteDiff(cmd.OutOrStdout(), d)
 }
 
 // resolveTools turns the positional arguments into extracted trees, falling
