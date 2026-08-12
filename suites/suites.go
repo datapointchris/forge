@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -196,7 +197,7 @@ func runComponent(name, root string, component config.Component, run runner) Res
 	result.Seconds = time.Since(start).Round(time.Millisecond).Seconds()
 	result.ExitCode = code
 	result.Output = output
-	result.Outcome, result.Note = classify(component.Stack, code, output)
+	result.Outcome, result.Note = classify(component.Stack, dir, code, output)
 	return result
 }
 
@@ -238,7 +239,7 @@ func plan(stack, dir string) (argv []string, outcome Outcome, note string) {
 	return nil, NoSuite, "stack carries no suite"
 }
 
-func classify(stack string, code int, output string) (Outcome, string) {
+func classify(stack, dir string, code int, output string) (Outcome, string) {
 	if code == 0 {
 		return Passed, ""
 	}
@@ -254,7 +255,61 @@ func classify(stack string, code int, output string) (Outcome, string) {
 	case strings.Contains(output, "executable file not found"):
 		return Unknown, "the test runner is not installed here"
 	}
+	if module, ok := unresolvedDeclaredImport(dir, output); ok {
+		return Unknown, "declares " + module + " and does not have it installed — the dependencies are behind the manifest"
+	}
 	return Failed, ""
+}
+
+// unresolvedImport catches the bundler saying a module is not there. Vite's
+// wording; vitest inherits it.
+var unresolvedImport = regexp.MustCompile(`Failed to resolve import "([^"]+)"`)
+
+// unresolvedDeclaredImport reports whether the run failed on an import the
+// manifest *declares*, which is a stale install rather than broken code.
+//
+// The distinction is the whole point and cannot be made from the error alone: an
+// unresolvable import that package.json declares means node_modules is behind,
+// while one it does not declare is a real bug and must stay a failure. Checking
+// only for a missing node_modules misses this entirely — learning/web has one,
+// installed before `marked` was added, and reported as a failing suite for
+// something no change to its code could fix.
+//
+// A relative path is never a dependency, so it drops out before the lookup.
+func unresolvedDeclaredImport(dir, output string) (string, bool) {
+	match := unresolvedImport.FindStringSubmatch(output)
+	if match == nil {
+		return "", false
+	}
+	module := match[1]
+	if strings.HasPrefix(module, ".") || strings.HasPrefix(module, "/") || strings.HasPrefix(module, "@/") {
+		return "", false
+	}
+	// A subpath import — `marked/lib` — is satisfied by the package itself.
+	if name, _, found := strings.Cut(strings.TrimPrefix(module, "@"), "/"); found && !strings.HasPrefix(module, "@") {
+		module = name
+	}
+	if declares(filepath.Join(dir, "package.json"), module) {
+		return module, true
+	}
+	return "", false
+}
+
+func declares(manifest, module string) bool {
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		return false
+	}
+	var pkg struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if json.Unmarshal(data, &pkg) != nil {
+		return false
+	}
+	_, runtime := pkg.Dependencies[module]
+	_, dev := pkg.DevDependencies[module]
+	return runtime || dev
 }
 
 // testScript prefers the unit script where a repo has both: `test` is where a

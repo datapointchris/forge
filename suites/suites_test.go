@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -346,5 +347,80 @@ func TestNoReposIsNotAHang(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("RunRepos hung on an empty list")
+	}
+}
+
+// A stale install versus a real broken import.
+
+func TestAnUnresolvableImportTheManifestDeclaresIsAStaleInstall(t *testing.T) {
+	// learning/web has node_modules, installed before `marked` was added to
+	// package.json, so it reported a failing suite for something no change to
+	// its code could fix. Checking only whether node_modules exists misses it.
+	r := repo(t, config.Component{Stack: "vue", Dir: "."})
+	write(t, r.Path, "package.json", `{"scripts":{"test":"vitest run"},"dependencies":{"marked":"^15.0.12"}}`)
+	write(t, r.Path, "node_modules/.keep", "")
+
+	got := only(t, RunWith(r, answering(1, `Error: Failed to resolve import "marked" from "src/NotesEditor.vue"`)))
+
+	if got.Outcome != Unknown {
+		t.Errorf("a declared dependency that is not installed is a machine fact, not a failure; got %q", got.Outcome)
+	}
+	if !strings.Contains(got.Note, "marked") {
+		t.Errorf("the note should name the module, got %q", got.Note)
+	}
+}
+
+func TestAnUnresolvableImportNobodyDeclaresIsStillAFailure(t *testing.T) {
+	// The direction that must not fail open. A typo'd or deleted import is a
+	// real bug, and excusing it would make the checker worth nothing.
+	r := repo(t, config.Component{Stack: "vue", Dir: "."})
+	write(t, r.Path, "package.json", `{"scripts":{"test":"vitest run"},"dependencies":{"vue":"^3"}}`)
+	write(t, r.Path, "node_modules/.keep", "")
+
+	got := only(t, RunWith(r, answering(1, `Error: Failed to resolve import "marked" from "src/NotesEditor.vue"`)))
+
+	if got.Outcome != Failed {
+		t.Errorf("an import nothing declares is a bug in the code; got %q", got.Outcome)
+	}
+}
+
+func TestARelativeImportIsNeverADependency(t *testing.T) {
+	// `./missing` and `@/components/X` are the repo's own files. Reading either
+	// as a package would send someone to npm for a file they deleted.
+	r := repo(t, config.Component{Stack: "vue", Dir: "."})
+	write(t, r.Path, "package.json", `{"scripts":{"test":"vitest run"}}`)
+	write(t, r.Path, "node_modules/.keep", "")
+
+	for _, spec := range []string{"./missing", "@/components/Gone.vue", "/abs/path"} {
+		got := only(t, RunWith(r, answering(1, `Failed to resolve import "`+spec+`" from "src/X.vue"`)))
+		if got.Outcome != Failed {
+			t.Errorf("%q is the repo's own file, so it stays a failure; got %q", spec, got.Outcome)
+		}
+	}
+}
+
+func TestASubpathImportResolvesToItsPackage(t *testing.T) {
+	// `marked/lib/x` is satisfied by `marked`, so the lookup has to be on the
+	// package rather than on the whole specifier.
+	r := repo(t, config.Component{Stack: "vue", Dir: "."})
+	write(t, r.Path, "package.json", `{"scripts":{"test":"vitest run"},"dependencies":{"marked":"^15"}}`)
+	write(t, r.Path, "node_modules/.keep", "")
+
+	got := only(t, RunWith(r, answering(1, `Failed to resolve import "marked/lib/marked.esm.js" from "src/X.vue"`)))
+
+	if got.Outcome != Unknown {
+		t.Errorf("a subpath of a declared package is the same stale install; got %q", got.Outcome)
+	}
+}
+
+func TestADevDependencyCountsAsDeclared(t *testing.T) {
+	r := repo(t, config.Component{Stack: "vue", Dir: "."})
+	write(t, r.Path, "package.json", `{"scripts":{"test":"vitest run"},"devDependencies":{"msw":"^2"}}`)
+	write(t, r.Path, "node_modules/.keep", "")
+
+	got := only(t, RunWith(r, answering(1, `Failed to resolve import "msw" from "src/X.spec.ts"`)))
+
+	if got.Outcome != Unknown {
+		t.Errorf("a test-only dependency is still declared; got %q", got.Outcome)
 	}
 }
