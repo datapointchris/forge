@@ -27,6 +27,39 @@ func TestGitignorePythonRepoGetsCoverageAndBuildArtifacts(t *testing.T) {
 	}
 }
 
+func TestGitignoreRustRepoGetsCargoBuildOutput(t *testing.T) {
+	target := fixture(t, stacks("rust"), map[string]string{".gitignore": ".planning\n"})
+
+	applyAll(t, target, Gitignore{})
+
+	if !has(lines(t, target.Path(".gitignore")), "/target") {
+		t.Error("a repo declaring a rust component did not get /target")
+	}
+}
+
+// `cargo new` writes exactly "/target". Spelling the entry any other way would
+// add a second line saying the same thing, which the duplicate check cannot see
+// because it compares strings.
+func TestGitignoreAddsNothingToARepoCargoNewAlreadyIgnored(t *testing.T) {
+	target := fixture(t, stacks("rust"), map[string]string{".gitignore": ".planning\n/target\n"})
+
+	measured := reconcile.Assess(target, Gitignore{})
+
+	if len(measured.Changes) != 0 {
+		t.Fatalf("changes = %v, want none — cargo's own entry already covers it", measured.Changes)
+	}
+}
+
+func TestGitignoreGoRepoGetsNoRustOrPythonEntries(t *testing.T) {
+	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\n"})
+
+	applyAll(t, target, Gitignore{})
+
+	if has(lines(t, target.Path(".gitignore")), "/target") {
+		t.Error("/target leaked into a repo declaring no rust component")
+	}
+}
+
 func TestGitignoreGoRepoGetsNoPythonEntries(t *testing.T) {
 	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\n"})
 

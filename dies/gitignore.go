@@ -69,6 +69,19 @@ var pythonIgnores = []wanted{
 	{"*.egg-info/", "build output"},
 }
 
+// Spelled "/target" rather than "target/" because that is the exact line
+// `cargo new` writes, and matching it is what keeps this die idempotent on a
+// repo that started that way. A different spelling of the same rule is a second
+// line the duplicate check cannot see, since it compares strings.
+//
+// Unlike Python's .venv, target/ does not self-ignore — cargo puts the entry in
+// the repo's root .gitignore at `cargo new` time and writes nothing inside the
+// directory. Verified 2026-08-12. So a repo whose .gitignore was created any
+// other way has no entry at all.
+var rustIgnores = []wanted{
+	{"/target", "cargo build output"},
+}
+
 type gitignoreState struct {
 	lineFile
 	generated bool
@@ -102,6 +115,9 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 	entries := slices.Clone(universalIgnores)
 	if slices.Contains(t.Repo.Toolchain.Stacks(), "python") {
 		entries = append(entries, pythonIgnores...)
+	}
+	if slices.Contains(t.Repo.Toolchain.Stacks(), "rust") {
+		entries = append(entries, rustIgnores...)
 	}
 
 	var changes []reconcile.Change
