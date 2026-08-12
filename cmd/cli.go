@@ -26,7 +26,7 @@ worth finding is a noun that performs a read when invoked with no verb, and
 running it to find out would fire that read.
 
 ` + "`audit`" + ` compares tools to each other, and variation there is reported, never
-failed. ~/dev/standards/cli-design.md holds two registers: machine contracts
+failed. standards/cli-design.md holds two registers: machine contracts
 that bind, and design guidance that names a default and its alternatives. audit
 covers the second, so a difference is worth a look, not a bug — read the
 distribution, since one tool differing from ten is drift while an even split

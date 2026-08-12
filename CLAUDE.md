@@ -30,7 +30,7 @@ golangci-lint run          # Lint (enabled set is in .golangci.yml)
 go run . <subcommand>      # Run without building
 ```
 
-The hook inventory is generated from `pre-commit/toolchain.yml` — read that, or `.pre-commit-config.yaml`, rather than a list here. `~/dev/standards/ci.md` § "Never restate the hook inventory in a repo's `CLAUDE.md`" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
+The hook inventory is generated from `pre-commit/toolchain.yml` — read that, or `.pre-commit-config.yaml`, rather than a list here. `standards/ci.md` § "Never restate the hook inventory in a repo's `CLAUDE.md`" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
 
 ## Architecture
 
@@ -45,7 +45,7 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 - `dies` — the library, which executes nothing: `list`, `show`, `search`, `stats`
   - `stats` aggregates one row per die, most-recently-run first, with `--since` (git's own spelling — `2 weeks`, `30.days.ago` — plus Go durations and ISO dates) and `--json`. Naming a die gives its run-by-run history instead. Per-run rows grow without bound while the number of dies does not, so the old per-run dump put the oldest screen in front of the reader first
 - `toolchain` — `show`, `plan`, `apply` over `pre-commit/toolchain.yml`. `plan` asks `pre-commit autoupdate` what upstream has released, against a config synthesized in a throwaway repo, and writes nothing. Rolling the answer out is a separate step by design: bump, resync one repo, verify, fan out
-- `cli spec` / `cli audit` — read the installed CLIs' command surfaces and report where their grammar varies. Reads from the *outside* only: `--help`, plus cobra's `__complete` where a tool has one. It never runs a bare subcommand, because the shape most worth finding is a noun that performs a read with no verb, and running it to find out would fire that read against a live API. Four help formats are parsed (`cliaudit.Framework`) — the parsers exist because five tools hand-roll their help and cannot be read any other way. **Reports variation, never fails**: `~/dev/standards/cli-design.md` holds machine contracts that bind and design guidance that does not, and this covers the second, so it exits 0 whatever it finds. Discovery resolves active repos to binaries from what each repo already declares — a `pyproject.toml` `[project.scripts]` key, a goreleaser `binary:` — falling back to the repo name; a repo declaring an entry point that is not installed is listed, one declaring none is not (that is a library, not a missing tool). **It audits what is installed, not the working tree**, so a tool built but not installed reports its released surface
+- `cli spec` / `cli audit` — read the installed CLIs' command surfaces and report where their grammar varies. Reads from the *outside* only: `--help`, plus cobra's `__complete` where a tool has one. It never runs a bare subcommand, because the shape most worth finding is a noun that performs a read with no verb, and running it to find out would fire that read against a live API. Four help formats are parsed (`cliaudit.Framework`) — the parsers exist because five tools hand-roll their help and cannot be read any other way. **Reports variation, never fails**: `$STANDARDS_DIR/cli-design.md` holds machine contracts that bind and design guidance that does not, and this covers the second, so it exits 0 whatever it finds. Discovery resolves active repos to binaries from what each repo already declares — a `pyproject.toml` `[project.scripts]` key, a goreleaser `binary:` — falling back to the repo name; a repo declaring an entry point that is not installed is listed, one declaring none is not (that is a library, not a missing tool). **It audits what is installed, not the working tree**, so a tool built but not installed reports its released surface
 - `version` — print version, commit, and build date (set via ldflags)
 - `update` — self-update from GitHub releases (downloads pre-built binary, atomic swap)
 
@@ -238,7 +238,7 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 ## Build and Release
 
 - `.goreleaser.yaml` — goreleaser config with ldflags injecting version/commit/date into the binary
-- `.github/workflows/release.yml` — release workflow, triggered on push to `main`. go-semantic-release decides the version and creates the tag; triggering on the tag instead is the broken pattern `~/dev/standards/release.md` rejects, because a `GITHUB_TOKEN` tag push does not retrigger Actions
+- `.github/workflows/release.yml` — release workflow, triggered on push to `main`. go-semantic-release decides the version and creates the tag; triggering on the tag instead is the broken pattern `standards/release.md` rejects, because a `GITHUB_TOKEN` tag push does not retrigger Actions
 - Installed via `go install github.com/datapointchris/forge@latest` or dotfiles `go-tools.sh`
 - `forge update` — self-updates by downloading the latest release binary from GitHub (no Go toolchain needed)
 - `forge version` — shows version, commit SHA, and build date (`dev` when built without ldflags)

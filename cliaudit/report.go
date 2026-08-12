@@ -10,7 +10,7 @@ import (
 // Job is one thing a CLI does, with the fleet default first and the other
 // spellings seen alongside it. The point of the report is the distribution:
 // one tool differing from ten is drift, a near-even split means the fleet found
-// a distinction ~/dev/standards/cli-design.md has not named yet.
+// a distinction standards/cli-design.md has not named yet.
 type Job struct {
 	Name     string
 	Default  string
