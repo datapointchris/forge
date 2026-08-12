@@ -1,9 +1,11 @@
 package suites
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/datapointchris/forge/config"
 )
@@ -269,5 +271,80 @@ func TestTheUnitScriptWinsOverTheOneThatNeedsABrowser(t *testing.T) {
 func TestARepoDeclaringNoComponentsProducesNothing(t *testing.T) {
 	if results := Run(config.Repo{Name: "demo", Path: t.TempDir()}); results != nil {
 		t.Errorf("a repo with no toolchain has nothing to run, got %+v", results)
+	}
+}
+
+// Running several repos at once.
+
+func TestResultsKeepRegistryOrderHoweverTheyFinish(t *testing.T) {
+	// A report that reorders itself between runs is a diff full of changes
+	// nobody made, which is the whole point of storing runs to compare.
+	var repos []config.Repo
+	for _, name := range []string{"alpha", "beta", "gamma", "delta"} {
+		r := repo(t, config.Component{Stack: "go", Dir: "."})
+		r.Name = name
+		write(t, r.Path, "go.mod", "module "+name+"\n")
+		repos = append(repos, r)
+	}
+
+	results := RunRepos(repos, 4)
+
+	if len(results) != 4 {
+		t.Fatalf("expected a row per repo, got %d", len(results))
+	}
+	for i, want := range []string{"alpha", "beta", "gamma", "delta"} {
+		if results[i].Repo != want {
+			t.Errorf("position %d should be %q, got %q", i, want, results[i].Repo)
+		}
+	}
+}
+
+func TestEveryRepoRunsExactlyOnce(t *testing.T) {
+	// A worker pool that drops or repeats an item is silent about it: the count
+	// is the only thing that notices.
+	var repos []config.Repo
+	for i := range 30 {
+		r := repo(t, config.Component{Stack: "go", Dir: "."})
+		r.Name = fmt.Sprintf("repo%02d", i)
+		write(t, r.Path, "go.mod", "module demo\n")
+		repos = append(repos, r)
+	}
+
+	seen := map[string]int{}
+	for _, result := range RunRepos(repos, 8) {
+		seen[result.Repo]++
+	}
+
+	if len(seen) != 30 {
+		t.Errorf("expected 30 repos to report, got %d", len(seen))
+	}
+	for name, count := range seen {
+		if count != 1 {
+			t.Errorf("%s ran %d times", name, count)
+		}
+	}
+}
+
+func TestMoreWorkersThanReposIsNotAnError(t *testing.T) {
+	r := repo(t, config.Component{Stack: "go", Dir: "."})
+	write(t, r.Path, "go.mod", "module demo\n")
+
+	if results := RunRepos([]config.Repo{r}, 64); len(results) != 1 {
+		t.Errorf("expected one result, got %d", len(results))
+	}
+}
+
+func TestNoReposIsNotAHang(t *testing.T) {
+	// The pool sizes itself from the work, so an empty list must not leave a
+	// worker waiting on a channel nobody will write to.
+	done := make(chan []Result, 1)
+	go func() { done <- RunRepos(nil, 0) }()
+	select {
+	case results := <-done:
+		if len(results) != 0 {
+			t.Errorf("expected nothing, got %+v", results)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunRepos hung on an empty list")
 	}
 }

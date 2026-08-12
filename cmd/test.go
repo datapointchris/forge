@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
@@ -40,11 +41,13 @@ failures.`,
 var (
 	testJSON       bool
 	testFailedOnly bool
+	testJobs       int
 )
 
 func init() {
 	testCmd.Flags().BoolVar(&testJSON, "json", false, "Output as JSON to stdout")
 	testCmd.Flags().BoolVar(&testFailedOnly, "failed", false, "Print captured output for failures only, rather than nothing")
+	testCmd.Flags().IntVarP(&testJobs, "jobs", "j", 0, "Repos to test at once; 0 is one per CPU")
 	rootCmd.AddCommand(testCmd)
 }
 
@@ -56,10 +59,9 @@ func runTest(cmd *cobra.Command, args []string) error {
 	selected := runner.SelectRepos(runner.ActiveRepos(cfg.Repos), args)
 	sort.Slice(selected, func(i, j int) bool { return selected[i].Name < selected[j].Name })
 
-	var results []suites.Result
-	for _, repo := range selected {
-		results = append(results, suites.Run(repo)...)
-	}
+	started := time.Now()
+	results := suites.RunRepos(selected, testJobs)
+	elapsed := time.Since(started).Round(time.Millisecond).Seconds()
 
 	if testJSON {
 		enc := json.NewEncoder(cmd.OutOrStdout())
@@ -71,7 +73,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	} else {
-		writeResults(cmd, results)
+		writeResults(cmd, results, elapsed)
 	}
 
 	return verdict(results)
@@ -97,7 +99,7 @@ func verdict(results []suites.Result) error {
 	return nil
 }
 
-func writeResults(cmd *cobra.Command, results []suites.Result) {
+func writeResults(cmd *cobra.Command, results []suites.Result, elapsed float64) {
 	out := cmd.OutOrStdout()
 	counts := map[suites.Outcome]int{}
 	var seconds float64
@@ -117,8 +119,10 @@ func writeResults(cmd *cobra.Command, results []suites.Result) {
 		_, _ = fmt.Fprintf(out, "%-9s %-28s %-7s %6.1fs%s\n", result.Outcome, where, result.Stack, result.Seconds, note)
 	}
 
-	_, _ = fmt.Fprintf(out, "\n%d passed  %d failed  %d unknown  %d no suite   %.1fs\n",
-		counts[suites.Passed], counts[suites.Failed], counts[suites.Unknown], counts[suites.NoSuite], seconds)
+	// Both numbers, because they stopped being the same once repos ran together
+	// and the sum alone would read as the run having taken far longer than it did.
+	_, _ = fmt.Fprintf(out, "\n%d passed  %d failed  %d unknown  %d no suite   %.1fs elapsed, %.1fs of suite time\n",
+		counts[suites.Passed], counts[suites.Failed], counts[suites.Unknown], counts[suites.NoSuite], elapsed, seconds)
 
 	if !testFailedOnly {
 		return

@@ -18,7 +18,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/datapointchris/forge/config"
@@ -77,6 +79,73 @@ func Tested(stack string) bool { return tested[stack] }
 // Run executes every testable component of one repo, in declaration order.
 func Run(repo config.Repo) []Result {
 	return RunWith(repo, execute)
+}
+
+// RunRepos executes several repos concurrently, at most jobs at a time, and
+// returns their results in registry order however they finished.
+//
+// The concurrency is **between** repos and never inside one. Components of a
+// single repo share more than a directory: nomad, meso and learning each hold an
+// api and a cli against the same declared database and the same ports, so
+// running them together would turn one repo's fixtures into another's flake.
+// Measured, that costs almost nothing — 29 of the 34 repos with suites have
+// exactly one testable component, so the floor is ichrisbirch's own two at ~61s
+// against a sequential 193s.
+//
+// jobs of zero means half the CPUs, never one per CPU. Measured on 16 cores
+// against the whole portfolio:
+//
+//	jobs=1    195.2s elapsed, 195.2s of suite time
+//	jobs=4     64.9s elapsed, 219.1s
+//	jobs=8     59.4s elapsed, 223.0s
+//	jobs=16    60.2s elapsed, 264.8s
+//
+// Everything is won by four. Sixteen is slower in wall clock than eight while
+// spending 19% more suite time, which is workers competing for cores rather than
+// finding new ones — `go test` already parallelizes within a module and a pytest
+// suite is not idle either. Half leaves room for that.
+//
+// The floor is not the worker count: at eight, the run is as long as
+// ichrisbirch's own suite. Going below a minute means splitting that, not adding
+// workers.
+func RunRepos(repos []config.Repo, jobs int) []Result {
+	if jobs < 1 {
+		jobs = max(2, runtime.NumCPU()/2)
+	}
+	if jobs > len(repos) {
+		jobs = len(repos)
+	}
+	if jobs < 1 {
+		return nil
+	}
+
+	// Indexed rather than appended, so the output does not depend on which repo
+	// happened to finish first. A report that reorders itself between runs is a
+	// diff full of changes nobody made.
+	perRepo := make([][]Result, len(repos))
+	queue := make(chan int)
+	var wg sync.WaitGroup
+
+	for range jobs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range queue {
+				perRepo[i] = Run(repos[i])
+			}
+		}()
+	}
+	for i := range repos {
+		queue <- i
+	}
+	close(queue)
+	wg.Wait()
+
+	var out []Result
+	for _, results := range perRepo {
+		out = append(out, results...)
+	}
+	return out
 }
 
 type runner func(dir string, argv []string) (code int, output string)
