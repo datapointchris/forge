@@ -222,6 +222,70 @@ forge dies stats
 forge dies stats precommit
 ```
 
+### Run the suites
+
+```bash
+forge test                     # every active repo's declared components
+forge test fleet forge         # just these
+forge test --failed            # print captured output for the failures
+forge test --json              # for a caller
+forge test -j 4                # repos at once; default is half the CPUs
+```
+
+The command per stack is the one `ci/blocks/` generates into that repo's own
+workflow, so a local run and CI cannot disagree about what "the tests" means. Vue is
+the exception — its block builds and lints without testing — so the component's own
+`package.json` says what to run, and the unit script wins over the one wanting a
+browser.
+
+Four outcomes, not two, because a pass/fail runner has to lie about half of them.
+`no_suite` is a repo with no tests yet, which is not failing, and pytest's exit 5
+lands there. `unknown` is a component that could not be measured at all — an absent
+runner, missing `node_modules`, a vanished directory, a timeout — and it does not
+move the exit code, or a machine missing one runner reports a screen of failures.
+Nothing is installed to repair an `unknown`: that is a fact about the machine, and
+dotfiles is what converges a machine.
+
+Repos run concurrently, never components within a repo — nomad, meso and learning
+each hold an api and a cli against the same database and ports. Half the CPUs rather
+than one per CPU, measured across the portfolio on 16 cores:
+
+```text
+jobs=1    195.2s elapsed, 195.2s of suite time
+jobs=4     64.9s elapsed, 219.1s
+jobs=8     59.4s elapsed, 223.0s
+jobs=16    60.2s elapsed, 264.8s
+```
+
+Everything is won by four, and sixteen is slower in wall clock while spending 19%
+more suite time. At eight the run is as long as the single slowest suite, so going
+below a minute means splitting that rather than adding workers.
+
+### Command surfaces
+
+```bash
+forge cli spec                 # every installed CLI's command tree
+forge cli audit                # where their grammar varies from each other
+forge cli snapshot             # keep this reading as the next version
+forge cli diff                 # what moved since the last one
+forge cli diff 3 4             # between two saved versions
+```
+
+Everything is read from the outside — `--help`, and cobra's `__complete` callback
+where a tool has one. No bare subcommand is ever run, because the shape most worth
+finding is a noun that performs a read when invoked with no verb, and running it to
+find out would fire that read.
+
+`audit` compares tools to each other and reports variation without failing; that
+register is design guidance. `snapshot` and `diff` compare one tool to its own past,
+and that register binds: a command or flag that was there and is not is a broken
+contract for whatever called it, which no repo's own suite covers because the break
+is at the seam between two.
+
+A tool present on only one side is reported whole rather than as every command it
+carries — one that simply was not installed when the snapshot was taken would
+otherwise bury the single renamed flag the diff is run to find.
+
 ### The version manifest
 
 ```bash
