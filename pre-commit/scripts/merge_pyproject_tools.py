@@ -35,7 +35,7 @@ MANAGED_TABLE = 'forge'
 MANAGED_KEY = 'managed'
 
 MANAGED_COMMENT_LINES = [
-    'Keys the standard owns, written by `forge dies run maintenance/sync-pyproject.sh`.',
+    'Keys the standard owns, written by `forge repos apply pyproject`.',
     'Dropping one from the template removes it here on the next sync; a key absent',
     'from this list belongs to the project and is never touched. Do not hand-edit.',
 ]
