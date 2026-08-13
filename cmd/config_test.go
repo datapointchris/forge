@@ -159,6 +159,41 @@ func writeDeclaredDirectory(t *testing.T, configHome string) {
 	}
 }
 
+// forge reads no variable it does not own. $REPOS_JSON sat below the config key
+// until it was measured empty under systemd, which is where every scheduled run
+// lives — the rung answered only when a person was already at the keyboard.
+//
+// Asserted against both neighboring layers, because a re-added rung would show
+// up differently depending on whether a config existed: it would displace the
+// default on a bare machine and lose to the config on a configured one.
+func TestTheUnprefixedVariableIsNeverConsulted(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", "/xdg/data")
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("FORGE_REPOS_REGISTRY", "")
+	t.Setenv("REPOS_JSON", "/unprefixed/repos.json")
+
+	if got, _ := resolveReposPath(); got != "/xdg/data/forge/repos.json" {
+		t.Errorf("$REPOS_JSON displaced the default: path = %q", got)
+	}
+
+	if err := os.MkdirAll(filepath.Join(configHome, "forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	written := filepath.Join(configHome, "forge", "config.yml")
+	if err := os.WriteFile(written, []byte("repos_registry: /shared/repos.json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, source := resolveReposPath()
+	if got != "/shared/repos.json" {
+		t.Errorf("$REPOS_JSON displaced the config key: path = %q", got)
+	}
+	if source != "repos_registry in "+written {
+		t.Errorf("repos source = %q, want the config that set it", source)
+	}
+}
+
 // TestReposRegistryFromConfigBeatsTheDataDirectory covers the layer added when the
 // symlink went away: a machine sharing one registry between tools names the path
 // here, and forge's own data directory becomes the answer for a machine that
