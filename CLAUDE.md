@@ -251,3 +251,24 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 ## Embedded Assets
 
 Pre-commit blocks, configs, Python scripts and CI blocks are embedded via `//go:embed` in `embed.go`. There is no filesystem mode and no extraction, with one exception: the `pyproject` die materializes `merge_pyproject_tools.py` and its template to a temp directory to run them, because tomlkit is the only thing in either ecosystem that edits TOML losslessly and a round-trip that drops a repo's comments is a replacement rather than a merge.
+
+## Never write the breaking-change trailer in a commit message
+
+The words `BREAKING CHANGE` — either number, colon or not, subject or body — cut a major release
+here, and a major on this repo is an outage rather than a version. `commit-analyzer-cz` matches
+them unanchored against the raw message and ORs the result with the configured major rules, so
+`.semrelrc` cannot stop it and it majors even a `fix:` commit.
+
+The module path carries no `/vN` suffix, so once a major exists `go install …@latest` cannot see it
+and silently resolves the highest v1 instead — `dotfiles check` reports the tool stale forever
+while `apply` exits 0 having installed nothing. Every already-installed binary is stranded too:
+`goselfupdate` refuses a lower version and reports "already up to date". Recovery is a reinstall on
+each machine, and it is not a rewrite — branch protection refuses one on `main`, and the offending
+commit re-cuts the major on every push until a tag above it takes it out of range.
+
+**The ban covers a commit that merely discusses the trailer.** One explaining this exact caveat cut
+a fresh major on push. Name it some other way — "that marker" — and never quote it.
+
+Deliberate majors use `chore(release-major)`, the one subject `.semrelrc` leaves as a major. Full
+reasoning and the reset procedure: `standards/release.md` § "Never write the breaking-change
+trailer in a Go repo's commit message".
