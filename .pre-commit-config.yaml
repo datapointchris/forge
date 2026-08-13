@@ -11,6 +11,29 @@ repos:
         stages: [commit-msg]
         args: [--strict]
 
+# generated:go-release-major - Refuse a commit message that would cut a major release
+  - repo: local
+    hooks:
+      - id: no-major-release-marker
+        name: Refuse a commit that would cut a major
+        # A major on a Go module here is an outage, not a version: no module path
+        # carries a /vN suffix, so `go install …@latest` cannot see the new tag
+        # and silently resolves the highest v1 instead. The analyzer matches this
+        # marker unanchored against the raw message and ORs it with the
+        # configured rules, so .semrelrc cannot stop it and it majors even a
+        # `fix:`. Prose could not stop it either — three repos crossed in one
+        # evening with the ban already written down.
+        #
+        # $HOME is not usable here and no script is either: this has to run on
+        # any clone, so the whole check is inline. pre-commit execs entry without
+        # a shell, hence `bash -c … --`, after which $1 is the message file.
+        #
+        # Comments are stripped first. git discards them, so a commit template
+        # that names the marker must not fail a commit that does not use it.
+        entry: bash -c 'grep -vE "^#" "$1" | grep -qiE "breaking[ -]changes?" && { echo "This message would cut a major release, which strands every installed binary."; echo "Use chore(release-major) to major on purpose, or say it another way."; exit 1; }; exit 0' --
+        language: system
+        stages: [commit-msg]
+
 # generated:commit-branding - Strip AI branding from commit messages
   - repo: local
     hooks:
@@ -132,10 +155,13 @@ repos:
   # the whole-tree half — every `source` and `bash` target — found zero real
   # errors, because the portfolio is already clean. The moves half asks the
   # question a rename actually leaves behind, for each one in the changeset,
-  # and that is where the findings were: three live `uv run cli/log_viewer.py`
-  # call sites in ichrisbirch's ops tool pointing at a file that moved to
-  # ops/, and a documented build command in shadows naming a cmd/ directory
-  # that no longer exists.
+  # and that is where the findings were: three live `uv run` call sites in
+  # ichrisbirch's ops tool naming a log viewer that had moved months earlier,
+  # and a documented build command in shadows pointing into a directory the
+  # repo no longer has.
+  #
+  # Deliberately no path spelled out above. A comment naming a real old path
+  # is itself a hit for it, in every repo this block is deployed to.
   #
   # Generic rather than shell-gated, because a pattern is language-agnostic:
   # the hits landed in Go, Vue and Python repos as readily as in dotfiles, in
