@@ -114,11 +114,11 @@ func resolveReposPath() (string, string) {
 	if cfgPath != "" {
 		return cfgPath, "--config flag"
 	}
-	if cfg, err := config.LoadConfig(config.DefaultConfigPath()); err == nil && cfg.ReposFile != "" {
-		return config.ReposPath(), "repos_file in " + config.DefaultConfigPath()
+	if os.Getenv("FORGE_REPOS_REGISTRY") != "" {
+		return config.ReposPath(), "$FORGE_REPOS_REGISTRY"
 	}
-	if os.Getenv("REPOS_JSON") != "" {
-		return config.ReposPath(), "$REPOS_JSON"
+	if cfg, err := config.LoadConfig(config.DefaultConfigPath()); err == nil && cfg.ReposRegistry != "" {
+		return config.ReposPath(), "repos_registry in " + config.DefaultConfigPath()
 	}
 	if os.Getenv("XDG_DATA_HOME") != "" {
 		return config.DefaultReposPath(), "$XDG_DATA_HOME"

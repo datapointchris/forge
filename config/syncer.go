@@ -14,7 +14,7 @@ import (
 //
 // A generic tool must not carry a fleet-specific path, which is why this one
 // resolves its own. Where the registry is actually maintained is the machine's
-// to state, in the config's repos_file — see ReposPath.
+// to state, in the config's repos_registry — see ReposPath.
 func DefaultReposPath() string {
 	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
 		return filepath.Join(dir, "forge", "repos.json")
@@ -217,7 +217,7 @@ func ExpandTilde(path string) (string, error) {
 }
 
 // LoadRepos reads the registry from wherever this machine keeps it: the
-// config's repos_file, else DefaultReposPath. --config still beats both.
+// config's repos_registry, else DefaultReposPath. --config still beats both.
 //
 // The key exists because the alternative was a symlink from forge's data
 // directory to the real registry, made by hand on every machine and reported by
@@ -235,30 +235,27 @@ func LoadRepos() (*SyncerConfig, error) {
 }
 
 // ReposPath is the registry this machine reads, ignoring the --config flag,
-// which is the caller's to apply. The order is the config's repos_file, then
-// $REPOS_JSON, then DefaultReposPath.
+// which is the caller's to apply. The order is $FORGE_REPOS_REGISTRY, then the
+// config's repos_registry, then DefaultReposPath.
 //
-// $REPOS_JSON is the machine-wide answer every reader of the registry consults,
-// so a machine declares the path once instead of repeating it in each tool's
-// config. It sits below the config, so naming a different file for forge alone
-// still works, and above the compiled default, so an unset value is the only
-// route to one. dotfiles declares it in install/flags.yml under `required:` and
-// `dotfiles check` fails while it is unset — which is what separates it from the
-// bare environment variable standards/data.md § "A shared file is named in
-// config; only the tool's own default is compiled in" rejects.
+// A rung below the config read $REPOS_JSON, on the reasoning that a machine
+// should declare the path once for every reader. It came out because that
+// variable lives in ~/.env and a process sourcing no profile never sees it, so
+// the rung was empty in every unattended run. The config file is the machine
+// layer already and it reaches every process. See standards/data.md § "A shared
+// file is named in config; only the tool's own default is compiled in".
 //
 // Expanded here rather than left to the loader. LoadSyncerConfig expands too, so
 // reading worked either way — but `forge config` stats what this returns to say
 // whether the registry is present, and a literal ~ made it report a file that
 // was there as missing, which is the one question that command exists to answer.
 func ReposPath() string {
-	cfg, err := LoadConfig(DefaultConfigPath())
-	declared := ""
-	if err == nil {
-		declared = cfg.ReposFile
-	}
+	declared := os.Getenv("FORGE_REPOS_REGISTRY")
 	if declared == "" {
-		declared = os.Getenv("REPOS_JSON")
+		cfg, err := LoadConfig(DefaultConfigPath())
+		if err == nil {
+			declared = cfg.ReposRegistry
+		}
 	}
 	if declared == "" {
 		return DefaultReposPath()

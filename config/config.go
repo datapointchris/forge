@@ -48,7 +48,7 @@ type Config struct {
 	// and the dies that need it say so themselves rather than being listed here.
 	MaintainedDirectories []Repo `yaml:"maintained_directories,omitempty"`
 
-	// ReposFile points at a registry maintained somewhere other than forge's
+	// ReposRegistry points at a registry maintained somewhere other than forge's
 	// own data directory, which is what a machine sharing one registry between
 	// tools declares. Empty means DefaultReposPath, so a machine that keeps its
 	// registry where forge puts it needs no config at all.
@@ -57,7 +57,7 @@ type Config struct {
 	// which is why it belongs here and not in the registry it names. The tool
 	// stays generic either way: what would make it fleet-specific is a path
 	// compiled into it, not one it is told.
-	ReposFile string `yaml:"repos_file,omitempty"`
+	ReposRegistry string `yaml:"repos_registry,omitempty"`
 }
 
 // LoadConfig reads forge's config from path, expanding tildes and sorting by
