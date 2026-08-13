@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,6 +11,29 @@ import (
 	"github.com/datapointchris/forge/reconcile"
 	"github.com/datapointchris/forge/toolchain"
 )
+
+// TestMain drops the git variables a hook exports before any test runs.
+//
+// These tests build throwaway repos and shell out to git inside them, and git
+// reads GIT_DIR and GIT_INDEX_FILE from the environment ahead of the working
+// directory. Run from a pre-commit hook — which is how `go test ./...` runs on
+// every commit that touches Go — those name *forge's* repo, so every fixture's
+// `git add`/`git commit` operated on the real checkout instead of the temp one
+// and failed on its lock or its hooks.
+//
+// It reproduces nowhere else: standalone, `pre-commit run --all-files`, and CI
+// all leave them unset, so the suite passed everywhere except inside the commit
+// it was gating. Unset here rather than in the helper, so a test added later
+// cannot reintroduce it by spawning git some other way.
+func TestMain(m *testing.M) {
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR"} {
+		if err := os.Unsetenv(name); err != nil {
+			fmt.Fprintf(os.Stderr, "unset %s: %s\n", name, err)
+			os.Exit(1)
+		}
+	}
+	os.Exit(m.Run())
+}
 
 // repoRoot walks up to the directory holding go.mod.
 //

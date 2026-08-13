@@ -41,6 +41,7 @@ var categoryMap = map[string]string{
 	"python-format":        "python",
 	"python-lint":          "python",
 	"go":                   "go",
+	"go-release-major":     "go",
 	"vue":                  "vue",
 	"rust":                 "rust",
 	"lua":                  "lua",
