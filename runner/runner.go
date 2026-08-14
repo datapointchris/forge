@@ -93,11 +93,11 @@ func SelectRepos(repos []config.Repo, names []string) []config.Repo {
 }
 
 // OwnedRepos returns repos in the portfolio, dropping third-party reference
-// clones (those carrying an upstream `owner`).
+// clones — the entries whose owner is not the registry's own.
 func OwnedRepos(repos []config.Repo) []config.Repo {
 	var owned []config.Repo
 	for _, r := range repos {
-		if r.Owner == "" {
+		if !r.Reference {
 			owned = append(owned, r)
 		}
 	}

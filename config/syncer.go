@@ -39,9 +39,19 @@ type Repo struct {
 	Path        string `json:"path"        yaml:"path"`
 	Status      string `json:"status"      yaml:"status"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	// Owner marks a third-party reference clone (the upstream GitHub owner).
-	// Empty for repos in the portfolio.
+	// Owner is the GitHub owner, required on every entry because a bare name
+	// does not identify a repository — the registry holds a `typos` and a
+	// `docs`, both common upstream names, and pull-requests filtering on the
+	// name alone admitted crate-ci/typos under the same label as ~/code/typos.
+	//
+	// It is not a marker that the repo is somebody else's. Reading it as one is
+	// what Reference below exists to replace.
 	Owner string `json:"owner,omitempty" yaml:"owner,omitempty"`
+	// Reference marks a third-party clone, read for its patterns and never
+	// worked in, and excluded from every implicit sweep. LoadSyncerConfig
+	// derives it by comparing Owner against the registry's own owner; it is not
+	// a declared field, so a Repo built as a literal has to set it.
+	Reference bool `json:"-" yaml:"-"`
 	// Toolchain declares what forge's generators need to know about the repo.
 	// Declared rather than detected: five different conventions for "where the
 	// Go service lives" exist across the portfolio, and facts like the SQL
@@ -185,6 +195,7 @@ func LoadSyncerConfig(path string) (*SyncerConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("expanding path for repo %s: %w", cfg.Repos[i].Name, err)
 		}
+		cfg.Repos[i].Reference = isReference(cfg.Owner, cfg.Repos[i].Owner)
 	}
 
 	slices.SortFunc(cfg.Repos, func(a, b Repo) int {
@@ -192,6 +203,17 @@ func LoadSyncerConfig(path string) (*SyncerConfig, error) {
 	})
 
 	return &cfg, nil
+}
+
+// isReference reports whether an entry belongs to someone other than whoever
+// the registry is a registry of. A file declaring no owner marks nothing, which
+// keeps exemplar-repos.json — every entry a different owner, no file owner —
+// from reading as entirely reference or entirely not.
+func isReference(fileOwner, repoOwner string) bool {
+	if fileOwner == "" || repoOwner == "" {
+		return false
+	}
+	return !strings.EqualFold(fileOwner, repoOwner)
 }
 
 func ExpandTilde(path string) (string, error) {

@@ -44,7 +44,7 @@ var (
 // and comes back in Unresolved.
 func Discover(repos []config.Repo) (found []Candidate, unresolved []Unresolved) {
 	for _, r := range repos {
-		if r.Owner != "" || (r.Status != "" && r.Status != "active") {
+		if r.Reference || (r.Status != "" && r.Status != "active") {
 			continue
 		}
 		names, declared := candidateNames(r)

@@ -151,3 +151,56 @@ func TestToolchainStacksDeduplicates(t *testing.T) {
 		t.Errorf("Stacks() = %v, want [go vue]", got)
 	}
 }
+
+func TestEveryEntryDeclaringTheRegistrysOwnOwnerStaysInThePortfolio(t *testing.T) {
+	// The registry made owner required on every entry on 2026-08-12, meaning the
+	// GitHub owner rather than "somebody else's repo". Reading a present owner
+	// as a reference clone emptied every implicit sweep: `forge repos list`
+	// returned zero lines against a registry of 82.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "repos.json")
+	body := `{
+		"owner": "datapointchris",
+		"repos": [
+			{"name": "forge", "path": "~/tools/forge", "owner": "datapointchris"},
+			{"name": "fleet", "path": "~/tools/fleet", "owner": "DATAPOINTCHRIS"},
+			{"name": "httpx", "path": "~/code/refs/httpx", "owner": "encode"}
+		]
+	}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadSyncerConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range cfg.Repos {
+		want := r.Name == "httpx"
+		if r.Reference != want {
+			t.Errorf("%s: Reference = %v, want %v", r.Name, r.Reference, want)
+		}
+	}
+}
+
+func TestARegistryDeclaringNoOwnerMarksNothingAsAReference(t *testing.T) {
+	// The exemplar registry is every entry a different owner and no file owner.
+	// Comparing against an absent owner would mark all of them, or none.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "exemplars.json")
+	body := `{"repos": [
+		{"name": "vuetify", "path": "~/code/refs/vuetify", "owner": "vuetifyjs"},
+		{"name": "cobra", "path": "~/code/refs/cobra", "owner": "spf13"}
+	]}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadSyncerConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range cfg.Repos {
+		if r.Reference {
+			t.Errorf("%s marked a reference against a registry declaring no owner", r.Name)
+		}
+	}
+}

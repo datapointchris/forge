@@ -33,11 +33,13 @@ func TestFilterRepos(t *testing.T) {
 	})
 }
 
+// Reference is derived by config.LoadSyncerConfig from the registry's own
+// owner, so a fixture built as literals states it the way Load would.
 func TestOwnedRepos(t *testing.T) {
 	repos := []config.Repo{
 		{Name: "homelab", Path: "~/homelab"},
-		{Name: "homelab", Path: "~/code/refs/homelab", Owner: "khuedoan"},
-		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode"},
+		{Name: "homelab", Path: "~/code/refs/homelab", Owner: "khuedoan", Reference: true},
+		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode", Reference: true},
 		{Name: "forge", Path: "~/tools/forge"},
 	}
 
@@ -46,7 +48,7 @@ func TestOwnedRepos(t *testing.T) {
 		t.Fatalf("len = %d, want 2", len(got))
 	}
 	for _, r := range got {
-		if r.Owner != "" {
+		if r.Reference {
 			t.Errorf("reference clone leaked through: %+v", r)
 		}
 	}
@@ -59,7 +61,7 @@ func TestOwnedRepos(t *testing.T) {
 func TestSelectRepos(t *testing.T) {
 	repos := []config.Repo{
 		{Name: "forge", Path: "~/tools/forge"},
-		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode"},
+		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode", Reference: true},
 		{Name: "sess", Path: "~/tools/sess", Status: "retired"},
 		{Name: "reddit-nlp", Path: "~/code/reddit-nlp", Status: "dormant"},
 	}
