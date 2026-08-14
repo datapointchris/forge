@@ -2,6 +2,8 @@ module github.com/datapointchris/forge
 
 go 1.26.5
 
+toolchain go1.26.6
+
 require (
 	github.com/datapointchris/goselfupdate v0.7.0
 	github.com/fatih/color v1.19.0

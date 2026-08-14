@@ -13,7 +13,7 @@
 # Bump `version` on any change below, or on any change to the set of blocks —
 # the stamp answers "is this repo on the current standard", which a new block
 # changes just as much as a new rev does.
-version: 14
+version: 15
 
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
@@ -99,3 +99,11 @@ binaries:
 runtimes:
   - name: node
     version: "24"
+  # The Go toolchain each module builds with, applied by the `gomod` die as a
+  # `toolchain` directive rather than as the `go` directive. Raising a module's
+  # floor is what makes `go install <tool>@latest` skip its release on a machine
+  # running older Go, silently — so the floor stays the repo's and this is what
+  # decides which standard library the build gets. Bump this on a stdlib
+  # advisory; govulncheck in generated CI is what reports one.
+  - name: go
+    version: "1.26.6"
