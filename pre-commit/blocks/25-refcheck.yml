@@ -22,7 +22,7 @@
   # No --strict: one advisory warning across the whole fleet, and a warning is
   # about fragility rather than breakage.
   - repo: https://github.com/datapointchris/refcheck
-    rev: v0.5.0
+    rev: v0.5.2
     hooks:
       - id: refcheck
         args: [--moves]
