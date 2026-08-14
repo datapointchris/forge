@@ -76,6 +76,7 @@ type directoryResolved struct {
 
 func runConfig(cmd *cobra.Command, _ []string) error {
 	reposPath, reposSource := resolveReposPath()
+	versionsPath, versionsSource := resolveVersionsPath()
 	configPath, configSource := resolveConfigPath()
 
 	cfg, err := config.LoadConfig(configPath)
@@ -86,6 +87,7 @@ func runConfig(cmd *cobra.Command, _ []string) error {
 	report := configReport{
 		Settings: []resolved{
 			{Setting: "repos file", Value: reposPath, Source: reposSource, Exists: pathExists(reposPath)},
+			{Setting: "versions file", Value: versionsPath, Source: versionsSource, Exists: versionsExists(versionsPath)},
 			{Setting: "config file", Value: configPath, Source: configSource, Exists: pathExists(configPath)},
 		},
 		Directories: make([]directoryResolved, 0, len(cfg.MaintainedDirectories)),
@@ -126,11 +128,36 @@ func resolveReposPath() (string, string) {
 	return config.DefaultReposPath(), "default"
 }
 
+// resolveVersionsPath answers the same question for the version declaration,
+// and has an answer resolveReposPath does not: no file at all. Unset means
+// forge rolls out the manifest embedded in this binary, which is a real
+// configuration rather than a missing one — so it reports the embedded copy by
+// name rather than an empty path that reads as broken.
+func resolveVersionsPath() (string, string) {
+	if os.Getenv("FORGE_VERSIONS_FILE") != "" {
+		return config.VersionsPath(), "$FORGE_VERSIONS_FILE"
+	}
+	if cfg, err := config.LoadConfig(config.DefaultConfigPath()); err == nil && cfg.VersionsFile != "" {
+		return config.VersionsPath(), "versions_file in " + config.DefaultConfigPath()
+	}
+	return "", "embedded in this binary"
+}
+
 func resolveConfigPath() (string, string) {
 	if os.Getenv("XDG_CONFIG_HOME") != "" {
 		return config.DefaultConfigPath(), "$XDG_CONFIG_HOME"
 	}
 	return config.DefaultConfigPath(), "default"
+}
+
+// versionsExists is nil for the embedded manifest, which is neither present
+// nor missing as a path — there is nothing to stat, and reporting it absent
+// would read as a machine that lost its declaration.
+func versionsExists(path string) *bool {
+	if path == "" {
+		return nil
+	}
+	return pathExists(path)
 }
 
 func pathExists(path string) *bool {

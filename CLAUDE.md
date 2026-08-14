@@ -51,7 +51,7 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 **Packages** (at repo root):
 
 - `config` — loads the repo registry, and forge's own config:
-  - **Repo registry** (`$XDG_DATA_HOME/forge/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. An `owner` marks a third-party reference clone — a repo cloned for reading, never for cross-repo work.
+  - **Repo registry** (`$XDG_DATA_HOME/forge/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. `owner` is the GitHub owner and is required on every entry, because a bare name does not identify a repository. A reference clone — cloned for reading, never for cross-repo work — is an entry whose owner differs from the registry's own, derived by `LoadSyncerConfig` into `Repo.Reference`. Reading a *present* owner as the marker is what made every implicit sweep select nothing the day the field went universal.
   - **Machine config** (`$XDG_CONFIG_HOME/forge/config.yml`, YAML): `maintained_directories`, each reusing the `Repo` shape. This exists because the registry is *shared* — a key only forge can act on does not merely add a concept the other readers ignore, it changes what iterating the collection means for all of them at once. YAML because every entry needs its reason beside it, which is also why `Repo` and `Toolchain` carry both `json` and `yaml` tags: yaml.v3 lowercases the Go field name by default, so `sql_dialect` would arrive as nil rather than failing. `TestRepoParsesIdenticallyFromJSONAndYAML` is what keeps the two spellings one struct. Unknown keys are an error, because a misspelled key leaves a directory undeclared and an undeclared directory reads as a converged one.
   - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: nomad's `api/` and `cli/` are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
 
@@ -197,8 +197,23 @@ image build is bespoke per repo (each app builds and pushes its own in its own p
 is a pre-commit concern, so there is no baseline job left to run. A declared stack with no block is
 skipped rather than emitting an empty job.
 
-**The `gomod` die writes the `toolchain` directive and never the `go` one.** The two look like one
-setting and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
+**Every pinned version comes from the declaration, not from this repo.** `versions_file` in forge's
+config names it, resolved exactly like `repos_registry` — flag, then `$FORGE_VERSIONS_FILE`, then
+the config key. Unset means the manifest embedded in this binary, which is what forge did before
+the file existed and is what a machine with no declaration still gets.
+
+That inverts what `toolchain.yml` was. The embedded copy cannot drift and cannot move without
+cutting a release, so a version bump used to mean releasing forge; naming a file makes it one edit
+and a sweep. A declared file that cannot be read is an error rather than a fallback — quietly
+rolling out whatever the binary shipped with is the failure this replaced, a bump that reports
+success and changes nothing.
+
+`toolchain.yml` stays as that embedded default and is still the shape the generators consume;
+`toolchain.LoadFile` reads the declaration into the same type, so nothing downstream knows which
+answered.
+
+**The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
+and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
 up to. Taking a fixed standard library by raising the floor has a measured cost — `go install
 <tool>@latest` prefers a release the *installing* machine can build, so a module floored above the
 Go on a machine is skipped there silently, returning 0 and leaving the old binary while the
@@ -211,14 +226,28 @@ reporting the module at 1.26.5, `GOTOOLCHAIN=local go build` still working, and 
 installing on that machine. So raising a floor stays a compatibility decision belonging to whoever
 owns the module, never to a fleet-wide sweep.
 
-The version comes from `toolchain.yml`'s `runtimes:`, beside node. It reaches no generated config —
-CI uses `go-version-file: go.mod`, and `ApplyRuntimeVersions` deliberately does not match a
-`-version-file:` input — so this is the one manifest entry a die consumes directly. Bump it on a
-standard-library advisory; `govulncheck` in generated CI is what reports one.
+Both numbers come from the declaration's `languages.go`. Bump the toolchain on a standard-library
+advisory; `govulncheck` in generated CI is what reports one.
 
-A module already floored at or above the pin is left alone rather than given a redundant second
-declaration of the same fact. Changes are itemized per module directory, because a triad repo has
-three and a row saying `go.mod` could not say which.
+**A declared floor the pinned linter cannot build is refused, never written.** Generated CI sets up
+exactly the floor under `GOTOOLCHAIN=local` and then installs golangci-lint, so a floor below its
+own minimum fails Lint in every Go repo at once with nothing wrong in any of them. The declaration
+carries that bottom as `languages.go.binding_minimum` — declared rather than derived, because
+reading it needs the module proxy and a die that reaches the network to decide one line is a die
+that fails offline. The refusal is `ByHand`, so it surfaces in `check` and `apply` cannot reach it.
+
+**A floor moves in either direction.** Lowering one is safe for every consumer; raising one excludes
+them. todoui and ichrisbirch/cli were floored at 1.26.6 before this existed and were pulled back to
+the declaration, which is what makes the fleet's floor uniform with no exceptions.
+
+A module already floored at or above the toolchain pin gets no toolchain line, since it would be a
+second copy of the same fact — and an existing one there is reported `Undeclared` rather than
+deleted, because forge does not remove what it did not put there. Changes are itemized per module
+directory, because a triad repo has three and a row saying `go.mod` could not say which.
+
+`Perform` converges the whole module rather than the one directive its `Change` names. A `Change`
+carries the file, not the line, and a module can drift on both at once — so the second change for
+one `go.mod` arrives after the first settled it and reports `Skipped`.
 
 **The `pyproject` die is separate from `precommit`, and stays that way.** Adopting one better setting
 through the full sync means also fanning out whatever `toolchain.yml` currently pins, to every Python

@@ -58,6 +58,20 @@ type Config struct {
 	// stays generic either way: what would make it fleet-specific is a path
 	// compiled into it, not one it is told.
 	ReposRegistry string `yaml:"repos_registry,omitempty"`
+
+	// VersionsFile points at the declaration of every pinned version forge
+	// rolls out — language floors and toolchains, pre-commit revs, action
+	// versions, CLI and binary pins. Empty means the manifest embedded in this
+	// binary, so forge works with no config at all.
+	//
+	// Declared for the same reason ReposRegistry is, and it is the same kind of
+	// fact: where this machine keeps a file several tools share. What would make
+	// forge fleet-specific is a path compiled into it, never one it is told.
+	//
+	// The embedded copy cannot drift and cannot be changed without a release,
+	// which is the tradeoff. A bump used to mean cutting forge; naming a file
+	// means editing one line and sweeping. That is the point of the key.
+	VersionsFile string `yaml:"versions_file,omitempty"`
 }
 
 // LoadConfig reads forge's config from path, expanding tildes and sorting by

@@ -78,7 +78,7 @@ func loadAssets() (reconcile.Assets, error) {
 		return reconcile.Assets{}, err
 	}
 
-	manifest, err := toolchain.Load(preCommitFS)
+	manifest, err := loadVersions(preCommitFS)
 	if err != nil {
 		return reconcile.Assets{}, err
 	}
@@ -89,4 +89,22 @@ func loadAssets() (reconcile.Assets, error) {
 	}
 
 	return reconcile.Assets{PreCommit: preCommitFS, CI: ciFS, Manifest: manifest}, nil
+}
+
+// loadVersions reads the declaration this machine names, falling back to the
+// manifest embedded in this binary when it names none.
+//
+// A declared file that cannot be read is an error rather than a fallback. The
+// point of naming one is that it governs, and quietly rolling out whatever the
+// binary shipped with would be the failure mode this replaced — a version bump
+// that reports success and changes nothing.
+func loadVersions(preCommitFS fs.FS) (*toolchain.Toolchain, error) {
+	if path := config.VersionsPath(); path != "" {
+		manifest, err := toolchain.LoadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("versions_file: %w", err)
+		}
+		return manifest, nil
+	}
+	return toolchain.Load(preCommitFS)
 }

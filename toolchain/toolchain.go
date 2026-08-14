@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -52,6 +53,11 @@ type Toolchain struct {
 	// whatever the runner image happens to ship, which is the floating-version
 	// problem the rest of this manifest exists to prevent.
 	Binaries []Binary `yaml:"binaries"`
+	// Languages holds each language's floor and, where the language separates
+	// them, the toolchain its builds use. Populated only by LoadFile — the
+	// embedded YAML predates the declaration and carries runtimes alone, so a
+	// consumer must treat an absent entry as "not declared" rather than as zero.
+	Languages map[string]Language `yaml:"-"`
 }
 
 // Binary is a released executable pinned to a version.
@@ -349,4 +355,10 @@ func (t *Toolchain) ApplyBinaryVersions(content string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// sortRuntimes keeps the derived list stable, so two reads of one declaration
+// generate identical configs.
+func sortRuntimes(runtimes []Runtime) {
+	sort.Slice(runtimes, func(i, j int) bool { return runtimes[i].Name < runtimes[j].Name })
 }

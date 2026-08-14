@@ -45,8 +45,11 @@ func (GoMod) Tags() []string {
 }
 
 var (
-	goDirectiveRE        = regexp.MustCompile(`(?m)^go\s+(\S+)\s*$`)
-	toolchainDirectiveRE = regexp.MustCompile(`(?m)^toolchain\s+(\S+)\s*$`)
+	// Horizontal whitespace only. `\s*$` is greedy and `\s` includes a newline,
+	// so a ReplaceAllString with it swallows the line ending and silently
+	// strips the file's trailing newline.
+	goDirectiveRE        = regexp.MustCompile(`(?m)^go[ \t]+(\S+)[ \t]*$`)
+	toolchainDirectiveRE = regexp.MustCompile(`(?m)^toolchain[ \t]+(\S+)[ \t]*$`)
 )
 
 // goModule is one go.mod under a declared Go component.
@@ -62,9 +65,16 @@ type goModule struct {
 
 type gomodState struct {
 	modules []goModule
-	// pinned is the manifest's Go runtime, empty when it pins none. A die with
-	// nothing to assert reports converged rather than inventing a version.
+	// floor and pinned are the declaration's two Go numbers. Empty means the
+	// declaration says nothing, and a die with nothing to assert reports
+	// converged rather than inventing a version.
+	floor  string
 	pinned string
+	// minimum is the declared hard bottom under the floor — the Go the pinned
+	// golangci-lint requires. A floor below it produces a go.mod whose Lint job
+	// fails for reasons unrelated to the repo, so the die refuses rather than
+	// writing it.
+	minimum string
 }
 
 func (s gomodState) Summary() string {
@@ -79,9 +89,20 @@ func (s gomodState) Summary() string {
 
 func (GoMod) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	state := gomodState{}
-	if t.Assets.Manifest != nil {
-		if version, managed := t.Assets.Manifest.RuntimeVersion("go"); managed {
-			state.pinned = version
+	if m := t.Assets.Manifest; m != nil {
+		if lang, declared := m.LanguageFor("go"); declared {
+			state.floor, state.pinned = lang.Floor, lang.Toolchain
+		}
+		// The embedded manifest predates the declaration and carries runtimes
+		// alone, so a binary reading it still pins a toolchain and simply
+		// asserts no floor.
+		if state.pinned == "" {
+			if version, managed := m.RuntimeVersion("go"); managed {
+				state.pinned = version
+			}
+		}
+		if lang, declared := m.LanguageFor("go"); declared {
+			state.minimum = lang.Minimum()
 		}
 	}
 	if t.Repo.Toolchain == nil {
@@ -129,54 +150,102 @@ func (GoMod) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconci
 	if !ok {
 		return nil, fmt.Errorf("gomod: unexpected observation %T", observed)
 	}
-	if state.pinned == "" {
+	if state.floor == "" && state.pinned == "" {
 		return nil, nil
 	}
-	want := "go" + state.pinned
 
 	var changes []reconcile.Change
 	for _, module := range state.modules {
 		if !module.exists {
 			continue
 		}
-		item := filepath.Join(module.rel, "go.mod")
+		changes = append(changes, moduleChanges(state, module)...)
+	}
+	return changes, nil
+}
 
-		// A module already floored at or above the pin builds with a fixed
-		// standard library without a toolchain line, and adding one would be a
-		// second place for the same fact to live.
-		if meetsFloor(module.goVersion, state.pinned) {
-			if module.toolchain != "" && !meetsFloor(strings.TrimPrefix(module.toolchain, "go"), state.pinned) {
-				changes = append(changes, reconcile.Change{
-					Item:     item,
-					Verdict:  reconcile.Stale,
-					Repair:   reconcile.Automatic,
-					Detail:   fmt.Sprintf("toolchain is below the `go` directive (%s)", module.goVersion),
-					Observed: "toolchain " + module.toolchain,
-				})
-			}
-			continue
+// moduleChanges decides one go.mod, floor first and toolchain second, because
+// the toolchain is only wanted where the floor leaves the build on a standard
+// library the pin has moved past.
+func moduleChanges(state gomodState, module goModule) []reconcile.Change {
+	item := filepath.Join(module.rel, "go.mod")
+	var changes []reconcile.Change
+
+	// A declared floor the pinned linter cannot build is refused rather than
+	// written. Generated CI sets up exactly the floor under GOTOOLCHAIN=local
+	// and then installs golangci-lint, so writing it would produce a repo whose
+	// Lint job fails with nothing wrong in its code — and it would do that to
+	// every Go repo at once.
+	if state.floor != "" && state.minimum != "" && !meetsFloor(state.floor, state.minimum) {
+		return []reconcile.Change{{
+			Item:     item,
+			Verdict:  reconcile.Stale,
+			Repair:   reconcile.ByHand,
+			Detail:   fmt.Sprintf("the declared floor %s is below the %s the pinned linter requires; Lint would fail on a repo whose code is fine", state.floor, state.minimum),
+			Observed: "go " + module.goVersion,
+		}}
+	}
+
+	if state.floor != "" && module.goVersion != state.floor {
+		// Both directions are drift. A repo above the floor is the case that
+		// strands a release: `go install <tool>@latest` prefers something the
+		// installing machine can build, so a floor nobody asked for is skipped
+		// there without a word.
+		detail := "the declaration floors Go at " + state.floor
+		if meetsFloor(module.goVersion, state.floor) {
+			detail += ", and a floor above it excludes consumers for nothing"
 		}
+		changes = append(changes, reconcile.Change{
+			Item:     item,
+			Verdict:  reconcile.Stale,
+			Repair:   reconcile.Automatic,
+			Detail:   detail,
+			Observed: "go " + module.goVersion,
+		})
+	}
 
-		switch {
-		case module.toolchain == "":
+	if state.pinned == "" {
+		return changes
+	}
+	// The floor this module will hold once the change above lands, which is what
+	// decides whether a toolchain line is wanted at all.
+	floor := module.goVersion
+	if state.floor != "" {
+		floor = state.floor
+	}
+	want := "go" + state.pinned
+
+	switch {
+	case meetsFloor(floor, state.pinned):
+		// Already building against the pinned standard library, so a toolchain
+		// line would be a second copy of the same fact.
+		if module.toolchain != "" {
 			changes = append(changes, reconcile.Change{
 				Item:     item,
-				Verdict:  reconcile.Missing,
-				Repair:   reconcile.Automatic,
-				Detail:   fmt.Sprintf("builds with the %s standard library; the manifest pins %s", module.goVersion, state.pinned),
-				Observed: "go " + module.goVersion,
-			})
-		case module.toolchain != want:
-			changes = append(changes, reconcile.Change{
-				Item:     item,
-				Verdict:  reconcile.Stale,
-				Repair:   reconcile.Automatic,
-				Detail:   "the manifest pins " + state.pinned,
+				Verdict:  reconcile.Undeclared,
+				Repair:   reconcile.NoRepair,
+				Detail:   fmt.Sprintf("the floor %s already reaches the pinned toolchain", floor),
 				Observed: "toolchain " + module.toolchain,
 			})
 		}
+	case module.toolchain == "":
+		changes = append(changes, reconcile.Change{
+			Item:     item,
+			Verdict:  reconcile.Missing,
+			Repair:   reconcile.Automatic,
+			Detail:   fmt.Sprintf("builds with the %s standard library; the declaration pins %s", floor, state.pinned),
+			Observed: "go " + module.goVersion,
+		})
+	case module.toolchain != want:
+		changes = append(changes, reconcile.Change{
+			Item:     item,
+			Verdict:  reconcile.Stale,
+			Repair:   reconcile.Automatic,
+			Detail:   "the declaration pins " + state.pinned,
+			Observed: "toolchain " + module.toolchain,
+		})
 	}
-	return changes, nil
+	return changes
 }
 
 func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
@@ -189,27 +258,70 @@ func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.O
 		return reconcile.Outcome{}, err
 	}
 	state := observed.(gomodState)
-	if state.pinned == "" {
-		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "the manifest pins no Go runtime"}, nil
+	if state.floor == "" && state.pinned == "" {
+		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "the declaration pins no Go version"}, nil
 	}
 
+	// Converges the whole module rather than the one directive this change
+	// names. A Change carries the file, not which line of it, and a module can
+	// drift on both at once — so the second change for one go.mod arrives here
+	// after the first already settled it and reports Skipped.
 	path := t.Path(change.Item)
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
-	updated, changed := setToolchain(string(body), "go"+state.pinned)
-	if !changed {
-		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already pinned"}, nil
+
+	updated := body
+	var did []string
+	if state.floor != "" {
+		if next, changed := setGoDirective(string(updated), state.floor); changed {
+			updated, did = []byte(next), append(did, "floored at "+state.floor)
+		}
+	}
+	if state.pinned != "" {
+		floor := state.floor
+		if floor == "" {
+			floor = goDirectiveOf(string(updated))
+		}
+		// A floor that already reaches the pin needs no toolchain line; where it
+		// does not, that line is what carries the fixed standard library.
+		if !meetsFloor(floor, state.pinned) {
+			if next, changed := setToolchain(string(updated), "go"+state.pinned); changed {
+				updated, did = []byte(next), append(did, "pinned toolchain "+state.pinned)
+			}
+		}
+	}
+
+	if len(did) == 0 {
+		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already converged"}, nil
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
-	if err := os.WriteFile(path, []byte(updated), info.Mode().Perm()); err != nil {
+	if err := os.WriteFile(path, updated, info.Mode().Perm()); err != nil {
 		return reconcile.Outcome{}, err
 	}
-	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "pinned toolchain " + state.pinned}, nil
+	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: strings.Join(did, ", ")}, nil
+}
+
+// setGoDirective rewrites the `go` line, in either direction. Lowering a floor
+// is safe for every consumer and raising one excludes them, which is why the
+// declaration decides it rather than each repo.
+func setGoDirective(body, want string) (string, bool) {
+	m := goDirectiveRE.FindStringSubmatch(body)
+	if len(m) < 2 || m[1] == want {
+		return body, false
+	}
+	return goDirectiveRE.ReplaceAllString(body, "go "+want), true
+}
+
+func goDirectiveOf(body string) string {
+	if m := goDirectiveRE.FindStringSubmatch(body); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // setToolchain rewrites an existing toolchain directive or inserts one below the

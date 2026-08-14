@@ -289,6 +289,32 @@ func ReposPath() string {
 	return expanded
 }
 
+// VersionsPath is where this machine keeps the version declaration:
+// $FORGE_VERSIONS_FILE, then versions_file in forge's config, then "" — which
+// means the manifest embedded in this binary.
+//
+// The empty answer is the meaningful one here, and differs from ReposPath. A
+// registry forge cannot find is a machine that cannot be operated on; a
+// versions file it cannot find is a machine that rolls out what this binary
+// shipped with, which is exactly what forge did before the file existed.
+func VersionsPath() string {
+	declared := os.Getenv("FORGE_VERSIONS_FILE")
+	if declared == "" {
+		cfg, err := LoadConfig(DefaultConfigPath())
+		if err == nil {
+			declared = cfg.VersionsFile
+		}
+	}
+	if declared == "" {
+		return ""
+	}
+	expanded, err := ExpandTilde(declared)
+	if err != nil {
+		return declared
+	}
+	return expanded
+}
+
 // FindRepoByPath returns the repo whose path contains dir, preferring the
 // longest match so a repo nested inside another resolves to the inner one.
 func FindRepoByPath(repos []Repo, dir string) *Repo {
