@@ -57,3 +57,19 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A tag exists before the module proxy has fetched it, and `go install
+      # <module>@latest` resolves through that proxy. Inside the gap it returns
+      # the previous version and exits 0, so the installer reports the machine
+      # converged while leaving the old binary in place.
+      #
+      # Measured 2026-08-14 on v1.37.0: the release assets were up, the proxy
+      # listed to v1.36.0, and `dotfiles packages apply --package forge` printed
+      # "forge installed" twice without moving it.
+      - name: Prime the module proxy
+        env:
+          VERSION: ${{ needs.semver.outputs.version }}
+        run: |
+          module="$(go list -m)"
+          curl -fsS "https://proxy.golang.org/${module}/@v/v${VERSION}.info" || \
+            echo "proxy has not picked up v${VERSION} yet; it will on first fetch"
