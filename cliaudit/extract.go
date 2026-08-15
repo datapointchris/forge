@@ -201,8 +201,13 @@ func helpCommandNames(help string) map[string]bool {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) > 0 && isCommandName(fields[0]) {
-			names[fields[0]] = true
+		if len(fields) == 0 {
+			continue
+		}
+		// gh punctuates its rows as `auth:  Authenticate ...` while __complete
+		// answers `auth`, so an unstripped colon empties the intersection.
+		if name := strings.TrimSuffix(fields[0], ":"); isCommandName(name) {
+			names[name] = true
 		}
 	}
 	return names
