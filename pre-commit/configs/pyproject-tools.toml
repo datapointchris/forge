@@ -53,6 +53,13 @@ analyzeUnannotatedFunctions = true  # or pylance stops analyzing in vscode
 check-filenames = true
 
 [tool.pytest.ini_options]
-addopts = "-vv"
+# Assertion detail and test-list length are two different questions, and -vv
+# answers both at once. A failing assertion truncates its diff and prints "use
+# -vv to show", so a reader who wants the diff re-runs the whole suite to get
+# it — which is the loop this setting exists to break. Raising assertion
+# verbosity alone gives the full diff on the first run and leaves a green run
+# silent. Measured 2026-08-16 on dotfiles: 9263 lines of output became 69, over
+# 3358 tests, with no failure detail lost.
+verbosity_assertions = 2
 minversion = "8.0"
 testpaths = ["tests"]
