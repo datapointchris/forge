@@ -1,8 +1,14 @@
 # Lua
       # --check, not the formatting run the pre-commit hook does: CI reports,
       # it does not rewrite the tree.
+      #
+      # A pinned version rather than `latest`, for the reason every other tool in
+      # these blocks is pinned: CI has to grade against the same StyLua the
+      # pre-commit hook runs, or a repo can be green in one and red in the other.
+      # `latest` also made the step depend on the action resolving a release at
+      # run time, which is a third-party code path that has failed.
       - uses: JohnnyMorganz/stylua-action@v4
         with:
           token: ${{ github.token }}
-          version: latest
+          version: v2.5.2
           args: --check {{dir}}
