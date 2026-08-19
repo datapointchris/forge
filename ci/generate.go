@@ -26,9 +26,9 @@ import (
 // over one would destroy work nothing could recover.
 const WorkflowPath = ".github/workflows/validate.yml"
 
-// releaseWorkflowPath is read, never written — release.yml is per-repo and
-// deliberately not generated. See ReleaseGatesOnValidate.
-const releaseWorkflowPath = ".github/workflows/release.yml"
+// workflowsDir is read, never written apart from WorkflowPath — every other
+// workflow in it is per-repo and deliberately not generated.
+const workflowsDir = ".github/workflows"
 
 // releaseGateRef matches a reusable-workflow call naming this workflow, the
 // shape a release uses to gate on it:
@@ -37,14 +37,19 @@ const releaseWorkflowPath = ".github/workflows/release.yml"
 //	  uses: ./.github/workflows/validate.yml
 var releaseGateRef = regexp.MustCompile(`uses:\s*\./` + regexp.QuoteMeta(WorkflowPath))
 
-// ReleaseGatesOnValidate reports whether the repo's release workflow runs this
-// one as a job.
+// ReleaseGatesOnValidate reports whether any of the repo's other workflows runs
+// this one as a job.
+//
+// Every workflow is scanned rather than release.yml alone, because the gating
+// workflow is named for the artifact it ships: learning and nomad release a
+// nested CLI from release-cli.yml, and matching one filename missed both. They
+// each ran the full suite twice per push for the whole of August as a result.
 //
 // Detected rather than declared, which is the opposite of how components work.
 // A registry flag would be a second place to remember, and the failure it
 // guards against is precisely a thing nobody remembers: add a release gate,
-// forget the flag, and the duplicate run comes back silently. Reading the file
-// cannot drift from the file.
+// forget the flag, and the duplicate run comes back silently. Reading the files
+// cannot drift from the files.
 //
 // Every unknown answers false, which reproduces the old behavior — an extra
 // run, never a missing one.
@@ -53,11 +58,35 @@ var releaseGateRef = regexp.MustCompile(`uses:\s*\./` + regexp.QuoteMeta(Workflo
 // many repos in one process, where a relative path answers about whichever repo
 // the process happens to be standing in.
 func ReleaseGatesOnValidate(root string) bool {
-	data, err := os.ReadFile(filepath.Join(root, releaseWorkflowPath))
+	entries, err := os.ReadDir(filepath.Join(root, workflowsDir))
 	if err != nil {
 		return false
 	}
-	return releaseGateRef.Match(data)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if ext := filepath.Ext(name); ext != ".yml" && ext != ".yaml" {
+			continue
+		}
+		// The generated workflow does not gate itself, and skipping it keeps a
+		// documentation example inside its own comments from matching.
+		if filepath.Join(workflowsDir, name) == WorkflowPath {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(root, workflowsDir, name))
+		if err != nil {
+			continue
+		}
+		if releaseGateRef.Match(data) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Generate composes the workflow from the repo's declared components.

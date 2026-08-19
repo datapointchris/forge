@@ -99,27 +99,56 @@ func TestGenerateOmitsPushWhenTheReleaseGatesOnIt(t *testing.T) {
 }
 
 func TestReleaseGatesOnValidate(t *testing.T) {
+	const gate = "jobs:\n  validate:\n    uses: ./.github/workflows/validate.yml\n"
+
 	cases := []struct {
-		name    string
-		release string
-		want    bool
+		name      string
+		workflows map[string]string
+		want      bool
 	}{
-		{"no release workflow at all", "", false},
+		{"no workflows at all", nil, false},
 		{
-			"release gates on the generated workflow",
-			"jobs:\n  validate:\n    uses: ./.github/workflows/validate.yml\n",
+			"release.yml gates on the generated workflow",
+			map[string]string{"release.yml": gate},
+			true,
+		},
+		{
+			// learning and nomad ship a nested CLI from release-cli.yml, and
+			// matching release.yml alone missed both.
+			"a differently-named release workflow gates on it",
+			map[string]string{"release-cli.yml": gate},
+			true,
+		},
+		{
+			"one of several workflows gates on it",
+			map[string]string{
+				"deploy-docs.yml": "jobs:\n  docs:\n    runs-on: ubuntu-latest\n",
+				"release-cli.yml": gate,
+			},
 			true,
 		},
 		{
 			// The shape every repo had before this: the release gated on a
 			// hand-written ci.yml, so validate.yml still needs its own push.
 			"release gates on a hand-written ci.yml",
-			"jobs:\n  validate:\n    uses: ./.github/workflows/ci.yml\n",
+			map[string]string{"release.yml": "jobs:\n  validate:\n    uses: ./.github/workflows/ci.yml\n"},
 			false,
 		},
 		{
 			"release exists but gates on nothing",
-			"jobs:\n  release:\n    runs-on: ubuntu-latest\n",
+			map[string]string{"release.yml": "jobs:\n  release:\n    runs-on: ubuntu-latest\n"},
+			false,
+		},
+		{
+			// The generated workflow documents the gating shape in its own
+			// comments, and it never gates itself.
+			"only the generated workflow names itself",
+			map[string]string{"validate.yml": gate},
+			false,
+		},
+		{
+			"a non-workflow file names it",
+			map[string]string{"notes.md": gate},
 			false,
 		},
 	}
@@ -127,12 +156,14 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
-			if tc.release != "" {
-				if err := os.MkdirAll(filepath.Dir(releaseWorkflowPath), 0o755); err != nil {
+			if tc.workflows != nil {
+				if err := os.MkdirAll(workflowsDir, 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
-				if err := os.WriteFile(releaseWorkflowPath, []byte(tc.release), 0o644); err != nil {
-					t.Fatalf("write: %v", err)
+				for name, body := range tc.workflows {
+					if err := os.WriteFile(filepath.Join(workflowsDir, name), []byte(body), 0o644); err != nil {
+						t.Fatalf("write %s: %v", name, err)
+					}
 				}
 			}
 			if got := ReleaseGatesOnValidate("."); got != tc.want {
