@@ -5,6 +5,8 @@ import (
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/datapointchris/clisurface"
 )
 
 // Job is one thing a CLI does, with the fleet default first and the other
@@ -78,18 +80,18 @@ type Report struct {
 }
 
 // Analyze applies the cli-design.md grammar sections to the extracted trees.
-func Analyze(tools []*Tool, unresolved []Unresolved) *Report {
+func Analyze(tools []*clisurface.Tool, unresolved []Unresolved) *Report {
 	rep := &Report{Verbs: map[string][]VerbUse{}, Unresolved: unresolved}
 	seen := map[string]map[string]map[string]bool{} // job -> tool -> spelling
 
 	for _, t := range tools {
 		rep.Tools = append(rep.Tools, t.Binary)
-		t.Walk(func(n *Node) {
+		t.Walk(func(n *clisurface.Node) {
 			rep.NodeCount++
 			recordVerb(seen, t.Binary, n)
 			rep.Findings = append(rep.Findings, inspect(t, n)...)
 		})
-		if t.Root != nil && t.Root.Leaf() && t.Framework != FrameworkFlat {
+		if t.Root != nil && t.Root.Leaf() && t.Framework != clisurface.FrameworkFlat {
 			rep.Findings = append(rep.Findings, Finding{
 				Kind: "unreadable", Tool: t.Binary,
 				Detail: "help lists no commands, so the tree cannot be reached from the root screen",
@@ -120,7 +122,7 @@ func Analyze(tools []*Tool, unresolved []Unresolved) *Report {
 	return rep
 }
 
-func recordVerb(seen map[string]map[string]map[string]bool, tool string, n *Node) {
+func recordVerb(seen map[string]map[string]map[string]bool, tool string, n *clisurface.Node) {
 	for _, j := range jobs {
 		match := n.Name == j.Default
 		for _, v := range j.Variants {
@@ -148,7 +150,7 @@ func recordVerb(seen map[string]map[string]map[string]bool, tool string, n *Node
 }
 
 // inspect applies the shape rules to one node.
-func inspect(t *Tool, n *Node) []Finding {
+func inspect(t *clisurface.Tool, n *clisurface.Node) []Finding {
 	var out []Finding
 	cmd := strings.Join(n.Path, " ")
 
@@ -202,11 +204,11 @@ func looksLikeNoun(s string) bool {
 }
 
 // WriteSpec renders the extracted trees for a terminal.
-func WriteSpec(out io.Writer, tools []*Tool) error {
+func WriteSpec(out io.Writer, tools []*clisurface.Tool) error {
 	var b strings.Builder
 	for _, t := range tools {
 		fmt.Fprintf(&b, "%s (%s)\n", t.Binary, t.Framework)
-		t.Walk(func(n *Node) {
+		t.Walk(func(n *clisurface.Node) {
 			fmt.Fprintf(&b, "  %s%-26s %s\n", strings.Repeat("  ", n.Depth()-1), n.Name, n.Short)
 		})
 		b.WriteString("\n")

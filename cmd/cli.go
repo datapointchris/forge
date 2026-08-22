@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/datapointchris/clisurface"
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
@@ -123,7 +124,7 @@ func runCLISnapshot(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	snap, err := cliaudit.Save(dir, tools, unresolved, time.Now())
+	snap, err := clisurface.Save(dir, tools, time.Now())
 	if err != nil {
 		return err
 	}
@@ -133,29 +134,36 @@ func runCLISnapshot(cmd *cobra.Command, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(snap)
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "v%d  %d tools\n", snap.Version, len(snap.Tools))
-	return err
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "v%d  %d tools\n", snap.Version, len(snap.Tools)); err != nil {
+		return err
+	}
+	// A snapshot holds surfaces only, so a repo with no binary is reported here
+	// rather than written into it where nothing ever read it back.
+	for _, u := range unresolved {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "no binary on PATH for %s (tried %v)\n", u.Repo, u.Tried)
+	}
+	return nil
 }
 
 // resolveSurface turns one diff argument into a surface. An empty argument means
 // read the installed tools now, which is what makes a one-sided diff the useful
 // default.
-func resolveSurface(arg string) (*cliaudit.Snapshot, error) {
+func resolveSurface(arg string) (*clisurface.Snapshot, error) {
 	if arg == "" {
-		tools, unresolved, err := resolveTools(nil)
+		tools, _, err := resolveTools(nil)
 		if err != nil {
 			return nil, err
 		}
-		return &cliaudit.Snapshot{Tools: tools, Unresolved: unresolved}, nil
+		return &clisurface.Snapshot{Tools: tools}, nil
 	}
 	if version, err := strconv.Atoi(arg); err == nil {
 		dir, err := cliaudit.SnapshotDir()
 		if err != nil {
 			return nil, err
 		}
-		return cliaudit.Load(dir, version)
+		return clisurface.Load(dir, version)
 	}
-	return cliaudit.LoadFile(arg)
+	return clisurface.LoadFile(arg)
 }
 
 func runCLIDiff(cmd *cobra.Command, args []string) error {
@@ -172,7 +180,7 @@ func runCLIDiff(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		versions, err := cliaudit.Versions(dir)
+		versions, err := clisurface.Versions(dir)
 		if err != nil {
 			return err
 		}
@@ -190,23 +198,29 @@ func runCLIDiff(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	d := cliaudit.Compare(before, after)
+	d := clisurface.Compare(before, after)
 
 	if cliJSON {
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		return enc.Encode(d)
 	}
-	return cliaudit.WriteDiff(cmd.OutOrStdout(), d)
+	return clisurface.WriteDiff(cmd.OutOrStdout(), d)
 }
 
 // resolveTools turns the positional arguments into extracted trees, falling
 // back to registry discovery when none are named.
-func resolveTools(args []string) ([]*cliaudit.Tool, []cliaudit.Unresolved, error) {
+func resolveTools(args []string) ([]*clisurface.Tool, []cliaudit.Unresolved, error) {
 	if len(args) > 0 {
-		tools := make([]*cliaudit.Tool, 0, len(args))
+		tools := make([]*clisurface.Tool, 0, len(args))
 		for _, name := range args {
-			tools = append(tools, cliaudit.Extract(name, ""))
+			// A named tool that cannot be read is the answer to what was asked,
+			// so this fails rather than reporting an empty surface for it.
+			tool, err := clisurface.Extract(name, clisurface.Options{})
+			if err != nil {
+				return nil, nil, err
+			}
+			tools = append(tools, tool)
 		}
 		return tools, nil, nil
 	}
@@ -216,9 +230,16 @@ func resolveTools(args []string) ([]*cliaudit.Tool, []cliaudit.Unresolved, error
 		return nil, nil, fmt.Errorf("load repo registry: %w", err)
 	}
 	found, unresolved := cliaudit.Discover(cfg.Repos)
-	tools := make([]*cliaudit.Tool, 0, len(found))
+	tools := make([]*clisurface.Tool, 0, len(found))
 	for _, c := range found {
-		tools = append(tools, cliaudit.Extract(c.Binary, c.Repo))
+		tool, err := clisurface.Extract(c.Binary, clisurface.Options{})
+		if err != nil {
+			// Discovery saw the binary on PATH, so failing to read it now is a
+			// gap in this run rather than a reason to abandon the sweep.
+			unresolved = append(unresolved, cliaudit.Unresolved{Repo: c.Repo, Tried: []string{c.Binary}})
+			continue
+		}
+		tools = append(tools, tool)
 	}
 	return tools, unresolved, nil
 }

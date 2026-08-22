@@ -1,26 +1,29 @@
 package cliaudit
 
 import (
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/datapointchris/clisurface"
 )
 
-func node(path ...string) *Node {
-	return &Node{Path: path, Name: path[len(path)-1]}
+func node(path ...string) *clisurface.Node {
+	return &clisurface.Node{Path: path, Name: path[len(path)-1]}
 }
 
-func tool(binary string, children ...*Node) *Tool {
-	return &Tool{
+func tool(binary string, children ...*clisurface.Node) *clisurface.Tool {
+	return &clisurface.Tool{
 		Binary:    binary,
-		Framework: FrameworkCobra,
-		Root:      &Node{Name: binary, Children: children},
+		Framework: clisurface.FrameworkCobra,
+		Root:      &clisurface.Node{Name: binary, Children: children},
 	}
 }
 
 func TestSelfUpdateIsNotAnEditSpelling(t *testing.T) {
-	rep := Analyze([]*Tool{tool("demo", node("update"), node("books", "edit"))}, nil)
+	rep := Analyze([]*clisurface.Tool{tool("demo", node("update"), node("books", "edit"))}, nil)
 	for _, u := range rep.Verbs["edit"] {
-		if contains(u.Spelling, "update") {
+		if slices.Contains(u.Spelling, "update") {
 			t.Error("root `update` counted as an edit verb; it is self-update, a different job")
 		}
 	}
@@ -28,12 +31,12 @@ func TestSelfUpdateIsNotAnEditSpelling(t *testing.T) {
 
 func TestNestedUpdateIsAnEditSpelling(t *testing.T) {
 	books := node("books")
-	books.Children = []*Node{{Path: []string{"books", "update"}, Name: "update"}}
-	rep := Analyze([]*Tool{tool("demo", books)}, nil)
+	books.Children = []*clisurface.Node{{Path: []string{"books", "update"}, Name: "update"}}
+	rep := Analyze([]*clisurface.Tool{tool("demo", books)}, nil)
 
 	var found bool
 	for _, u := range rep.Verbs["edit"] {
-		if contains(u.Spelling, "update") {
+		if slices.Contains(u.Spelling, "update") {
 			found = true
 		}
 	}
@@ -44,8 +47,8 @@ func TestNestedUpdateIsAnEditSpelling(t *testing.T) {
 
 func TestCompoundIsReportedOnceNotAlsoAsABareNoun(t *testing.T) {
 	sections := node("sections")
-	sections.Children = []*Node{{Path: []string{"sections", "add-items"}, Name: "add-items"}}
-	rep := Analyze([]*Tool{tool("demo", sections)}, nil)
+	sections.Children = []*clisurface.Node{{Path: []string{"sections", "add-items"}, Name: "add-items"}}
+	rep := Analyze([]*clisurface.Tool{tool("demo", sections)}, nil)
 
 	var compound, bare int
 	for _, f := range rep.Findings {
@@ -68,7 +71,7 @@ func TestCompoundIsReportedOnceNotAlsoAsABareNoun(t *testing.T) {
 }
 
 func TestQueryNamesAreNotBareNouns(t *testing.T) {
-	rep := Analyze([]*Tool{tool("demo", node("status"), node("stats"), node("repos"))}, nil)
+	rep := Analyze([]*clisurface.Tool{tool("demo", node("status"), node("stats"), node("repos"))}, nil)
 	var flagged []string
 	for _, f := range rep.Findings {
 		if f.Kind == "bare-noun" {
@@ -81,7 +84,7 @@ func TestQueryNamesAreNotBareNouns(t *testing.T) {
 }
 
 func TestUnreadableToolIsReported(t *testing.T) {
-	rep := Analyze([]*Tool{{Binary: "quiet", Framework: FrameworkRich, Root: &Node{Name: "quiet"}}}, nil)
+	rep := Analyze([]*clisurface.Tool{{Binary: "quiet", Framework: clisurface.FrameworkRich, Root: &clisurface.Node{Name: "quiet"}}}, nil)
 	var found bool
 	for _, f := range rep.Findings {
 		if f.Kind == "unreadable" {
@@ -94,7 +97,7 @@ func TestUnreadableToolIsReported(t *testing.T) {
 }
 
 func TestTextReportShowsTheDistribution(t *testing.T) {
-	tools := []*Tool{
+	tools := []*clisurface.Tool{
 		tool("a", node("books", "show")),
 		tool("b", node("books", "show")),
 		tool("c", node("books", "view")),

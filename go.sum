@@ -1,4 +1,6 @@
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
+github.com/datapointchris/clisurface v0.1.0 h1:LtoqtC7rAILDmfv1TMPck0FSyB764bofuuTCEHSxNIM=
+github.com/datapointchris/clisurface v0.1.0/go.mod h1:gUe+cCfMed7G/Q84mc+d8nfy4QcXJrT43RTE/bzh8I8=
 github.com/datapointchris/goselfupdate v0.8.0 h1:7iVWFXgQuY5p0eheqFHv58I8VIqFVQFQNYdqyF7LzGw=
 github.com/datapointchris/goselfupdate v0.8.0/go.mod h1:JxrEHU/23s5hxBnTdKe+3GRbTCuvzmPIjuE8yBfQAN8=
 github.com/fatih/color v1.19.0 h1:Zp3PiM21/9Ld6FzSKyL5c/BULoe/ONr9KlbYVOfG8+w=
