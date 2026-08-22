@@ -30,7 +30,7 @@ golangci-lint run          # Lint (enabled set is in .golangci.yml)
 go run . <subcommand>      # Run without building
 ```
 
-The hook inventory is generated from `pre-commit/toolchain.yml` — read that, or `.pre-commit-config.yaml`, rather than a list here. `standards/ci.md` § "Never restate the hook inventory in a repo's `CLAUDE.md`" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
+The hook inventory is generated from `pre-commit/toolchain.yml` — read that, or `.pre-commit-config.yaml`, rather than a list here. `standards/ci.md` § "forge is the source of truth" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
 
 ## Architecture
 
@@ -42,7 +42,8 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 - `dies` — the library, which executes nothing: `list`, `show`, `search`, `stats`
   - `stats` aggregates one row per die, most-recently-run first, with `--since` (git's own spelling — `2 weeks`, `30.days.ago` — plus Go durations and ISO dates) and `--json`. Naming a die gives its run-by-run history instead. Per-run rows grow without bound while the number of dies does not, so the old per-run dump put the oldest screen in front of the reader first
 - `toolchain` — `show`, `plan`, `apply` over `pre-commit/toolchain.yml`. `plan` asks `pre-commit autoupdate` what upstream has released, against a config synthesized in a throwaway repo, and writes nothing. Rolling the answer out is a separate step by design: bump, resync one repo, verify, fan out
-- `cli spec` / `cli audit` — read the installed CLIs' command surfaces and report where their grammar varies. Reads from the *outside* only: `--help`, plus cobra's `__complete` where a tool has one. It never runs a bare subcommand, because the shape most worth finding is a noun that performs a read with no verb, and running it to find out would fire that read against a live API. Four help formats are parsed (`cliaudit.Framework`) — the parsers exist because five tools hand-roll their help and cannot be read any other way. **Reports variation, never fails**: `$STANDARDS_DIR/cli-design.md` holds machine contracts that bind and design guidance that does not, and this covers the second, so it exits 0 whatever it finds. Discovery resolves active repos to binaries from what each repo already declares — a `pyproject.toml` `[project.scripts]` key, a goreleaser `binary:` — falling back to the repo name; a repo declaring an entry point that is not installed is listed, one declaring none is not (that is a library, not a missing tool). **It audits what is installed, not the working tree**, so a tool built but not installed reports its released surface
+- `test` — run the tests of every component the registry declares for a repo, using the command `ci/blocks/` generates into that repo's own workflow, so a local run and CI run the same thing
+- `cli` — `spec`, `audit`, `diff` and `snapshot` over the installed CLIs' command surfaces, reporting where their grammar varies. Reads from the *outside* only: `--help`, plus cobra's `__complete` where a tool has one. It never runs a bare subcommand, because the shape most worth finding is a noun that performs a read with no verb, and running it to find out would fire that read against a live API. Four help formats are parsed (`cliaudit.Framework`) — the parsers exist because five tools hand-roll their help and cannot be read any other way. **Reports variation, never fails**: `$STANDARDS_DIR/cli-design.md` holds machine contracts that bind and design guidance that does not, and this covers the second, so it exits 0 whatever it finds. Discovery resolves active repos to binaries from what each repo already declares — a `pyproject.toml` `[project.scripts]` key, a goreleaser `binary:` — falling back to the repo name; a repo declaring an entry point that is not installed is listed, one declaring none is not (that is a library, not a missing tool). **It audits what is installed, not the working tree**, so a tool built but not installed reports its released surface
 - `version` — print version, commit, and build date (set via ldflags)
 - `update` — self-update from GitHub releases (downloads pre-built binary, atomic swap)
 
@@ -51,7 +52,7 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 **Packages** (at repo root):
 
 - `config` — loads the repo registry, and forge's own config:
-  - **Repo registry** (`$XDG_DATA_HOME/forge/repos.json`, JSON): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. `owner` is the GitHub owner and is required on every entry, because a bare name does not identify a repository. A reference clone — cloned for reading, never for cross-repo work — is an entry whose owner differs from the registry's own, derived by `LoadSyncerConfig` into `Repo.Reference`. Reading a *present* owner as the marker is what made every implicit sweep select nothing the day the field went universal.
+  - **Repo registry** (wherever `repos_registry` points; `repos-registry` prints it): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. `owner` is the GitHub owner and is required on every entry, because a bare name does not identify a repository. A reference clone — cloned for reading, never for cross-repo work — is an entry whose owner differs from the registry's own, derived by `LoadSyncerConfig` into `Repo.Reference`. Reading a *present* owner as the marker is what made every implicit sweep select nothing the day the field went universal.
   - **Machine config** (`$XDG_CONFIG_HOME/forge/config.yml`, YAML): `maintained_directories`, each reusing the `Repo` shape. This exists because the registry is *shared* — a key only forge can act on does not merely add a concept the other readers ignore, it changes what iterating the collection means for all of them at once. YAML because every entry needs its reason beside it, which is also why `Repo` and `Toolchain` carry both `json` and `yaml` tags: yaml.v3 lowercases the Go field name by default, so `sql_dialect` would arrive as nil rather than failing. `TestRepoParsesIdenticallyFromJSONAndYAML` is what keeps the two spellings one struct. Unknown keys are an error, because a misspelled key leaves a directory undeclared and an undeclared directory reads as a converged one.
   - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: nomad's `api/` and `cli/` are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
 
@@ -67,7 +68,7 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 
 **Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach.
 
-**Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' $XDG_DATA_HOME/forge/repos.json | sort | uniq -c`). None of it takes another release, so a maintenance die run across it is churn: a config every repo "should" have is worth nothing in one that will never run the tool. An entry with **no** status counts as active — repos.json is hand-edited, and the opposite default drops a repo out of every maintenance operation without a word.
+**Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' "$(repos-registry)" | sort | uniq -c` — the registry lives outside forge's data directory, which is the whole point of the `repos_registry` config key below). None of it takes another release, so a maintenance die run across it is churn: a config every repo "should" have is worth nothing in one that will never run the tool. An entry with **no** status counts as active — repos.json is hand-edited, and the opposite default drops a repo out of every maintenance operation without a word.
 
 **Data flow for a reconcile verb:** load the registry → `SelectRepos` (retired, dormant and reference clones dropped unless named) → build one `Assets` (embedded trees + manifest) shared by the walk → `AssessAll` (Observe then Diff per repo per die, refusals isolated) → fold through the verb's lens → render rows, or `apply` and render outcomes → record the run → exit 0/1/3.
 
@@ -116,7 +117,7 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 - `editorconfig.ini` — deployed as `.editorconfig` to all repos, because the shell block is generic and shfmt takes its style from there rather than from hook args. Shell keys sit under `[*]`, not `[*.sh]`: a shell executable is commonly shipped with no extension at all, a suffix pattern cannot reach one, and shfmt does not skip a file it fails to match — it formats it at its tab default. shfmt reads these keys only for files it identifies as shell, so `[*]` costs nothing there; the per-language sections exist because editors read `[*]` for everything. **Never put a parser or printer flag on the shfmt hook**: a flag replaces the EditorConfig file rather than merging with it, so one `--indent` silently drops `switch_case_indent` and `binary_next_line` as well
 - `golangci.yml` — Go repos
 - `prettierrc.json` — Vue repos
-- `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. Rules are narrowed to `ambiguous, references, structure, convention.terminator`: sqlfluff's defaults are mostly layout and capitalisation opinions, which failed every `.sql` file in the portfolio and would have taught everyone to skip the hook. The narrowed set passes clean across all seven repos while still catching unparsable SQL and unused CTEs
+- `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. The narrowed ruleset and why the defaults were unusable are `standards/ci.md` § "sqlfluff ships a narrowed ruleset, lint-only"
 - `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, codespell, pytest, pyright). The ruff `select` is the six rules every repo already runs, not an aspirational set: a template nothing conforms to reads as the standard while being unable to measure drift. `[tool.pyright]` is here despite the hook enforcing mypy, because basedpyright runs in every editor on every machine and is therefore exactly what drifts — it was dropped once as "an editor concern" and the four repos configuring it diverged. Named `pyright`, not `basedpyright`, so one section serves nvim and Pylance. `typeCheckingMode = "standard"` replaced the twelve-key blocks repos had accumulated; that collapse was a one-time migration, already applied everywhere, and is not something the steady-state sync repeats
 
 **Config generation** — `precommit/generate.go`. Block composition, custom section preservation, hook deduplication, and safety checks, all as pure functions over text. The `precommit` die composes them directly rather than through `Run`/`DryRun`, which is what makes `Observe` a read: `Generate` and `SafetyCheck` cannot write, so the read verbs have no path to a write.
@@ -149,14 +150,12 @@ on `pull_request` and exposed via `workflow_call` so a release workflow can `nee
 `go install` versions come from the same `toolchain.yml` as the pre-commit hooks, and the same
 `# > custom:` markers preserve repo-specific steps.
 
-**The `push: main` trigger is emitted only when nothing else covers main.** Development is
-trunk-based, so `pull_request` alone would validate almost nothing and a repo with no release
-pipeline needs `push` or the workflow never runs. But where `release.yml` gates on this workflow it
-already fires on that same push and calls it, so emitting `push` too runs every job twice for one
-commit — which is what fourteen repos silently did, because both runs are green and nothing about a
-duplicate green run looks wrong.
+**The `push: main` trigger is emitted only when nothing else covers main** — the rule and the
+duplicate-run measurement behind it are `standards/ci.md` § "`push: main` is emitted only when
+nothing else validates main", which names this file as its canonical source.
 
-`ReleaseGatesOnValidate` decides it by **reading `release.yml` for a `uses:` naming this workflow**.
+`ReleaseGatesOnValidate` is the implementation, and it decides by **reading `release.yml` for a
+`uses:` naming this workflow**.
 Detection, not a registry field, and deliberately against the usual `declared, never detected`
 rule: the failure being prevented is someone adding a release gate and forgetting to flip a flag,
 which a flag cannot prevent and a file read cannot get wrong. It re-derives on every generate, so
@@ -192,10 +191,9 @@ opted into. And a schema-valid pre-commit config can fail on first use, so the g
 script and the workspace repos' missing `lint:fix` surfaced. `${{ ... }}` is workflow syntax, not an
 unexpanded generator placeholder; the placeholder check has to exclude it.
 
-CI blocks exist for go, python, vue, rust, lua and terraform. **docker deliberately has none**: the
-image build is bespoke per repo (each app builds and pushes its own in its own pipeline) and hadolint
-is a pre-commit concern, so there is no baseline job left to run. A declared stack with no block is
-skipped rather than emitting an empty job.
+`ls ci/blocks/` is which stacks have one. **docker deliberately has none** — the reason is
+`standards/ci.md` § "Docker gets no generated CI block". A declared stack with no block is skipped
+rather than emitting an empty job, which is what makes the absence safe.
 
 **Every pinned version comes from the declaration, not from this repo.** `versions_file` in forge's
 config names it, resolved exactly like `repos_registry` — flag, then `$FORGE_VERSIONS_FILE`, then
