@@ -5,7 +5,7 @@ go 1.26.5
 toolchain go1.26.6
 
 require (
-	github.com/datapointchris/goselfupdate v0.8.0
+	github.com/datapointchris/goselfupdate v0.8.2
 	github.com/fatih/color v1.19.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.10.2
