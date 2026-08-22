@@ -10,3 +10,7 @@
       - run: terraform init -backend=false
 
       - run: terraform validate
+
+      # Unconditional: with no .tftest.hcl files this exits 0 reporting
+      # "0 passed, 0 failed", so a repo without tests is unaffected.
+      - run: terraform test
