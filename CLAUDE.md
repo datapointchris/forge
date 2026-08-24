@@ -169,9 +169,26 @@ a single serial job would hide which module failed and force them to share one s
 declared stack with no CI block is skipped rather than emitting an empty job, so the registry stays
 free to declare more than CI can build.
 
+**`runs-on` follows the repo's declared visibility**, through `ci.RunnerFor`. A private repo takes
+the self-hosted pool, because GitHub bills Actions minutes for hosted runners on private repos and
+not on public ones. Anything not positively declared private takes `ubuntu-latest`, and the
+direction of that default is the safety property: a fork's pull request on a public repo runs the
+fork's own code on whatever runner it lands on, and a self-hosted runner sits inside a private
+network. `TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner` is what keeps the choice
+in `RunnerFor` rather than at a call site.
+
+**The die writes a second file, `.github/actionlint.yaml`**, and only into the repos whose workflow
+names the pool. actionlint discovers GitHub's own labels and nothing else, so without that
+declaration a private repo's actionlint hook reports the pool as a typo. Its absence in a public
+repo is a check rather than an omission — it is what makes that repo's hook reject a hand-written
+workflow reaching the self-hosted runner. Both paths are observed whatever the runner is: a repo
+that turns public has the declaration **removed**, because a path nothing reads is a path every verb
+reports converged. The stamp is what authorises that delete, so a hand-written config at either
+spelling — `.yaml` or `.yml` — is reported and left alone.
+
 The output is **`validate.yml`, not `ci.yml`** — several repos hand-wrote a `ci.yml` long before this
 existed (nomad's is a multi-job pipeline with working directories and image env), and generating over
-one would destroy work nothing could recover. `ci.Run` aborts on any `validate.yml` lacking the
+one would destroy work nothing could recover. The `ci` die refuses any `validate.yml` lacking the
 `# forge-toolchain:` header for the same reason. Bespoke pipelines stay as separate workflow files;
 the generated one is additive.
 
