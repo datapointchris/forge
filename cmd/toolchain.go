@@ -61,10 +61,9 @@ func runToolchainShow(cmd *cobra.Command, _ []string) error {
 
 	row(out, "\n%s %d\n", bold.Sprint("toolchain version"), manifest.Version)
 	// Which file answered, per configuration.md § "A resolved value reports
-	// which layer set it". The embedded default and a declaration print the
-	// same numbers, and only the source distinguishes a pin someone chose from
-	// one this binary happened to ship with.
-	row(out, "%s\n\n", dim.Sprint(manifestSource()))
+	// which layer set it". Any file of this shape prints the same numbers, so
+	// the path is the only thing tying them to something somebody chose.
+	row(out, "%s\n\n", dim.Sprint(config.VersionsPath()))
 	for _, hook := range manifest.Hooks {
 		row(out, "  %s %s\n", cyan.Sprintf("%-52s", shortRepo(hook.Repo)), hook.Rev)
 	}
@@ -76,13 +75,6 @@ func runToolchainShow(cmd *cobra.Command, _ []string) error {
 	}
 	row(out, "\n")
 	return nil
-}
-
-func manifestSource() string {
-	if path := config.VersionsPath(); path != "" {
-		return path
-	}
-	return "embedded default (no versions_file declared)"
 }
 
 func shortRepo(url string) string {
