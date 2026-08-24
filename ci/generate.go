@@ -261,6 +261,43 @@ func Generate(
 	return strings.Join(lines, "\n"), nil
 }
 
+// jobHeader matches a workflow job key: two spaces, a name, a colon, nothing
+// after it. Job keys are the only thing at that indent in a generated workflow.
+var jobHeader = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
+
+// ForeignRunners names every job in a generated workflow whose runs-on is not
+// the runner the repo was generated for.
+//
+// The generator writes one runner into every job it emits, so a different value
+// can only have come from a custom section — a block preserved verbatim and
+// never rewritten, which is the whole contract of a custom section.
+//
+// That job is invisible on a private repo. GitHub refuses a hosted job before
+// any step runs, so it reports zero steps and no failing step, while the rest
+// of the workflow is green. homelab's pyinfra suite sat in exactly that state
+// and it gates what reaches every container's authorized_keys.
+func ForeignRunners(workflow string, runner Runner) []string {
+	var (
+		foreign []string
+		job     string
+	)
+	for _, line := range strings.Split(workflow, "\n") {
+		if match := jobHeader.FindStringSubmatch(line); match != nil {
+			job = match[1]
+			continue
+		}
+		value, ok := strings.CutPrefix(line, "    runs-on: ")
+		if !ok || strings.TrimSpace(value) == string(runner) {
+			continue
+		}
+		if job == "" {
+			job = "(unnamed job)"
+		}
+		foreign = append(foreign, job+" on "+strings.TrimSpace(value))
+	}
+	return foreign
+}
+
 // JobName is the workflow job id for a component: the stack, plus the directory
 // when the repo holds more than one component of that stack.
 func JobName(component config.Component) string {

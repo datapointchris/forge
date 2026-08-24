@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/datapointchris/forge/ci"
 	"github.com/datapointchris/forge/precommit"
@@ -114,6 +115,17 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	if handWritten(root, ".github/workflows/ci.yml") {
 		state.blockers = append(state.blockers, blocker(".github/workflows/ci.yml",
 			"a hand-written pipeline sits beside the generated one — reconcile them before relying on either"))
+	}
+
+	// Only where the repo takes the self-hosted runner. A public repo's custom
+	// section naming something else is that section's business, and a hosted
+	// job there runs.
+	if runner == ci.SelfHosted {
+		if foreign := ci.ForeignRunners(wanted, runner); len(foreign) > 0 {
+			state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
+				"a custom section runs on a runner this repo's jobs are refused on, and a refused job "+
+					"reports zero steps rather than a failure: "+strings.Join(foreign, ", ")))
+		}
 	}
 
 	if unexpandedPlaceholder(wanted) {

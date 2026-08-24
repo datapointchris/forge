@@ -109,6 +109,41 @@ func TestTheLintConfigDeclaresExactlyTheLabelTheWorkflowNames(t *testing.T) {
 	}
 }
 
+// The measured case. homelab's pyinfra suite lives in a custom section with its
+// own runs-on, which the generator preserves verbatim and never rewrites. It
+// stayed on the hosted image while the three generated jobs moved, and a
+// refused job reports zero steps rather than a failure — so the run read green
+// apart from one job nobody looks at.
+func TestACustomSectionOnAnotherRunnerIsNamedWithItsJob(t *testing.T) {
+	workflow := "jobs:\n\n  go:\n    runs-on: [self-hosted, private-ci]\n" +
+		"    steps:\n      - run: go test ./...\n\n" +
+		"# > custom:after:all - the deploy suite\n  pyinfra:\n    runs-on: ubuntu-latest\n" +
+		"    steps:\n      - run: pytest\n"
+
+	foreign := ForeignRunners(workflow, SelfHosted)
+	if len(foreign) != 1 {
+		t.Fatalf("foreign = %v, want just the custom job", foreign)
+	}
+	if !strings.Contains(foreign[0], "pyinfra") || !strings.Contains(foreign[0], "ubuntu-latest") {
+		t.Errorf("foreign = %q, want the job name and the runner it names", foreign[0])
+	}
+}
+
+// The generated jobs are the ones the runner argument wrote, so none of them
+// can be foreign. A finding on every job would be noise on every repo.
+func TestAWorkflowEntirelyOnItsOwnRunnerNamesNothing(t *testing.T) {
+	for _, runner := range []Runner{Hosted, SelfHosted} {
+		workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
+			comps("go", "api", "vue", "web"), nil, false, runner)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		if foreign := ForeignRunners(workflow, runner); len(foreign) != 0 {
+			t.Errorf("%s: foreign = %v, want none", runner, foreign)
+		}
+	}
+}
+
 // The stamp is what answers "is this repo current", and a generated file
 // without one reads as hand-written to every die that checks.
 func TestTheLintConfigCarriesTheGeneratedStamp(t *testing.T) {
