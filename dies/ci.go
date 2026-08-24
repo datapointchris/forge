@@ -38,12 +38,21 @@ type ciState struct {
 	applicable bool
 	reason     string
 	workflow   generatedFile
+	// actionlint declares the self-hosted label to the repo's own actionlint
+	// hook, and is wanted only where the workflow above names that label. It
+	// travels with the workflow rather than with the other tool configs
+	// because one die deciding both is what stops them disagreeing: a repo
+	// cannot be given the label in its workflow and not in its lint config.
+	actionlint generatedFile
 	blockers   []reconcile.Change
 }
 
 func (s ciState) Summary() string {
 	if !s.applicable {
 		return s.reason
+	}
+	if s.actionlint.wanted() {
+		return "validate.yml current, on the self-hosted runner"
 	}
 	return "validate.yml current"
 }
@@ -73,16 +82,30 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		existing = string(data)
 	}
 
+	runner := ci.RunnerFor(t.Repo.IsPrivate())
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain.Components,
-		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root))
+		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root), runner)
 	if err != nil {
 		return ciState{reason: "no components with a CI block"}, nil
 	}
 
 	state := ciState{applicable: true, workflow: readGenerated(root, ci.WorkflowPath, wanted)}
 
+	// The lint config is owed to exactly the repos whose workflow names the
+	// pool label, so it is derived from the same runner choice rather than
+	// from visibility a second time.
+	var actionlintConfig string
+	if runner == ci.SelfHosted {
+		actionlintConfig = ci.ActionlintConfig(t.Assets.Manifest.Version)
+		state.actionlint = readGenerated(root, ci.ActionlintConfigPath, actionlintConfig)
+	}
+
 	if handWritten(root, ci.WorkflowPath) {
 		state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
+			"exists without the "+toolchainStamp+" stamp, so it was hand-written and will not be overwritten"))
+	}
+	if state.actionlint.wanted() && handWritten(root, ci.ActionlintConfigPath) {
+		state.blockers = append(state.blockers, blocker(ci.ActionlintConfigPath,
 			"exists without the "+toolchainStamp+" stamp, so it was hand-written and will not be overwritten"))
 	}
 	// Reported, not a problem: a bespoke pipeline is a repo's own, and the
@@ -97,7 +120,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		state.blockers = append(state.blockers, blocker("generated workflow",
 			"a generator placeholder survived rendering — forge would write an invalid workflow"))
 	}
-	if finding := lintWorkflow(wanted); finding != "" {
+	if finding := lintWorkflow(wanted, actionlintConfig); finding != "" {
 		state.blockers = append(state.blockers, blocker("generated workflow", "actionlint: "+finding))
 	}
 
@@ -107,7 +130,18 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 // lintWorkflow runs actionlint against the generated content in a throwaway
 // repo. A schema-valid workflow can still be rejected at runtime, and this is
 // the check `pre-commit validate-config`'s equivalent cannot make.
-func lintWorkflow(workflow string) string {
+//
+// config is the repo's actionlint configuration, written into the throwaway
+// repo alongside the workflow. Nothing a repo carries on disk reaches this
+// directory, so without it a workflow naming the self-hosted pool is rejected
+// here as an unknown label — before plan can show the diff or apply can write
+// it, and for every private repo at once.
+//
+// Passed in rather than written unconditionally, and that is the safety half.
+// A public repo hands "" and its lint keeps refusing the pool label, which is
+// the check that catches a generated workflow pointing at the homelab network
+// from a repo a fork can open a pull request against.
+func lintWorkflow(workflow, config string) string {
 	dir, err := os.MkdirTemp("", "forge-actionlint-")
 	if err != nil {
 		return ""
@@ -120,6 +154,11 @@ func lintWorkflow(workflow string) string {
 	}
 	if err := os.WriteFile(path, []byte(workflow), 0o644); err != nil {
 		return ""
+	}
+	if config != "" {
+		if err := os.WriteFile(filepath.Join(dir, ci.ActionlintConfigPath), []byte(config), 0o644); err != nil {
+			return ""
+		}
 	}
 	// actionlint wants a repo; without one it reports the absence rather than
 	// the workflow.
@@ -138,21 +177,27 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 	}
 
 	changes := state.blockers
-	// A hand-written workflow is not drift to repair — it is a file forge
-	// refuses to touch — so the automatic change is suppressed while one is
-	// there, or the plan would promise a write that Perform would refuse.
-	if handWrittenBlocked(state.blockers) {
-		return changes, nil
+	// A hand-written file is not drift to repair — it is a file forge refuses
+	// to touch — so the automatic change is suppressed while one is there, or
+	// the plan would promise a write that Perform would refuse. Asked per file:
+	// a hand-written actionlint config is no reason to stop regenerating the
+	// workflow, and the reverse holds too.
+	if !handWrittenBlocked(state.blockers, ci.WorkflowPath) {
+		if change, drifted := state.workflow.change("regenerate from the standard CI blocks"); drifted {
+			changes = append(changes, change)
+		}
 	}
-	if change, drifted := state.workflow.change("regenerate from the standard CI blocks"); drifted {
-		changes = append(changes, change)
+	if state.actionlint.wanted() && !handWrittenBlocked(state.blockers, ci.ActionlintConfigPath) {
+		if change, drifted := state.actionlint.change("declare the self-hosted runner label to actionlint"); drifted {
+			changes = append(changes, change)
+		}
 	}
 	return changes, nil
 }
 
-func handWrittenBlocked(blockers []reconcile.Change) bool {
+func handWrittenBlocked(blockers []reconcile.Change, rel string) bool {
 	for _, blocker := range blockers {
-		if blocker.Item == ci.WorkflowPath {
+		if blocker.Item == rel {
 			return true
 		}
 	}
@@ -170,15 +215,40 @@ func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outc
 	}
 	state := observed.(ciState)
 
-	if handWrittenBlocked(state.blockers) {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "a hand-written workflow appeared since the plan"}, nil
+	// The plan names which file this change is for, and Perform re-observes
+	// rather than trusting it. Writing whichever file the die happens to hold
+	// first would put the workflow at the actionlint config's path.
+	var file generatedFile
+	switch change.Item {
+	case ci.WorkflowPath:
+		file = state.workflow
+	case ci.ActionlintConfigPath:
+		file = state.actionlint
+	default:
+		return reconcile.Outcome{
+			Change: change, Status: reconcile.Refused,
+			Message: "the ci die writes no " + change.Item,
+		}, nil
 	}
-	if state.workflow.matches() {
+
+	if !file.wanted() {
+		return reconcile.Outcome{
+			Change: change, Status: reconcile.Refused,
+			Message: "the repo stopped wanting " + change.Item + " since the plan",
+		}, nil
+	}
+	if handWrittenBlocked(state.blockers, file.rel) {
+		return reconcile.Outcome{
+			Change: change, Status: reconcile.Refused,
+			Message: "a hand-written " + file.rel + " appeared since the plan",
+		}, nil
+	}
+	if file.matches() {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
 	}
 
-	if err := writeGenerated(t.Repo.Path, state.workflow); err != nil {
+	if err := writeGenerated(t.Repo.Path, file); err != nil {
 		return reconcile.Outcome{}, err
 	}
-	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "wrote " + ci.WorkflowPath}, nil
+	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "wrote " + file.rel}, nil
 }

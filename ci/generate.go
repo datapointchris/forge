@@ -30,6 +30,67 @@ const WorkflowPath = ".github/workflows/validate.yml"
 // workflow in it is per-repo and deliberately not generated.
 const workflowsDir = ".github/workflows"
 
+// ActionlintConfigPath is where actionlint reads its own configuration.
+const ActionlintConfigPath = ".github/actionlint.yaml"
+
+// RunnerLabel is the pool the homelab deploy registers every self-hosted runner
+// with. It names the pool rather than the box, so a second runner joining the
+// pool needs no generated workflow to change.
+const RunnerLabel = "private-ci"
+
+// Runner is the runs-on value every job in a generated workflow carries.
+//
+// A named type rather than a bool beside releaseGated: two adjacent booleans at
+// a call site are swappable, and swapping these two points a public repo at the
+// homelab network.
+type Runner string
+
+const (
+	// Hosted is GitHub's own image. Actions is unmetered on a public repo, so
+	// the minutes it spends cost nothing.
+	Hosted Runner = "ubuntu-latest"
+	// SelfHosted is the container on the homelab VLAN. GitHub bills Actions
+	// minutes for hosted runners only, so a private repo has no other way to
+	// run CI at all.
+	//
+	// self-hosted, Linux and X64 are added by GitHub and are not written here.
+	SelfHosted Runner = "[self-hosted, " + RunnerLabel + "]"
+)
+
+// RunnerFor picks the runner a repo's generated workflows may name.
+//
+// Anything not positively declared private takes the hosted image, and the
+// direction of that default is the whole safety property. A fork's pull request
+// on a public repo runs the fork's code on whatever runner it reaches, and the
+// self-hosted one sits inside the homelab network with the NAS and Proxmox on
+// the same VLAN. A repo the registry does not describe therefore stays hosted.
+func RunnerFor(private bool) Runner {
+	if private {
+		return SelfHosted
+	}
+	return Hosted
+}
+
+// ActionlintConfig declares the self-hosted label to actionlint.
+//
+// actionlint discovers GitHub's hosted labels and nothing else, so a runs-on
+// naming the pool is reported as an unknown label and the repo's actionlint
+// hook fails on the next commit.
+//
+// Written only into repos whose workflows name the label. Declaring it in a
+// public repo would retire the one check that catches a hand-written workflow
+// there reaching the homelab runner.
+func ActionlintConfig(stampVersion int) string {
+	return fmt.Sprintf(`# forge-toolchain: %d
+# Labels actionlint cannot discover, because they belong to a self-hosted
+# runner rather than to one of GitHub's hosted images. Without this every
+# runs-on naming one is reported as a typo and the actionlint hook fails.
+self-hosted-runner:
+  labels:
+    - %s
+`, stampVersion, RunnerLabel)
+}
+
 // releaseGateRef matches a reusable-workflow call naming this workflow, the
 // shape a release uses to gate on it:
 //
@@ -101,7 +162,15 @@ func Generate(
 	components []config.Component,
 	customSections map[string]string,
 	releaseGated bool,
+	runner Runner,
 ) (string, error) {
+	// The zero value would emit a bare `runs-on:`, which is an invalid workflow
+	// GitHub rejects at dispatch rather than at lint. Folded in here so no
+	// caller can reach that state by leaving the argument off.
+	if runner == "" {
+		runner = Hosted
+	}
+
 	shared, err := loadBlock(blocksFS, "checkout")
 	if err != nil {
 		return "", err
@@ -159,7 +228,7 @@ func Generate(
 		jobs++
 
 		name := JobName(component)
-		lines = append(lines, "", fmt.Sprintf("  %s:", name), "    runs-on: ubuntu-latest")
+		lines = append(lines, "", fmt.Sprintf("  %s:", name), fmt.Sprintf("    runs-on: %s", runner))
 		if component.Dir != "" && component.Dir != "." {
 			lines = append(lines, "    defaults:", "      run:", fmt.Sprintf("        working-directory: %s", component.Dir))
 		}
@@ -199,55 +268,6 @@ func JobName(component config.Component) string {
 		return component.Stack
 	}
 	return component.Stack + "-" + strings.NewReplacer("/", "-", "_", "-").Replace(component.Dir)
-}
-
-// DryRun returns what Run would write, without touching the filesystem and
-// without the hand-written-file abort — for verifying generation across the
-// portfolio before a rollout.
-func DryRun(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
-	var existing string
-	if data, err := os.ReadFile(WorkflowPath); err == nil && strings.HasPrefix(string(data), "# forge-toolchain:") {
-		existing = string(data)
-	}
-	return Generate(blocksFS, manifest, components, precommit.ExtractCustomSections(existing), ReleaseGatesOnValidate("."))
-}
-
-// Run generates the workflow and writes it when changed.
-// Returns a status message.
-func Run(blocksFS fs.FS, manifest *toolchain.Toolchain, components []config.Component) (string, error) {
-	var existing string
-	if data, err := os.ReadFile(WorkflowPath); err == nil {
-		existing = string(data)
-	}
-
-	// A workflow that predates generation is hand-written by definition —
-	// overwriting it would discard work with no way back.
-	if existing != "" && !strings.HasPrefix(existing, "# forge-toolchain:") {
-		return "", fmt.Errorf("ABORT: %s exists but was not generated (no # forge-toolchain: header)", WorkflowPath)
-	}
-
-	customSections := precommit.ExtractCustomSections(existing)
-
-	workflow, err := Generate(blocksFS, manifest, components, customSections, ReleaseGatesOnValidate("."))
-	if err != nil {
-		return "", err
-	}
-
-	if existing == workflow {
-		return "no changes", nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(WorkflowPath), 0o755); err != nil {
-		return "", fmt.Errorf("creating workflow directory: %w", err)
-	}
-	if err := os.WriteFile(WorkflowPath, []byte(workflow), 0o644); err != nil {
-		return "", fmt.Errorf("writing workflow: %w", err)
-	}
-
-	if len(customSections) > 0 {
-		return fmt.Sprintf("%d custom sections preserved", len(customSections)), nil
-	}
-	return "generated", nil
 }
 
 // loadBlock returns the block whose name matches, or "" when none does.

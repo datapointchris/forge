@@ -31,6 +31,11 @@ type generatedFile struct {
 
 func (f generatedFile) matches() bool { return f.exists && f.have == f.want }
 
+// wanted reports whether the standard has anything to say about this file. A
+// zero generatedFile names no path, which is how a die says the file belongs in
+// some repos and not this one.
+func (f generatedFile) wanted() bool { return f.rel != "" }
+
 // change renders the file's state as the Change a plan shows.
 func (f generatedFile) change(reason string) (reconcile.Change, bool) {
 	if f.matches() {

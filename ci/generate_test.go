@@ -31,7 +31,7 @@ func comps(pairs ...string) []config.Component {
 // which failed and make them share a setup step.
 func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), nil, false)
+		comps("go", "api", "go", "cli", "vue", "web"), nil, false, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 // pipeline gates on it. Seven repos had no repo-wide lint at all; generating
 // them a workflow with no reachable trigger would have looked like a fix.
 func TestGenerateRunsOnPushToMain(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, false)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, false, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestGenerateRunsOnPushToMain(t *testing.T) {
 // Where a release gates on this workflow it already runs on a push to main, so
 // emitting push here runs every job twice for one commit.
 func TestGenerateOmitsPushWhenTheReleaseGatesOnIt(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, true)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, true, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 // A root component is the common case and should not carry a redundant
 // working-directory or a directory suffix in its job name.
 func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, false)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, false, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
 // there is no baseline job to run. Those must not produce empty jobs.
 func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", ".", "docker", "."), nil, false)
+		comps("go", ".", "docker", "."), nil, false, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 }
 
 func TestGenerateFailsWhenNoComponentHasABlock(t *testing.T) {
-	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), nil, false); err == nil {
+	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), nil, false, Hosted); err == nil {
 		t.Fatal("expected an error rather than a workflow with zero jobs")
 	}
 }
@@ -218,7 +218,7 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 		Actions: []toolchain.Action{{Uses: "actions/checkout", Version: "v99"}},
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil, false)
+	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil, false, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -231,67 +231,6 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 	}
 }
 
-// Several repos hand-wrote a workflow before generation existed. Overwriting
-// one would destroy work with no way back.
-func TestRunAbortsOnHandWrittenWorkflow(t *testing.T) {
-	blocksDir := filepath.Join(originalDir(t), "blocks")
-	manifest := testManifest(t)
-
-	t.Chdir(t.TempDir())
-
-	if err := os.MkdirAll(filepath.Dir(WorkflowPath), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	handWritten := "name: CI\njobs: {}\n"
-	if err := os.WriteFile(WorkflowPath, []byte(handWritten), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	if _, err := Run(os.DirFS(blocksDir), manifest, comps("go", ".")); err == nil {
-		t.Fatal("expected abort on a workflow with no forge-toolchain header")
-	}
-
-	data, err := os.ReadFile(WorkflowPath)
-	if err != nil {
-		t.Fatalf("read back: %v", err)
-	}
-	if string(data) != handWritten {
-		t.Error("aborted run must leave the existing workflow untouched")
-	}
-}
-
-func TestRunIsIdempotent(t *testing.T) {
-	blocksDir := filepath.Join(originalDir(t), "blocks")
-	manifest := testManifest(t)
-
-	t.Chdir(t.TempDir())
-
-	first, err := Run(os.DirFS(blocksDir), manifest, comps("go", "."))
-	if err != nil {
-		t.Fatalf("first Run: %v", err)
-	}
-	if first != "generated" {
-		t.Errorf("first run = %q, want generated", first)
-	}
-
-	second, err := Run(os.DirFS(blocksDir), manifest, comps("go", "."))
-	if err != nil {
-		t.Fatalf("second Run: %v", err)
-	}
-	if second != "no changes" {
-		t.Errorf("second run = %q, want no changes — generation is not stable", second)
-	}
-}
-
-func originalDir(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	return dir
-}
-
 // A before:<stack> section runs before the stack's steps, not before checkout.
 // ichrisbirch decrypts test secrets out of secrets/ in one, which needs the
 // workspace to exist.
@@ -301,7 +240,7 @@ func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 			"      - run: sops decrypt secrets/test.enc.env > .env",
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), custom, false)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), custom, false, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}

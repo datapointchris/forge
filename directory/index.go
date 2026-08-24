@@ -31,8 +31,8 @@ import (
 const ConfigPath = ".pre-commit-config.yaml"
 
 // toolchainStamp marks the config as generated. A hand-written one is not
-// something to run blind, for the same reason ci.Run aborts on an unstamped
-// validate.yml.
+// something to run blind, for the same reason the ci die refuses an unstamped
+// validate.yml rather than overwriting it.
 const toolchainStamp = "# forge-toolchain:"
 
 // Index is a throwaway git index over a directory git does not version.
