@@ -31,14 +31,43 @@ type generatedFile struct {
 
 func (f generatedFile) matches() bool { return f.exists && f.have == f.want }
 
-// wanted reports whether the standard has anything to say about this file. A
-// zero generatedFile names no path, which is how a die says the file belongs in
-// some repos and not this one.
-func (f generatedFile) wanted() bool { return f.rel != "" }
+// managed reports whether the die has anything to say about this path at all. A
+// zero generatedFile names no path, which is how a die says the file is not its
+// business in this repo.
+func (f generatedFile) managed() bool { return f.rel != "" }
+
+// wanted reports whether the standard says content belongs at this path.
+//
+// Separate from managed because a die has to distinguish three states, not two:
+// the path is none of my business, the standard wants this content there, and
+// the standard has withdrawn a file it used to write. Collapsing the first and
+// third is what let a repo keep a generated file after it stopped qualifying
+// for one, with every verb reporting converged because nothing looked.
+func (f generatedFile) wanted() bool { return f.rel != "" && f.want != "" }
+
+// retracting reports whether a file the standard no longer wants is still on
+// disk. The caller decides whether forge may remove it — a file without the
+// stamp is not forge's to delete.
+func (f generatedFile) retracting() bool { return f.rel != "" && f.want == "" && f.exists }
 
 // change renders the file's state as the Change a plan shows.
 func (f generatedFile) change(reason string) (reconcile.Change, bool) {
-	if f.matches() {
+	if !f.managed() || f.matches() {
+		return reconcile.Change{}, false
+	}
+
+	// A retraction is Stale rather than Undeclared: forge wrote this file, and
+	// Undeclared is reserved for what it did not put there and may not touch.
+	if f.retracting() {
+		return reconcile.Change{
+			Item:    f.rel,
+			Verdict: reconcile.Stale,
+			Repair:  reconcile.Automatic,
+			Detail:  reason,
+			Patch:   unifiedDiff(f.rel, f.have, ""),
+		}, true
+	}
+	if !f.wanted() {
 		return reconcile.Change{}, false
 	}
 
@@ -72,6 +101,18 @@ func writeGenerated(root string, file generatedFile) error {
 		return err
 	}
 	return os.WriteFile(path, []byte(file.want), 0o644)
+}
+
+// removeGenerated deletes a file the standard has withdrawn.
+//
+// The caller has already established that the file carries the stamp, which is
+// the record proving forge wrote it. Without that record this would be forge
+// deleting a repo's own file, which no verdict authorizes.
+func removeGenerated(root string, file generatedFile) error {
+	if err := os.Remove(filepath.Join(root, file.rel)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // unifiedDiff renders the change to a file the way `diff -u` would.

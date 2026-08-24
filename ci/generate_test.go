@@ -31,7 +31,7 @@ func comps(pairs ...string) []config.Component {
 // which failed and make them share a setup step.
 func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), nil, false, Hosted)
+		comps("go", "api", "go", "cli", "vue", "web"), nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 // pipeline gates on it. Seven repos had no repo-wide lint at all; generating
 // them a workflow with no reachable trigger would have looked like a fix.
 func TestGenerateRunsOnPushToMain(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, false, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestGenerateRunsOnPushToMain(t *testing.T) {
 // Where a release gates on this workflow it already runs on a push to main, so
 // emitting push here runs every job twice for one commit.
 func TestGenerateOmitsPushWhenTheReleaseGatesOnIt(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, true, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, Gated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -104,20 +104,20 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 	cases := []struct {
 		name      string
 		workflows map[string]string
-		want      bool
+		want      ReleaseGating
 	}{
-		{"no workflows at all", nil, false},
+		{"no workflows at all", nil, Ungated},
 		{
 			"release.yml gates on the generated workflow",
 			map[string]string{"release.yml": gate},
-			true,
+			Gated,
 		},
 		{
 			// learning and nomad ship a nested CLI from release-cli.yml, and
 			// matching release.yml alone missed both.
 			"a differently-named release workflow gates on it",
 			map[string]string{"release-cli.yml": gate},
-			true,
+			Gated,
 		},
 		{
 			"one of several workflows gates on it",
@@ -125,31 +125,31 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 				"deploy-docs.yml": "jobs:\n  docs:\n    runs-on: ubuntu-latest\n",
 				"release-cli.yml": gate,
 			},
-			true,
+			Gated,
 		},
 		{
 			// The shape every repo had before this: the release gated on a
 			// hand-written ci.yml, so validate.yml still needs its own push.
 			"release gates on a hand-written ci.yml",
 			map[string]string{"release.yml": "jobs:\n  validate:\n    uses: ./.github/workflows/ci.yml\n"},
-			false,
+			Ungated,
 		},
 		{
 			"release exists but gates on nothing",
 			map[string]string{"release.yml": "jobs:\n  release:\n    runs-on: ubuntu-latest\n"},
-			false,
+			Ungated,
 		},
 		{
 			// The generated workflow documents the gating shape in its own
 			// comments, and it never gates itself.
 			"only the generated workflow names itself",
 			map[string]string{"validate.yml": gate},
-			false,
+			Ungated,
 		},
 		{
 			"a non-workflow file names it",
 			map[string]string{"notes.md": gate},
-			false,
+			Ungated,
 		},
 	}
 
@@ -176,7 +176,7 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 // A root component is the common case and should not carry a redundant
 // working-directory or a directory suffix in its job name.
 func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, false, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
 // there is no baseline job to run. Those must not produce empty jobs.
 func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", ".", "docker", "."), nil, false, Hosted)
+		comps("go", ".", "docker", "."), nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 }
 
 func TestGenerateFailsWhenNoComponentHasABlock(t *testing.T) {
-	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), nil, false, Hosted); err == nil {
+	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), nil, Ungated, Hosted); err == nil {
 		t.Fatal("expected an error rather than a workflow with zero jobs")
 	}
 }
@@ -218,7 +218,7 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 		Actions: []toolchain.Action{{Uses: "actions/checkout", Version: "v99"}},
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil, false, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 			"      - run: sops decrypt secrets/test.enc.env > .env",
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), custom, false, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), custom, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
