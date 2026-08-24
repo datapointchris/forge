@@ -241,16 +241,21 @@ A tool present on only one side is reported whole rather than as every command i
 carries — one that simply was not installed when the snapshot was taken would
 otherwise bury the single renamed flag the diff is run to find.
 
-### The version manifest
+### The version declaration
 
 ```bash
-forge toolchain show           # what is pinned now
-forge toolchain plan           # what upstream has released since
-forge toolchain apply          # take it, and bump the manifest version
+forge toolchain show           # what is pinned now, and which file said so
 ```
 
-Then roll out to one repo before fanning out:
+Versions are declared, never discovered. `show` names the file it read —
+whatever `versions_file` points at, or the copy embedded in the binary when a
+machine names none. Raising a pin is an edit to that file plus a
+`stamp.version` bump, then a rollout to one repo before fanning out:
 `forge repos apply precommit -F <repo>`.
+
+There is no verb here that writes. Taking whatever tag each upstream has
+published is the opposite of pinning, and the arity available for it moves
+every hook at once.
 
 ### Version and update
 

@@ -30,7 +30,7 @@ golangci-lint run          # Lint (enabled set is in .golangci.yml)
 go run . <subcommand>      # Run without building
 ```
 
-The hook inventory is generated from `pre-commit/toolchain.yml` — read that, or `.pre-commit-config.yaml`, rather than a list here. `standards/ci.md` § "forge is the source of truth" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
+The hook inventory is generated from the pinned-version declaration — `forge toolchain show` prints it and names the file, which is what to read rather than a list here, along with a repo's own `.pre-commit-config.yaml`. `standards/ci.md` § "forge is the source of truth" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
 
 ## Architecture
 
@@ -41,7 +41,7 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 - `config` — print the resolved config with the layer that set each value, per `configuration.md`. The registry path is among them: `repos_registry` names a registry maintained outside forge's own data directory, `-c` still beats it, and forge's data directory answers for a machine that declares neither. This reverses an earlier decision that made `-c` the only override on the grounds that a tool resolving its own data directory needs no config key — which conflates carrying a path with accepting one. A path compiled in is what makes a tool fleet-specific; a path it is told is what keeps it generic. The alternative in practice was a symlink from forge's data directory to the real registry, made by hand on every machine and reported by nothing
 - `dies` — the library, which executes nothing: `list`, `show`, `search`, `stats`
   - `stats` aggregates one row per die, most-recently-run first, with `--since` (git's own spelling — `2 weeks`, `30.days.ago` — plus Go durations and ISO dates) and `--json`. Naming a die gives its run-by-run history instead. Per-run rows grow without bound while the number of dies does not, so the old per-run dump put the oldest screen in front of the reader first
-- `toolchain` — `show`, `plan`, `apply` over `pre-commit/toolchain.yml`. `plan` asks `pre-commit autoupdate` what upstream has released, against a config synthesized in a throwaway repo, and writes nothing. Rolling the answer out is a separate step by design: bump, resync one repo, verify, fan out
+- `toolchain` — `show` alone, and it reads whatever governs: the file `versions_file` names, or the embedded `pre-commit/toolchain.yml` on a machine naming none. It prints that path beside the version, so a pin someone chose is distinguishable from one this binary shipped with. **Nothing here writes a pin.** A pin is chosen, not discovered, and asking upstream what it has tagged answers a different question from what the fleet rolls out. Raising one is an edit to the declaration plus a `stamp.version` bump, fanned out by `forge repos apply precommit -F <repo>` and then widened
 - `test` — run the tests of every component the registry declares for a repo, using the command `ci/blocks/` generates into that repo's own workflow, so a local run and CI run the same thing
 - `cli` — `spec`, `audit`, `diff` and `snapshot` over the installed CLIs' command surfaces, reporting where their grammar varies. Reads from the *outside* only: `--help`, plus cobra's `__complete` where a tool has one. It never runs a bare subcommand, because the shape most worth finding is a noun that performs a read with no verb, and running it to find out would fire that read against a live API. Four help formats are parsed (`cliaudit.Framework`) — the parsers exist because five tools hand-roll their help and cannot be read any other way. **Reports variation, never fails**: `$STANDARDS_DIR/cli-design.md` holds machine contracts that bind and design guidance that does not, and this covers the second, so it exits 0 whatever it finds. Discovery resolves active repos to binaries from what each repo already declares — a `pyproject.toml` `[project.scripts]` key, a goreleaser `binary:` — falling back to the repo name; a repo declaring an entry point that is not installed is listed, one declaring none is not (that is a library, not a missing tool). **It audits what is installed, not the working tree**, so a tool built but not installed reports its released surface
 - `version` — print version, commit, and build date (set via ldflags)
@@ -63,8 +63,8 @@ The hook inventory is generated from `pre-commit/toolchain.yml` — read that, o
 - `runner` — repo selection, and command execution for `repos exec`
 - `precommit` — Go implementation of config generation (block composition, custom section preservation, hook deduplication, safety checks)
 - `ci` — generates the baseline validation workflow, reusing `precommit`'s block composition and custom-section markers
-- `directory` — runs a maintained directory's hooks. pre-commit needs a git index to know which files exist, so this builds a throwaway one: a bare repo in `$XDG_CACHE_HOME/forge/directories/<name>.git` with the directory as its work tree. Nothing is written inside the directory — a `.git` in a Syncthing folder conflicts on every peer — and that is asserted rather than assumed. Three details are load-bearing. `GIT_DIR`/`GIT_WORK_TREE` go in the **environment**, because pre-commit re-invokes git and only the environment reaches those calls. `git init` refuses when `GIT_WORK_TREE` is set, so creation uses an env without it. And the environment is inherited by hook *installation*, where a build backend runs its own git — check-json5 builds with poetry, poetry asks git for ignored files, and git reports a project root whose `.git` does not exist — so the hook environments are installed first in a throwaway real repo with a clean env, the same trick `toolchain plan` uses
-- `toolchain` — the version manifest shared by both generators
+- `directory` — runs a maintained directory's hooks. pre-commit needs a git index to know which files exist, so this builds a throwaway one: a bare repo in `$XDG_CACHE_HOME/forge/directories/<name>.git` with the directory as its work tree. Nothing is written inside the directory — a `.git` in a Syncthing folder conflicts on every peer — and that is asserted rather than assumed. Three details are load-bearing. `GIT_DIR`/`GIT_WORK_TREE` go in the **environment**, because pre-commit re-invokes git and only the environment reaches those calls. `git init` refuses when `GIT_WORK_TREE` is set, so creation uses an env without it. And the environment is inherited by hook *installation*, where a build backend runs its own git — check-json5 builds with poetry, poetry asks git for ignored files, and git reports a project root whose `.git` does not exist — so the hook environments are installed first in a throwaway real repo with a clean env
+- `toolchain` — the pinned-version manifest shared by both generators, read from the declaration or from the embedded default
 
 **Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach.
 
@@ -106,7 +106,7 @@ Forge includes a composable system for generating standardized `.pre-commit-conf
 - Terraform: validate, tflint, fmt, docs
 - SQL: sqlfluff-lint, with the dialect taken from the registry's `sql_dialect`
 
-**`pre-commit/toolchain.yml`** — the single source of truth for every pinned tool version. Blocks keep their own `rev:` lines so each stays readable and valid standalone, but generation overwrites them from the manifest — the manifest wins. `TestToolchainManagesEveryBlockRepo` fails if a block names a remote repo the manifest doesn't pin, so a new block cannot introduce an unmanaged version.
+**`pre-commit/toolchain.yml`** — the embedded default, used only by a machine that declares no `versions_file`. The declaration is the file that key names, and `forge toolchain show` prints which of the two answered. Blocks keep their own `rev:` lines so each stays readable and valid standalone, but generation overwrites them from whichever manifest was read — the manifest wins. `TestToolchainManagesEveryBlockRepo` fails if a block names a remote repo the embedded manifest doesn't pin, so a new block cannot introduce an unmanaged version.
 
 The manifest's `version` is stamped into every generated config as a `# forge-toolchain: N` first line. That stamp is what makes staged rollout possible: bump a tool and the version, resync one repo, verify, then fan out — and `rg '^# forge-toolchain:' ` across the portfolio answers which repos are current. Bump `version` on any rev change.
 
@@ -147,7 +147,7 @@ The generator preserves these across re-runs. A safety check aborts if unrecogni
 
 `ci/blocks/` holds per-stack step fragments composed into `.github/workflows/validate.yml`, triggered
 on `pull_request` and exposed via `workflow_call` so a release workflow can `needs:` it. Action and
-`go install` versions come from the same `toolchain.yml` as the pre-commit hooks, and the same
+`go install` versions come from the same pinned-version declaration as the pre-commit hooks, and the same
 `# > custom:` markers preserve repo-specific steps.
 
 **The `push: main` trigger is emitted only when nothing else covers main** — the rule and the
@@ -208,7 +208,9 @@ success and changes nothing.
 
 `toolchain.yml` stays as that embedded default and is still the shape the generators consume;
 `toolchain.LoadFile` reads the declaration into the same type, so nothing downstream knows which
-answered.
+answered. `forge toolchain show` is where a person finds out — it prints the resolved path beside
+the version, because the two sources print identical numbers and only the path separates a pin
+someone chose from one this binary shipped with.
 
 **The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
 and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
@@ -248,7 +250,7 @@ carries the file, not the line, and a module can drift on both at once — so th
 one `go.mod` arrives after the first settled it and reports `Skipped`.
 
 **The `pyproject` die is separate from `precommit`, and stays that way.** Adopting one better setting
-through the full sync means also fanning out whatever `toolchain.yml` currently pins, to every Python
+through the full sync means also fanning out whatever the declaration currently pins, to every Python
 repo at once. Coupling a cheap change to an expensive one is why the cheap change stopped being made
 and the settings drifted instead.
 

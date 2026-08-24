@@ -129,10 +129,9 @@ func resolveReposPath() (string, string) {
 }
 
 // resolveVersionsPath answers the same question for the version declaration,
-// and has an answer resolveReposPath does not: no file at all. Unset means
-// forge rolls out the manifest embedded in this binary, which is a real
-// configuration rather than a missing one — so it reports the embedded copy by
-// name rather than an empty path that reads as broken.
+// and has an answer resolveReposPath does not: no file at all. That is a
+// machine forge refuses to generate for, so this screen has to say so — it is
+// where the error about it points, and a reader arrives here already stuck.
 func resolveVersionsPath() (string, string) {
 	if os.Getenv("FORGE_VERSIONS_FILE") != "" {
 		return config.VersionsPath(), "$FORGE_VERSIONS_FILE"
@@ -140,7 +139,7 @@ func resolveVersionsPath() (string, string) {
 	if cfg, err := config.LoadConfig(config.DefaultConfigPath()); err == nil && cfg.VersionsFile != "" {
 		return config.VersionsPath(), "versions_file in " + config.DefaultConfigPath()
 	}
-	return "", "embedded in this binary"
+	return "", "not declared — set `versions_file` in forge's config"
 }
 
 func resolveConfigPath() (string, string) {
@@ -150,9 +149,9 @@ func resolveConfigPath() (string, string) {
 	return config.DefaultConfigPath(), "default"
 }
 
-// versionsExists is nil for the embedded manifest, which is neither present
-// nor missing as a path — there is nothing to stat, and reporting it absent
-// would read as a machine that lost its declaration.
+// versionsExists is nil when nothing is declared, because there is no path to
+// stat. The source column carries that case; marking it absent as well would
+// read as a file that went missing rather than one never named.
 func versionsExists(path string) *bool {
 	if path == "" {
 		return nil

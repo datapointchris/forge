@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 
@@ -78,7 +79,7 @@ func loadAssets() (reconcile.Assets, error) {
 		return reconcile.Assets{}, err
 	}
 
-	manifest, err := loadVersions(preCommitFS)
+	manifest, err := loadVersions()
 	if err != nil {
 		return reconcile.Assets{}, err
 	}
@@ -91,20 +92,35 @@ func loadAssets() (reconcile.Assets, error) {
 	return reconcile.Assets{PreCommit: preCommitFS, CI: ciFS, Manifest: manifest}, nil
 }
 
-// loadVersions reads the declaration this machine names, falling back to the
-// manifest embedded in this binary when it names none.
+// loadVersions reads the declaration this machine names.
 //
-// A declared file that cannot be read is an error rather than a fallback. The
-// point of naming one is that it governs, and quietly rolling out whatever the
-// binary shipped with would be the failure mode this replaced — a version bump
-// that reports success and changes nothing.
-func loadVersions(preCommitFS fs.FS) (*toolchain.Toolchain, error) {
-	if path := config.VersionsPath(); path != "" {
-		manifest, err := toolchain.LoadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("versions_file: %w", err)
-		}
-		return manifest, nil
+// One source, always. A missing declaration is an error rather than a fallback
+// to the manifest embedded in this binary: the two carry the same shape and
+// print the same kind of numbers, so a silent fallback rolls out whatever the
+// binary shipped with and reports success — a bump that moves no repo, and a
+// generated config nobody can account for. Naming the file is what makes a
+// version bump one edit and a sweep, so a machine that names none is
+// half-provisioned rather than defaulted.
+func loadVersions() (*toolchain.Toolchain, error) {
+	path := config.VersionsPath()
+	if path == "" {
+		return nil, errNoVersionDeclaration
 	}
-	return toolchain.Load(preCommitFS)
+
+	manifest, err := toolchain.LoadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("versions_file: %w", err)
+	}
+	return manifest, nil
 }
+
+// errNoVersionDeclaration names the key rather than a path, and points at the
+// command that resolves it, per help.md § "Point onward with a command, never
+// with a location".
+var errNoVersionDeclaration = errors.New(
+	"no pinned-version declaration\n\n" +
+		"Every generated config takes its hook revs, action versions and language floors\n" +
+		"from one file, and forge has been told about none.\n\n" +
+		"Set `versions_file` in forge's config to the file that pins what this fleet\n" +
+		"installs, or export FORGE_VERSIONS_FILE to name one for a single run.\n" +
+		"`forge config show` prints where forge looks and which layer answered")

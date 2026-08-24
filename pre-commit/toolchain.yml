@@ -1,4 +1,7 @@
-# Single source of truth for every pinned tool version forge rolls out.
+# The embedded default for every pinned tool version forge rolls out, used by a
+# machine that declares no `versions_file`. Where that key names a file, that
+# file governs and this one is not read; `forge toolchain show` prints which
+# answered. Both carry the same shape, so a reader here is reading the fallback.
 #
 # Blocks keep their own `rev:` lines so each block stays readable and valid on
 # its own, but generation overwrites them from this file — the manifest wins.

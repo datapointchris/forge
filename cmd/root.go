@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 
 	"github.com/datapointchris/goselfupdate/autoupdate"
 	"github.com/datapointchris/goselfupdate/cobracmd"
@@ -104,12 +103,4 @@ func loadRepos() (*config.SyncerConfig, error) {
 		return config.LoadSyncerConfig(cfgPath)
 	}
 	return config.LoadRepos()
-}
-
-// runCommand runs a command in a directory and returns its combined output.
-func runCommand(dir, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return string(out), err
 }
