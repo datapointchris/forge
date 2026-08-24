@@ -30,30 +30,43 @@ const WorkflowPath = ".github/workflows/validate.yml"
 // workflow in it is per-repo and deliberately not generated.
 const workflowsDir = ".github/workflows"
 
-// ActionlintConfigPath is where actionlint reads its own configuration.
+// ActionlintConfigPath is where actionlint reads its own configuration, and the
+// only spelling forge writes.
 const ActionlintConfigPath = ".github/actionlint.yaml"
 
-// RunnerLabel is the pool the homelab deploy registers every self-hosted runner
-// with. It names the pool rather than the box, so a second runner joining the
-// pool needs no generated workflow to change.
+// ActionlintConfigAltPath is the other spelling actionlint accepts. It is read,
+// never written: actionlint prefers ActionlintConfigPath when both are present,
+// so a file forge wrote would silently override one a person did.
+const ActionlintConfigAltPath = ".github/actionlint.yml"
+
+// ActionlintHookRepo is the pre-commit repo pinning actionlint. The die that
+// predicts what a repo's own actionlint hook will say resolves the pinned
+// version through this, so the prediction and the hook cannot be two different
+// binaries without it being reported.
+const ActionlintHookRepo = "https://github.com/rhysd/actionlint"
+
+// RunnerLabel is the pool every self-hosted runner is registered with. It names
+// the pool rather than the box, so a second runner joining the pool needs no
+// generated workflow to change.
 const RunnerLabel = "private-ci"
 
 // Runner is the runs-on value every job in a generated workflow carries.
 //
-// A named type rather than a bool beside releaseGated: two adjacent booleans at
-// a call site are swappable, and swapping these two points a public repo at the
-// homelab network.
+// A named type rather than a bool beside the release gate: two adjacent
+// booleans at a call site are swappable, and swapping these two points a public
+// repo at a private network.
 type Runner string
 
 const (
 	// Hosted is GitHub's own image. Actions is unmetered on a public repo, so
 	// the minutes it spends cost nothing.
 	Hosted Runner = "ubuntu-latest"
-	// SelfHosted is the container on the homelab VLAN. GitHub bills Actions
+	// SelfHosted is a runner inside a private network. GitHub bills Actions
 	// minutes for hosted runners only, so a private repo has no other way to
 	// run CI at all.
 	//
-	// self-hosted, Linux and X64 are added by GitHub and are not written here.
+	// Linux and X64 are added by GitHub and are not written here. The
+	// self-hosted label is, and it is the first token of this value.
 	SelfHosted Runner = "[self-hosted, " + RunnerLabel + "]"
 )
 
@@ -61,9 +74,9 @@ const (
 //
 // Anything not positively declared private takes the hosted image, and the
 // direction of that default is the whole safety property. A fork's pull request
-// on a public repo runs the fork's code on whatever runner it reaches, and the
-// self-hosted one sits inside the homelab network with the NAS and Proxmox on
-// the same VLAN. A repo the registry does not describe therefore stays hosted.
+// on a public repo runs the fork's own code on whatever runner it lands on, and
+// a self-hosted runner sits inside a private network. A repo the registry does
+// not describe therefore stays hosted.
 func RunnerFor(private bool) Runner {
 	if private {
 		return SelfHosted
@@ -79,7 +92,7 @@ func RunnerFor(private bool) Runner {
 //
 // Written only into repos whose workflows name the label. Declaring it in a
 // public repo would retire the one check that catches a hand-written workflow
-// there reaching the homelab runner.
+// there reaching the self-hosted runner.
 func ActionlintConfig(stampVersion int) string {
 	return fmt.Sprintf(`# forge-toolchain: %d
 # Labels actionlint cannot discover, because they belong to a self-hosted
@@ -97,6 +110,23 @@ self-hosted-runner:
 //	validate:
 //	  uses: ./.github/workflows/validate.yml
 var releaseGateRef = regexp.MustCompile(`uses:\s*\./` + regexp.QuoteMeta(WorkflowPath))
+
+// ReleaseGating says whether a release workflow already runs this one as a job.
+//
+// A named type for the same reason Runner is one. The two sit adjacent in
+// Generate's signature, and a call site reading `nil, false, Hosted` puts a
+// bare literal beside a self-naming constant — where the literal decides
+// whether main is validated at all.
+type ReleaseGating bool
+
+const (
+	// Gated means a release workflow calls this one, so emitting push here
+	// would run every job twice for one commit.
+	Gated ReleaseGating = true
+	// Ungated means nothing else covers main, so this workflow needs push or it
+	// validates almost nothing.
+	Ungated ReleaseGating = false
+)
 
 // ReleaseGatesOnValidate reports whether any of the repo's other workflows runs
 // this one as a job.
@@ -118,10 +148,10 @@ var releaseGateRef = regexp.MustCompile(`uses:\s*\./` + regexp.QuoteMeta(Workflo
 // Takes the repo root rather than reading the working directory: the dies walk
 // many repos in one process, where a relative path answers about whichever repo
 // the process happens to be standing in.
-func ReleaseGatesOnValidate(root string) bool {
+func ReleaseGatesOnValidate(root string) ReleaseGating {
 	entries, err := os.ReadDir(filepath.Join(root, workflowsDir))
 	if err != nil {
-		return false
+		return Ungated
 	}
 
 	for _, entry := range entries {
@@ -143,11 +173,11 @@ func ReleaseGatesOnValidate(root string) bool {
 			continue
 		}
 		if releaseGateRef.Match(data) {
-			return true
+			return Gated
 		}
 	}
 
-	return false
+	return Ungated
 }
 
 // Generate composes the workflow from the repo's declared components.
@@ -161,7 +191,7 @@ func Generate(
 	manifest *toolchain.Toolchain,
 	components []config.Component,
 	customSections map[string]string,
-	releaseGated bool,
+	releaseGated ReleaseGating,
 	runner Runner,
 ) (string, error) {
 	// The zero value would emit a bare `runs-on:`, which is an invalid workflow
@@ -195,7 +225,7 @@ func Generate(
 	// emitting push here runs every job twice for one commit. That went unnoticed
 	// across fourteen repos because both runs are green — the cost is only ever a
 	// confusing history. workflow_call still covers main, so nothing is lost.
-	if !releaseGated {
+	if releaseGated == Ungated {
 		lines = append(lines,
 			"  push:",
 			"    branches: [main]",

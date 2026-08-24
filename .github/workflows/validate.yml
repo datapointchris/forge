@@ -16,6 +16,17 @@ jobs:
 
       - uses: actions/checkout@v7
 
+      # > custom:before:go - actionlint, which the ci die's own assertions need
+      # Without it TestTheDiesOwnLintRejectsThePoolLabelWithoutTheConfigAndAcceptsItWithOne
+      # skips here and runs only when someone happens to run it locally. It is
+      # installed for this repo alone rather than in the go block, because no
+      # other repo's suite lints a workflow. FORGE_REQUIRE_ACTIONLINT turns a
+      # later disappearance into a failure rather than another silent skip.
+      - name: Install actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          echo "FORGE_REQUIRE_ACTIONLINT=1" >> "$GITHUB_ENV"
+
       # generated:go
       - uses: actions/setup-go@v7
         with:
