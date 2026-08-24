@@ -47,6 +47,11 @@ type Repo struct {
 	// It is not a marker that the repo is somebody else's. Reading it as one is
 	// what Reference below exists to replace.
 	Owner string `json:"owner,omitempty" yaml:"owner,omitempty"`
+	// Visibility is "public" or "private", and decides which runner a generated
+	// workflow may name. Read it through IsPrivate rather than comparing here:
+	// the two spellings of the same test are not equivalent, because an absent
+	// value has to fall on the public side.
+	Visibility string `json:"visibility,omitempty" yaml:"visibility,omitempty"`
 	// Reference marks a third-party clone, read for its patterns and never
 	// worked in, and excluded from every implicit sweep. LoadSyncerConfig
 	// derives it by comparing Owner against the registry's own owner; it is not
@@ -73,6 +78,22 @@ type Repo struct {
 	// reads the registry can find it. Omit it wherever the repo name, a
 	// pyproject [project.scripts] key, or a goreleaser binary: already says so.
 	Binary string `json:"binary,omitempty" yaml:"binary,omitempty"`
+}
+
+// IsPrivate reports whether this repo may name a self-hosted runner.
+//
+// A pull request from a fork on a public repo runs the fork's own code on
+// whatever runner it lands on, and a self-hosted runner sits inside a private
+// network. So the two ways of writing this test are not equivalent: comparing
+// against "private" puts an unreadable value on the public side, and comparing
+// against "public" puts it on the side that executes a stranger's code. Only
+// the first is safe, and having it in one place is what stops the second from
+// being written at a call site.
+//
+// The registry the fleet ships declares the field on every entry. Another
+// machine's registry need not, which is the case this default is for.
+func (r Repo) IsPrivate() bool {
+	return r.Visibility == "private"
 }
 
 // Toolchain is a repo's declared build surface.

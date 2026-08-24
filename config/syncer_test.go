@@ -204,3 +204,46 @@ func TestARegistryDeclaringNoOwnerMarksNothingAsAReference(t *testing.T) {
 		}
 	}
 }
+
+func TestVisibilityIsReadFromTheRegistryAndDefaultsToPublic(t *testing.T) {
+	configJSON := `{
+		"owner": "testuser",
+		"host": "https://github.com",
+		"search_paths": [],
+		"repos": [
+			{"name": "a-private", "path": "/code/p", "owner": "testuser", "visibility": "private"},
+			{"name": "b-public", "path": "/code/q", "owner": "testuser", "visibility": "public"},
+			{"name": "c-absent", "path": "/code/r", "owner": "testuser"},
+			{"name": "d-garbage", "path": "/code/s", "owner": "testuser", "visibility": "Private"}
+		]
+	}`
+
+	tmpFile := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(tmpFile, []byte(configJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadSyncerConfig(tmpFile)
+	if err != nil {
+		t.Fatalf("LoadSyncerConfig() error: %v", err)
+	}
+
+	// Sorted by name, so the order here is the order above.
+	want := []bool{true, false, false, false}
+	for i, wantPrivate := range want {
+		if got := cfg.Repos[i].IsPrivate(); got != wantPrivate {
+			t.Errorf("%s: IsPrivate() = %v, want %v (visibility=%q)",
+				cfg.Repos[i].Name, got, wantPrivate, cfg.Repos[i].Visibility)
+		}
+	}
+}
+
+// A wrong-cased or misspelled value must land on the public side, because the
+// other side runs a fork's code on a machine inside a private network.
+func TestAnUnrecognisedVisibilityIsNotTreatedAsPrivate(t *testing.T) {
+	for _, value := range []string{"", "Private", "PRIVATE", "internal", "priv", "public"} {
+		if (Repo{Visibility: value}).IsPrivate() {
+			t.Errorf("visibility %q was read as private", value)
+		}
+	}
+}
