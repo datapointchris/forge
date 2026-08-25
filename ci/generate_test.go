@@ -205,6 +205,33 @@ func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 	}
 }
 
+// Which runner the job names decides whether setup-go's cache is worth anything.
+//
+// A hosted runner starts empty, so the cache is the whole point. A self-hosted one
+// keeps GOMODCACHE between jobs, and restoring an archive over a module cache that
+// already holds every file fails per file — 153k "Cannot open: File exists" lines in
+// one observed step, which is then a log the GHA ingest webhook has to carry.
+func TestGoCacheIsOnlyRestoredOnARunnerThatStartsEmpty(t *testing.T) {
+	for _, testCase := range []struct {
+		runner Runner
+		want   string
+	}{
+		{Hosted, "cache: true"},
+		{SelfHosted, "cache: false"},
+	} {
+		workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, Ungated, testCase.runner)
+		if err != nil {
+			t.Fatalf("Generate(%s): %v", testCase.runner, err)
+		}
+		if !strings.Contains(workflow, testCase.want) {
+			t.Errorf("runner %s: missing %q:\n%s", testCase.runner, testCase.want, workflow)
+		}
+		if strings.Contains(workflow, "{{gocache}}") {
+			t.Errorf("runner %s: unexpanded {{gocache}} placeholder left in output", testCase.runner)
+		}
+	}
+}
+
 func TestGenerateFailsWhenNoComponentHasABlock(t *testing.T) {
 	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), nil, Ungated, Hosted); err == nil {
 		t.Fatal("expected an error rather than a workflow with zero jobs")

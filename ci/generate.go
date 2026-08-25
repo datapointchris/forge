@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/datapointchris/forge/config"
@@ -269,11 +270,11 @@ func Generate(
 		// its test secrets out of secrets/ in one of these, which cannot work
 		// against a workspace that has not been checked out. Nothing has wanted
 		// to run ahead of checkout.
-		lines = append(lines, "", applyDir(indentComment(stripDescription(manifest.ApplyAll(shared))), component.Dir))
+		lines = append(lines, "", applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(shared))), component.Dir, runner))
 		if section, ok := customSections["before:"+name]; ok {
 			lines = append(lines, "", section)
 		}
-		lines = append(lines, "", fmt.Sprintf("      # generated:%s", name), applyDir(indentComment(stripDescription(manifest.ApplyAll(block))), component.Dir))
+		lines = append(lines, "", fmt.Sprintf("      # generated:%s", name), applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(block))), component.Dir, runner))
 		if section, ok := customSections["after:"+name]; ok {
 			lines = append(lines, "", section)
 		}
@@ -382,6 +383,12 @@ func indentComment(content string) string {
 	return strings.Join(lines, "\n")
 }
 
+// applyPlaceholders resolves the placeholders a block carries: the component's
+// directory, and whether setup-go restores a dependency cache.
+func applyPlaceholders(content, dir string, runner Runner) string {
+	return applyGoCache(applyDir(content, dir), runner)
+}
+
 // applyDir resolves the {{dir}} placeholder to the component's directory.
 // Action inputs (go-version-file, cache-dependency-path) resolve from the
 // workspace root regardless of the job's working-directory, so any path in one
@@ -391,4 +398,18 @@ func applyDir(content, dir string) string {
 		dir = "."
 	}
 	return strings.ReplaceAll(content, "{{dir}}", dir)
+}
+
+// applyGoCache resolves the {{gocache}} placeholder to whether setup-go should
+// restore a dependency cache.
+//
+// A hosted runner starts empty every time, so there the cache is the whole
+// point. A self-hosted runner keeps GOMODCACHE and GOCACHE between jobs, so it
+// has nothing to gain — and restoring one costs it: the archive untars over a
+// module cache that already holds every file, tar fails on each and exits 2,
+// and the step writes a "Cannot open: File exists" line per module into the run
+// log before reporting the cache as not found. One such step reached 153k lines
+// and 29 MB, which is then a log the ingest webhook downloads and parses.
+func applyGoCache(content string, runner Runner) string {
+	return strings.ReplaceAll(content, "{{gocache}}", strconv.FormatBool(runner == Hosted))
 }
