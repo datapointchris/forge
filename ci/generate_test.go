@@ -3,6 +3,7 @@ package ci
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -280,5 +281,81 @@ func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 	}
 	if checkout >= section || section >= generated {
 		t.Error("before: section must sit between checkout and the generated block")
+	}
+}
+
+var lastQuotedArgument = regexp.MustCompile(`"([^"]*)"\s*$`)
+
+type clone struct {
+	destination string
+	line        int
+}
+
+// clones finds each `git clone` in a block and the path it writes to. A clone
+// spans backslash continuation lines, and its destination is the last quoted
+// argument of the last of them.
+func clones(block string) []clone {
+	lines := strings.Split(block, "\n")
+
+	var found []clone
+	for i, line := range lines {
+		if !strings.Contains(line, "git clone") {
+			continue
+		}
+		last := i
+		for last+1 < len(lines) && strings.HasSuffix(strings.TrimSpace(lines[last]), `\`) {
+			last++
+		}
+		if m := lastQuotedArgument.FindStringSubmatch(strings.TrimSpace(lines[last])); m != nil {
+			found = append(found, clone{destination: m[1], line: i})
+		}
+	}
+	return found
+}
+
+// A self-hosted runner keeps $HOME between jobs, so a bare clone into it
+// succeeds on that runner exactly once and exits 128 on every job after —
+// "already exists and is not an empty directory". $RUNNER_TEMP is wiped per job
+// and needs nothing.
+//
+// Clearing the target is also what carries a version bump onto that runner. The
+// tag is rewritten from the manifest, and a `[ -d ] ||` guard would keep serving
+// whichever tag arrived first while CI reported green against a pin nobody runs.
+func TestEveryCloneIntoAPathThatOutlivesTheJobIsClearedFirst(t *testing.T) {
+	entries, err := os.ReadDir("blocks")
+	if err != nil {
+		t.Fatalf("ReadDir(blocks): %v", err)
+	}
+
+	persistent := 0
+	for _, entry := range entries {
+		body, err := os.ReadFile(filepath.Join("blocks", entry.Name()))
+		if err != nil {
+			t.Fatalf("ReadFile(%s): %v", entry.Name(), err)
+		}
+		lines := strings.Split(string(body), "\n")
+
+		for _, c := range clones(string(body)) {
+			if strings.Contains(c.destination, "$RUNNER_TEMP") {
+				continue
+			}
+			persistent++
+
+			cleared := false
+			for _, before := range lines[:c.line] {
+				if strings.Contains(before, "rm -rf") && strings.Contains(before, c.destination) {
+					cleared = true
+					break
+				}
+			}
+			if !cleared {
+				t.Errorf("%s: clone into %s is not cleared first, so it fails on every job after the first on a self-hosted runner",
+					entry.Name(), c.destination)
+			}
+		}
+	}
+
+	if persistent == 0 {
+		t.Fatal("no clone outside $RUNNER_TEMP found; the shell block's bats step writes two into $HOME")
 	}
 }

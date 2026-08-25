@@ -75,7 +75,16 @@
       #
       # The helper libraries go under ~/.local/lib because that is where the
       # suites `load` them from — the same path they use on a workstation, so a
-      # test cannot pass locally and fail here over a lookup path.
+      # test cannot pass locally and fail here over a lookup path. The suites
+      # name that path literally, and `load` resolves nothing, so BATS_LIB_PATH
+      # cannot move the libraries anywhere cheaper.
+      #
+      # Each target is removed before its clone. A self-hosted runner's $HOME
+      # survives between jobs, so a bare clone succeeds once on that runner and
+      # exits 128 on every job after it. A `[ -d ] ||` guard also fixes that and
+      # is worse: the version above is rewritten from the manifest, and a guard
+      # would keep serving whichever tag the runner cloned first while CI
+      # reported green against the pin nobody is running.
       #
       # Guarded so a shell repo with no suite yet is not a hard failure. The
       # guard covers absence only: if tests exist, bats runs and its exit status
@@ -116,6 +125,7 @@
             https://github.com/bats-core/bats-core.git "$RUNNER_TEMP/bats"
           sudo "$RUNNER_TEMP/bats/install.sh" /usr/local
 
+          rm -rf "$HOME/.local/lib/bats-support" "$HOME/.local/lib/bats-assert"
           git clone --depth 1 --branch "v${bats_support_version}" \
             https://github.com/bats-core/bats-support.git "$HOME/.local/lib/bats-support"
           git clone --depth 1 --branch "v${bats_assert_version}" \
