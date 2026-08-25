@@ -1,0 +1,46 @@
+  # Python: apps identify cannot tag
+  #
+  # An extensionless app whose shebang reads `#!/usr/bin/env -S uv run --script`
+  # names `uv`, so identify tags it executable/file/text and every hook selecting
+  # on `python` skips it without a word. These three hooks reach those files by
+  # path instead, and the path list is derived from the shebangs themselves — a
+  # repo with none of them gets no block at all.
+  #
+  # types_or: [file] is load-bearing on the two ruff hooks. Fields a config
+  # leaves unset are inherited from the hook repo, and ruff-pre-commit declares
+  # types_or: [python, pyi, jupyter]; without the override that tag constraint
+  # survives the files: anchor and matches nothing.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.5
+    hooks:
+      - id: ruff-format
+        alias: ruff-format-scripts
+        name: ruff format (uv run scripts)
+        types: [text]
+        types_or: [file]
+        files: '{{scripts}}'
+      - id: ruff-check
+        alias: ruff-check-scripts
+        name: ruff check (uv run scripts)
+        args: [--fix]
+        types: [text]
+        types_or: [file]
+        files: '{{scripts}}'
+
+  # A separate hook from the repo-wide mypy rather than a wider selection on it.
+  # That one runs `mypy .` with pass_filenames: false, and mypy collects a
+  # directory by extension, so it cannot see these files however it is triggered.
+  #
+  # --scripts-are-modules names each module after its file. Without it mypy calls
+  # every file it is handed directly `__main__`, and a commit touching two of
+  # these apps fails with "Duplicate module named __main__" before checking
+  # either. These apps declare their dependencies in PEP 723 headers and import
+  # nothing from the repo, so per-file checking loses no visibility.
+  - repo: local
+    hooks:
+      - id: mypy-scripts
+        name: mypy (uv run scripts)
+        entry: uv run mypy --scripts-are-modules --install-types --non-interactive
+        language: system
+        types: [text]
+        files: '{{scripts}}'

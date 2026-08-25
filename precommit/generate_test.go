@@ -168,7 +168,7 @@ func TestEveryRealBlockIsClassified(t *testing.T) {
 
 func TestGenerateSimpleConfig(t *testing.T) {
 	blocks := makeTestBlocks()
-	config, err := Generate(blocks, testToolchain(t), detected("python"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestCustomSectionsPreserved(t *testing.T) {
 			"      - id: pytest-results",
 	}
 
-	config, err := Generate(blocks, testToolchain(t), detected("python"), custom, true)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), custom, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,13 +298,13 @@ func TestRoundtripPreservesCustom(t *testing.T) {
 			"      - id: devstats-capture",
 	}
 
-	config1, err := Generate(blocks, testToolchain(t), detected("python"), custom, true)
+	config1, err := Generate(blocks, testToolchain(t), detected("python"), custom, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	extracted := ExtractCustomSections(config1)
-	config2, err := Generate(blocks, testToolchain(t), detected("python"), extracted, true)
+	config2, err := Generate(blocks, testToolchain(t), detected("python"), extracted, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestGenerateDropsRepoEntriesLeftWithoutHooks(t *testing.T) {
 		}, "\n"),
 	}
 
-	config, err := Generate(blocks, testToolchain(t), detected("python"), custom, true)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), custom, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +449,7 @@ func TestCustomHooksNotDuplicatedInStandard(t *testing.T) {
 			"        entry: custom-ruff",
 	}
 
-	config, err := Generate(blocks, testToolchain(t), detected("python"), custom, true)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), custom, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +491,7 @@ func realBlocks(t *testing.T) fs.FS {
 
 func TestIntegration_PythonRepo(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected("python"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), detected("python"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,7 +517,7 @@ func TestIntegration_PythonRepo(t *testing.T) {
 
 func TestIntegration_GoRepo(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected("go"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), detected("go"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +540,7 @@ func TestIntegration_GoRepo(t *testing.T) {
 // in web/ must get hooks that enter web/, not the block author's frontend/.
 func TestIntegration_VueHooksEnterTheDeclaredDirectory(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), at("vue", "web"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), at("vue", "web"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -563,7 +563,7 @@ func TestIntegration_VueHooksEnterTheDeclaredDirectory(t *testing.T) {
 // pre-commit ever passes.
 func TestIntegration_RootComponentDropsThePathAnchor(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected("vue"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), detected("vue"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +580,7 @@ func TestIntegration_RootComponentDropsThePathAnchor(t *testing.T) {
 // failures by hook name, and two called vue-eslint name nothing.
 func TestIntegration_MultipleComponentsGetSuffixedHooks(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), at("vue", "client", "node", "server"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), at("vue", "client", "node", "server"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +600,7 @@ func TestIntegration_MultipleComponentsGetSuffixedHooks(t *testing.T) {
 // two identical copies of the block.
 func TestIntegration_IdenticalRendersCollapse(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), at("go", "api", "go", "cli"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), at("go", "api", "go", "cli"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -624,7 +624,7 @@ func TestIntegration_SQLBlockFollowsTheDeclaredDialect(t *testing.T) {
 	blocks := realBlocks(t)
 
 	withDialect := &config.Toolchain{SQLDialect: "postgres"}
-	config, err := Generate(blocks, testToolchain(t), withDialect, nil, true)
+	config, err := Generate(blocks, testToolchain(t), withDialect, nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -635,7 +635,7 @@ func TestIntegration_SQLBlockFollowsTheDeclaredDialect(t *testing.T) {
 		t.Errorf("the declared dialect should reach the hook args:\n%s", config)
 	}
 
-	without, err := Generate(blocks, testToolchain(t), detected("python"), nil, true)
+	without, err := Generate(blocks, testToolchain(t), detected("python"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -646,7 +646,7 @@ func TestIntegration_SQLBlockFollowsTheDeclaredDialect(t *testing.T) {
 
 func TestIntegration_FullStack(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected("python", "go", "vue", "docker", "actions", "terraform"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), detected("python", "go", "vue", "docker", "actions", "terraform"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,7 +661,7 @@ func TestIntegration_FullStack(t *testing.T) {
 
 func TestIntegration_GenericOnly(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected(), nil, true)
+	config, err := Generate(blocks, testToolchain(t), detected(), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +685,7 @@ func TestIntegration_GenericOnly(t *testing.T) {
 // when there is no .git to install them into.
 func TestIntegration_UnversionedOmitsTheCommitStageBlocks(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected("python", "shell"), nil, false)
+	config, err := Generate(blocks, testToolchain(t), detected("python", "shell"), nil, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,7 +715,7 @@ func TestIntegration_UnversionedOmitsTheCommitStageBlocks(t *testing.T) {
 // move gated them rather than dropped them.
 func TestIntegration_VersionedKeepsTheCommitStageBlocks(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected("python", "shell"), nil, true)
+	config, err := Generate(blocks, testToolchain(t), detected("python", "shell"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -748,7 +748,7 @@ func TestIntegration_NoDuplicateHookIDs(t *testing.T) {
 
 	for _, tc := range stacks {
 		t.Run(tc.name, func(t *testing.T) {
-			config, err := Generate(blocks, testToolchain(t), tc.components, nil, true)
+			config, err := Generate(blocks, testToolchain(t), tc.components, nil, true, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -779,7 +779,7 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 			"        pass_filenames: false",
 	}
 
-	config, err := Generate(blocks, testToolchain(t), detected("go", "actions"), custom, true)
+	config, err := Generate(blocks, testToolchain(t), detected("go", "actions"), custom, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -804,7 +804,7 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 
 	// Roundtrip
 	extracted := ExtractCustomSections(config)
-	config2, err := Generate(blocks, testToolchain(t), detected("go", "actions"), extracted, true)
+	config2, err := Generate(blocks, testToolchain(t), detected("go", "actions"), extracted, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -829,7 +829,7 @@ func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
 	manifest := testToolchain(t)
 	blocks := os.DirFS("../pre-commit/blocks")
 
-	config, err := Generate(blocks, manifest, detected("go"), nil, true)
+	config, err := Generate(blocks, manifest, detected("go"), nil, true, nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -857,7 +857,7 @@ func TestSafetyCheckAcceptsItsOwnSuffixedHooks(t *testing.T) {
 	}
 	declared := at("vue", "client", "node", "server")
 
-	generated, err := Generate(blocks, testToolchain(t), declared, nil, true)
+	generated, err := Generate(blocks, testToolchain(t), declared, nil, true, nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -892,7 +892,7 @@ func TestGenerateEmitsDeclaredExclude(t *testing.T) {
 	declared := detected("python")
 	declared.Exclude = "^tests/fixtures/"
 
-	config, err := Generate(blocks, manifest, declared, nil, true)
+	config, err := Generate(blocks, manifest, declared, nil, true, nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -905,7 +905,7 @@ func TestGenerateEmitsDeclaredExclude(t *testing.T) {
 		t.Error("exclude must be emitted before repos:")
 	}
 
-	bare, err := Generate(blocks, manifest, detected("python"), nil, true)
+	bare, err := Generate(blocks, manifest, detected("python"), nil, true, nil)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}

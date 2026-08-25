@@ -30,16 +30,21 @@ var (
 
 // categoryMap maps a block to the declared stack category that pulls it in.
 //
-// git is the second category not gated by a component, alongside sql. Its two
-// blocks hook commit-msg and prepare-commit-msg, which only fire on a commit, so
-// a target git does not version would carry two hooks that can never run — and
-// nothing would say so, because uninstalledHooks reports no missing stages when
-// there is no .git to install them into.
+// Three categories are gated by something other than a component, and Generate
+// seeds each one itself: sql by a declared dialect, git by the target being
+// versioned, and python-scripts by the scan finding a file identify cannot tag.
+//
+// git is gated that way because its two blocks hook commit-msg and
+// prepare-commit-msg, which only fire on a commit. A target git does not version
+// would carry two hooks that can never run, and nothing would say so, because
+// uninstalledHooks reports no missing stages where there is no .git to install
+// them into.
 var categoryMap = map[string]string{
 	"conventional-commits": "git",
 	"commit-branding":      "git",
 	"python-format":        "python",
 	"python-lint":          "python",
+	"python-scripts":       ScriptCategory,
 	"go":                   "go",
 	"go-release-major":     "go",
 	"vue":                  "vue",
@@ -373,6 +378,7 @@ func Generate(
 	declared *config.Toolchain,
 	customSections map[string]string,
 	versioned bool,
+	scripts []string,
 ) (string, error) {
 	dirs := dirsByCategory(declared.Components)
 	// The SQL block is gated by a declared dialect rather than by a component:
@@ -386,6 +392,13 @@ func Generate(
 	// its own, so both take the root.
 	if versioned {
 		dirs["git"] = []string{"."}
+	}
+	// Seeded from the scan for the same reason: an app identify cannot tag is
+	// not a build surface with a directory of its own, and no declaration can
+	// name it without going stale the next time one is added.
+	scriptsPattern := ScriptsPattern(scripts)
+	if scriptsPattern != "" {
+		dirs[ScriptCategory] = []string{"."}
 	}
 	blocks, err := loadBlocks(blocksFS, dirs)
 	if err != nil {
@@ -404,7 +417,10 @@ func Generate(
 	lines = append(lines, "repos:")
 
 	for _, b := range blocks {
-		rendered := strings.ReplaceAll(renderForDirs(b, dirs[categoryMap[b.Name]]), "{{dialect}}", declared.SQLDialect)
+		rendered := strings.NewReplacer(
+			"{{dialect}}", declared.SQLDialect,
+			"{{scripts}}", scriptsPattern,
+		).Replace(renderForDirs(b, dirs[categoryMap[b.Name]]))
 		content := manifest.ApplyRevs(StripHooksFromBlock(rendered, customIDs))
 		content = dropEmptyRepoEntries(content)
 		desc := BlockDescription(content)

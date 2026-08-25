@@ -82,6 +82,10 @@ def should_include_block(block_name: str, detected: set[str]) -> bool:
     category_map = {
         'python-format': 'python',
         'python-lint': 'python',
+        # Gated on a category nothing here sets, so it is never emitted. Its
+        # files: pattern is filled from a scan of the repo's tracked files, and
+        # this generator has no scan — it would write the placeholder literally.
+        'python-scripts': 'python-scripts',
         'go': 'go',
         'go-release-major': 'go',
         'rust': 'rust',

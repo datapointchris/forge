@@ -110,7 +110,9 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 	customSections := precommit.ExtractCustomSections(existing)
 
-	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain, customSections, t.Versioned())
+	scripts := shebangScripts(root, t.Versioned())
+
+	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain, customSections, t.Versioned(), scripts)
 	if err != nil {
 		return nil, err
 	}
@@ -365,4 +367,57 @@ func installHooks(root string, change reconcile.Change) (reconcile.Outcome, erro
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "installed"}, nil
+}
+
+// shebangScripts is every tracked file the generated Python hooks would skip:
+// no extension, and a shebang running Python through something identify does not
+// recognize as a Python interpreter.
+//
+// Detected rather than declared, against this repo's usual direction and for the
+// reason ReleaseGatesOnValidate detects its trigger. The failure being prevented
+// is a new app landing beside the existing ones and nobody remembering to
+// declare it, which is the same silent gap the block closes — a registry key
+// cannot prevent that, and reading a first line cannot get it wrong. The scan
+// re-derives on every generate, so adding or renaming an app fixes the config by
+// itself and the drift shows up as an ordinary pending change.
+//
+// git's index is the enumeration. An unversioned target has no bounded one, and
+// a maintained directory can be a home directory — walking it on every check is
+// not a cost this finding is worth, so those targets return nothing.
+func shebangScripts(root string, versioned bool) []string {
+	if !versioned {
+		return nil
+	}
+	out, err := runIn(root, "git", "ls-files", "--cached")
+	if err != nil || out == "" {
+		return nil
+	}
+
+	var scripts []string
+	for _, rel := range strings.Split(out, "\n") {
+		if rel == "" || filepath.Ext(rel) != "" {
+			continue
+		}
+		firstLine := firstLineOf(filepath.Join(root, rel))
+		if precommit.UntaggedPythonScript(rel, firstLine) {
+			scripts = append(scripts, rel)
+		}
+	}
+	slices.Sort(scripts)
+	return scripts
+}
+
+// firstLineOf reads only far enough to hold a shebang, so the scan costs one
+// short read per extensionless file rather than one whole file.
+func firstLineOf(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = file.Close() }()
+
+	buf := make([]byte, 256)
+	n, _ := file.Read(buf)
+	line, _, _ := strings.Cut(string(buf[:n]), "\n")
+	return strings.TrimRight(line, "\r")
 }
