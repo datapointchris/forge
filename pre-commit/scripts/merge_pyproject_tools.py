@@ -35,7 +35,7 @@ MANAGED_TABLE = 'forge'
 MANAGED_KEY = 'managed'
 
 MANAGED_COMMENT_LINES = [
-    'Keys the standard owns, written by `forge repos apply pyproject`.',
+    'Keys the shared toolchain standard owns, written by its generator.',
     'Dropping one from the template removes it here on the next sync; a key absent',
     'from this list belongs to the project and is never touched. Do not hand-edit.',
 ]
