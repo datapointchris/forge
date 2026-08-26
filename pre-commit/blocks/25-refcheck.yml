@@ -17,7 +17,7 @@
   # own broken *imports*, which is a different question from what a doc, a
   # Dockerfile or a shell wrapper still says.
   #
-  # No --strict: one advisory warning across the whole fleet, and a warning is
+  # No --strict: one advisory warning across every repo, and a warning is
   # about fragility rather than breakage.
   - repo: https://github.com/datapointchris/refcheck
     rev: v0.5.2
