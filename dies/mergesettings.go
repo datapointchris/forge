@@ -22,6 +22,15 @@ import (
 // branch is what shows an initiative as one piece of work. Neither is wanted,
 // so the merge commit had to stop being noise instead.
 //
+// Squash is off for that reason. `git-workflow.md` § "A PR lands as a merge
+// commit, not a squash or a rebase" already forbids pressing it, and a button
+// that must never be pressed is better removed than documented.
+//
+// Rebase is left enabled and is not asserted on. GitHub accepts merge alone —
+// `allow_squash_merge=false` and `allow_rebase_merge=false` together are a
+// legal request, measured against a live repo — so this is a choice rather
+// than a limit.
+//
 // Settings, not files: this leaves the working tree untouched and commits
 // nothing.
 type MergeSettings struct{}
@@ -29,7 +38,7 @@ type MergeSettings struct{}
 func (MergeSettings) Name() string { return "merge-settings" }
 
 func (MergeSettings) Description() string {
-	return "Set the GitHub merge commit title to the PR title and its body to the PR body, and delete the branch on merge, so a merged PR reads as the work."
+	return "Set the GitHub merge commit title to the PR title and its body to the PR body, turn the squash button off, and delete the branch on merge, so a merged PR reads as the work."
 }
 
 func (MergeSettings) Tags() []string {
@@ -61,7 +70,7 @@ func (MergeSettings) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	}
 
 	out, err := runIn(t.Repo.Path, "gh", "api", "repos/"+repo.slug,
-		"--jq", `"\(.merge_commit_title) \(.merge_commit_message) \(.delete_branch_on_merge) \(.allow_merge_commit)"`)
+		"--jq", `"\(.merge_commit_title) \(.merge_commit_message) \(.delete_branch_on_merge) \(.allow_merge_commit) \(.allow_squash_merge)"`)
 	if err != nil {
 		return mergeSettingsState{
 			repo:    repo,
@@ -70,7 +79,7 @@ func (MergeSettings) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	}
 
 	fields := strings.Fields(out)
-	if len(fields) != 4 {
+	if len(fields) != 5 {
 		return mergeSettingsState{
 			repo:    repo,
 			changes: []reconcile.Change{unknownChange("merge settings", "unreadable settings for "+repo.slug)},
@@ -90,9 +99,12 @@ func (MergeSettings) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	// GitHub rejects the two title/message fields outright (HTTP 422) when merge
 	// commits are disabled, so this is not an extra opinion bolted on — it is
 	// what makes the rest of the request legal. Two repos failed exactly this
-	// way. Squash and rebase are left alone: enabling merge does not ban them.
+	// way.
 	if fields[3] != "true" {
 		changes = append(changes, settingChange("allow_merge_commit", fields[3], "true"))
+	}
+	if fields[4] != "false" {
+		changes = append(changes, settingChange("allow_squash_merge", fields[4], "false"))
 	}
 
 	return mergeSettingsState{repo: repo, changes: changes}, nil
@@ -106,7 +118,7 @@ func (MergeSettings) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	return state.changes, nil
 }
 
-// Perform writes all four fields at once rather than one per Change.
+// Perform writes all five fields at once rather than one per Change.
 //
 // The API rejects the title and message fields when merge commits are off, so
 // they have to travel in the same request as allow_merge_commit. A per-field
@@ -132,6 +144,7 @@ func (m MergeSettings) Perform(t reconcile.Target, change reconcile.Change) (rec
 		"-f", "merge_commit_title="+wantMergeTitle,
 		"-f", "merge_commit_message="+wantMergeMessage,
 		"-F", "delete_branch_on_merge=true",
+		"-F", "allow_squash_merge=false",
 		"--silent"); err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
