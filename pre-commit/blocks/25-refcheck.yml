@@ -5,10 +5,8 @@
   # the whole-tree half — every `source` and `bash` target — found zero real
   # errors, because the portfolio is already clean. The moves half asks the
   # question a rename actually leaves behind, for each one in the changeset,
-  # and that is where the findings were: three live `uv run` call sites in
-  # ichrisbirch's ops tool naming a log viewer that had moved months earlier,
-  # and a documented build command in shadows pointing into a directory the
-  # repo no longer has.
+  # and that is where the findings are: call sites and documented commands
+  # still naming a path that moved.
   #
   # Deliberately no path spelled out above. A comment naming a real old path
   # is itself a hit for it, in every repo this block is deployed to.

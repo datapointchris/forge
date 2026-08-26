@@ -9,9 +9,8 @@
       # put it back.
       - id: codespell
         # The second alternation is sops output. Ciphertext is base64, so it
-        # produces the same false hits a lock file's hashes do, and the plain
-        # name covers homelab's group_data/secrets.yaml as well as the
-        # *.enc.env convention.
+        # produces the same false hits a lock file's hashes do. The plain
+        # `secrets.yaml` name is covered alongside the *.enc.env convention.
         #
         # `go.mod` sits beside `go.sum` for the same reason one step earlier: it
         # is mostly module paths, and a path is a third party's name rather than
