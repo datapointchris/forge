@@ -134,14 +134,12 @@ func TestShouldIncludeBlock(t *testing.T) {
 	mustInclude("go", false)
 	mustInclude("vue", false)
 
-	// The commit-stage blocks are gated on git the way sql is gated on a
+	// The commit-stage block is gated on git the way sql is gated on a
 	// dialect: by a category Generate seeds, not by a declared component.
 	mustInclude("conventional-commits", false)
-	mustInclude("commit-branding", false)
 
 	dirs["git"] = []string{"."}
 	mustInclude("conventional-commits", true)
-	mustInclude("commit-branding", true)
 }
 
 // A block in neither table used to read as generic, which silently shipped
@@ -683,7 +681,7 @@ func TestIntegration_GenericOnly(t *testing.T) {
 // blocks that hook a commit. Left in, they would be hooks that can never fire —
 // and nothing would report it, because uninstalledHooks finds no missing stages
 // when there is no .git to install them into.
-func TestIntegration_UnversionedOmitsTheCommitStageBlocks(t *testing.T) {
+func TestIntegration_UnversionedOmitsTheCommitStageBlock(t *testing.T) {
 	blocks := realBlocks(t)
 	config, err := Generate(blocks, testToolchain(t), detected("python", "shell"), nil, false, nil)
 	if err != nil {
@@ -691,10 +689,8 @@ func TestIntegration_UnversionedOmitsTheCommitStageBlocks(t *testing.T) {
 	}
 
 	genBlocks := getGeneratedBlocks(config)
-	for _, name := range []string{"conventional-commits", "commit-branding"} {
-		if contains(genBlocks, name) {
-			t.Errorf("commit-stage block %s was generated for a target with no git", name)
-		}
+	if contains(genBlocks, "conventional-commits") {
+		t.Error("commit-stage block conventional-commits was generated for a target with no git")
 	}
 	for _, name := range []string{"file-checks", "markdown", "shell", "codespell", "python-format", "python-lint"} {
 		if !contains(genBlocks, name) {
@@ -711,25 +707,20 @@ func TestIntegration_UnversionedOmitsTheCommitStageBlocks(t *testing.T) {
 	}
 }
 
-// The same declaration in a repo keeps both. This is the half that proves the
-// move gated them rather than dropped them.
-func TestIntegration_VersionedKeepsTheCommitStageBlocks(t *testing.T) {
+// The same declaration in a repo keeps it. This is the half that proves git
+// gates the block rather than suppressing it everywhere.
+func TestIntegration_VersionedKeepsTheCommitStageBlock(t *testing.T) {
 	blocks := realBlocks(t)
 	config, err := Generate(blocks, testToolchain(t), detected("python", "shell"), nil, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	genBlocks := getGeneratedBlocks(config)
-	for _, name := range []string{"conventional-commits", "commit-branding"} {
-		if !contains(genBlocks, name) {
-			t.Errorf("missing block: %s", name)
-		}
+	if !contains(getGeneratedBlocks(config), "conventional-commits") {
+		t.Error("missing block: conventional-commits")
 	}
-	for _, id := range []string{"conventional-pre-commit", "prepare-commit-msg"} {
-		if !contains(getHookIDs(config), id) {
-			t.Errorf("missing hook: %s", id)
-		}
+	if !contains(getHookIDs(config), "conventional-pre-commit") {
+		t.Error("missing hook: conventional-pre-commit")
 	}
 }
 

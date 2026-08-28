@@ -34,14 +34,12 @@ var (
 // seeds each one itself: sql by a declared dialect, git by the target being
 // versioned, and python-scripts by the scan finding a file identify cannot tag.
 //
-// git is gated that way because its two blocks hook commit-msg and
-// prepare-commit-msg, which only fire on a commit. A target git does not version
-// would carry two hooks that can never run, and nothing would say so, because
-// uninstalledHooks reports no missing stages where there is no .git to install
-// them into.
+// git is gated that way because its block hooks commit-msg, which only fires on
+// a commit. A target git does not version would carry a hook that can never run,
+// and nothing would say so, because uninstalledHooks reports no missing stages
+// where there is no .git to install them into.
 var categoryMap = map[string]string{
 	"conventional-commits": "git",
-	"commit-branding":      "git",
 	"python-format":        "python",
 	"python-lint":          "python",
 	"python-scripts":       ScriptCategory,

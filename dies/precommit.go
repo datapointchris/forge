@@ -73,9 +73,12 @@ var toolConfigs = []toolConfig{
 
 // hookStages are the stages a generated config can use. Every one it names has
 // to be installed, or those hooks silently never run — a config declaring
-// prepare-commit-msg without the git hook in place looks correct and does
-// nothing.
-var hookStages = []string{"pre-commit", "commit-msg", "prepare-commit-msg", "post-commit"}
+// commit-msg without the git hook in place looks correct and does nothing.
+//
+// A stage no block declares does not belong here: installHooks passes the whole
+// list to `pre-commit install -t`, so an entry nothing can reach still writes a
+// git hook into every repo.
+var hookStages = []string{"pre-commit", "commit-msg"}
 
 type preCommitState struct {
 	applicable   bool
