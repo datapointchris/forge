@@ -121,8 +121,25 @@ func TestAnEmptyConfigNamesTheFileItRead(t *testing.T) {
 
 	stdout, _ := runConfigShow(t, false)
 
-	if !strings.Contains(stdout.String(), filepath.Join(home, "forge", "config.yml")) {
+	configPath := filepath.Join(home, "forge", "config.yml")
+	if !strings.Contains(stdout.String(), configPath) {
 		t.Errorf("report does not name the config file it read:\n%s", stdout.String())
+	}
+
+	// The line the reader is stuck on, asserted on its own. Matching the whole
+	// screen is satisfied by the settings table above it, which names the same
+	// path for a different reason — so a wrong file here reads as correct.
+	var empty string
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.Contains(line, "none declared in") {
+			empty = strings.TrimSpace(line)
+		}
+	}
+	if empty == "" {
+		t.Fatalf("no maintained-directories line:\n%s", stdout.String())
+	}
+	if !strings.HasSuffix(empty, configPath) {
+		t.Errorf("empty line = %q, want it to name the config file %s", empty, configPath)
 	}
 }
 
