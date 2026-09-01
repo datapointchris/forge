@@ -287,6 +287,56 @@ func TestExtractCustomSectionsIndented(t *testing.T) {
 	}
 }
 
+// The last section in a job has no marker below it, so the job key is the only
+// thing that can end it. Without that terminator it runs to the next marker,
+// which is inside the *following* job, below that job's checkout.
+func TestAJobKeyTerminatesASection(t *testing.T) {
+	workflow := "jobs:\n" +
+		"  python:\n" +
+		"    steps:\n" +
+		"      # generated:python\n" +
+		"      - run: pytest\n" +
+		"\n" +
+		"      # > custom:after:python - extra\n" +
+		"      - run: echo extra\n" +
+		"\n" +
+		"  terraform:\n" +
+		"    steps:\n" +
+		"      - uses: actions/checkout@v7\n"
+
+	section := ExtractCustomSections(workflow)["after:python"]
+
+	if !strings.Contains(section, "echo extra") {
+		t.Fatalf("after:python lost its own step: %q", section)
+	}
+	if strings.Contains(section, "terraform:") || strings.Contains(section, "checkout") {
+		t.Errorf("after:python ran into the next job:\n%s", section)
+	}
+}
+
+// The terminator is inert in a .pre-commit-config.yaml, which is what lets one
+// extractor serve both grammars. Nothing in one is at a job key's shape: repo
+// entries open with a dash and every key below one is indented four or more.
+func TestAPreCommitSectionIsNotCutByTheJobTerminator(t *testing.T) {
+	configText := "repos:\n" +
+		"# > custom:after:all - Tests\n" +
+		"  - repo: local\n" +
+		"    hooks:\n" +
+		"      - id: pytest-results\n" +
+		"        name: pytest\n" +
+		"  - repo: local\n" +
+		"    hooks:\n" +
+		"      - id: bats\n"
+
+	section := ExtractCustomSections(configText)["after:all"]
+
+	for _, want := range []string{"pytest-results", "bats"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("after:all lost %s:\n%s", want, section)
+		}
+	}
+}
+
 func TestRoundtripPreservesCustom(t *testing.T) {
 	blocks := makeTestBlocks()
 	custom := map[string]string{
