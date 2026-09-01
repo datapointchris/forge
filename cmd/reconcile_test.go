@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -74,6 +76,45 @@ func TestSelectReposNeverReturnsAMaintainedDirectory(t *testing.T) {
 	}
 	if len(selected) != 1 {
 		t.Errorf("SelectRepos returned %d entries, want just the registry's 1", len(selected))
+	}
+}
+
+// The count is the part a caller can already see, so an error that only reports
+// it leaves them with no way to know that one name and no name are both legal
+// and mean different scopes. Both nouns' three die-taking verbs are asserted,
+// because the factory is what keeps them one and the test is what proves it did.
+func TestTooManyDieNamesNamesBothWaysOut(t *testing.T) {
+	for _, noun := range []*reconcileNoun{repos, directories} {
+		for _, verb := range []string{"check", "plan", "apply"} {
+			t.Run(noun.name+" "+verb, func(t *testing.T) {
+				cmd := findSub(t, noun.command(), verb)
+
+				err := cmd.Args(cmd, []string{"precommit", "ci"})
+				if err == nil {
+					t.Fatal("two die names were accepted")
+				}
+				if !errors.Is(err, cobracmd.ErrUsage) {
+					t.Errorf("not a usage error, so it exits 1 rather than 2: %v", err)
+				}
+				for _, want := range []string{"precommit", "ci", "omit it", "forge dies list"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("message does not carry %q: %v", want, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+// One die name is the ordinary case and stays legal.
+func TestOneDieNameIsAccepted(t *testing.T) {
+	cmd := findSub(t, repos.command(), "plan")
+
+	if err := cmd.Args(cmd, []string{"precommit"}); err != nil {
+		t.Errorf("one die name was rejected: %v", err)
+	}
+	if err := cmd.Args(cmd, nil); err != nil {
+		t.Errorf("no die name was rejected: %v", err)
 	}
 }
 

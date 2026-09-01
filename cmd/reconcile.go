@@ -64,7 +64,7 @@ func (n *reconcileNoun) command() *cobra.Command {
 	check := &cobra.Command{
 		Use:               "check [die]",
 		Short:             "Report what is wrong, which apply cannot fix",
-		Args:              cobra.MaximumNArgs(1),
+		Args:              atMostOneDie,
 		ValidArgsFunction: completeDieNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return n.runReconcile(cmd, args, reconcile.LensCheck)
@@ -74,7 +74,7 @@ func (n *reconcileNoun) command() *cobra.Command {
 	plan := &cobra.Command{
 		Use:               "plan [die]",
 		Short:             "Report what apply would change, writing nothing",
-		Args:              cobra.MaximumNArgs(1),
+		Args:              atMostOneDie,
 		ValidArgsFunction: completeDieNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return n.runReconcile(cmd, args, reconcile.LensPlan)
@@ -92,7 +92,7 @@ untypeable — the plan printed above the prompt is what you are confirming.
 
 Only Automatic repairs are ever performed. A finding check reports is
 structurally unreachable from here, whether or not a die was named.`,
-		Args:              cobra.MaximumNArgs(1),
+		Args:              atMostOneDie,
 		ValidArgsFunction: completeDieNames,
 		RunE:              n.runApply,
 	}
@@ -319,6 +319,24 @@ func (n *reconcileNoun) runList(cmd *cobra.Command, _ []string) error {
 		row(cmd.OutOrStdout(), "%s\n", target.Name)
 	}
 	return nil
+}
+
+// atMostOneDie constrains the die argument and names both ways out of the
+// failure. A verb takes one die name or none, and the two mean different scopes
+// rather than one being a degenerate case of the other, so a caller who typed
+// several needs to be told which of the two they meant. Counting the arguments
+// says neither, and the arity is the one part a caller can already see.
+//
+// A usage error rather than a plain one: the exit code is what a script reads,
+// and 2 is the only failure worth retrying with different arguments.
+func atMostOneDie(cmd *cobra.Command, args []string) error {
+	if len(args) <= 1 {
+		return nil
+	}
+	return cobracmd.UsageError(fmt.Errorf(
+		"%s takes one die name or none, received %d: %s\n"+
+			"Name one die to run that one, or omit it to run them all — `forge dies list` names them",
+		cmd.CommandPath(), len(args), strings.Join(args, ", ")))
 }
 
 // selectedDies resolves the die argument, or every die when none was named.
