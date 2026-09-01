@@ -292,10 +292,6 @@ func Generate(
 	return strings.Join(lines, "\n"), nil
 }
 
-// jobHeader matches a workflow job key: two spaces, a name, a colon, nothing
-// after it. Job keys are the only thing at that indent in a generated workflow.
-var jobHeader = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
-
 // ForeignRunners names every job in a generated workflow whose runs-on is not
 // the runner the repo was generated for.
 //
@@ -313,7 +309,7 @@ func ForeignRunners(workflow string, runner Runner) []string {
 		job     string
 	)
 	for _, line := range strings.Split(workflow, "\n") {
-		if match := jobHeader.FindStringSubmatch(line); match != nil {
+		if match := precommit.JobHeader.FindStringSubmatch(line); match != nil {
 			job = match[1]
 			continue
 		}

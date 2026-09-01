@@ -17,9 +17,8 @@ import (
 // Both marker regexes tolerate leading whitespace because the same extractor
 // serves .pre-commit-config.yaml, where markers sit at column zero, and
 // validate.yml, where everything inside a job is indented six spaces. Anchored
-// at ^ they matched nothing in a workflow: a before:/after:<block> section was
-// dropped on the next sync, and generatedRE could not terminate a section, so
-// after:<block> ran on and swallowed the following jobs.
+// at ^ they match nothing in a workflow, which drops every section in one on
+// the next sync.
 var (
 	markerRE    = regexp.MustCompile(`^\s*# > custom:(before|after):(\S+)`)
 	generatedRE = regexp.MustCompile(`^\s*# generated:(\S+)`)
@@ -27,6 +26,28 @@ var (
 	hookNameRE  = regexp.MustCompile(`^(\s+name:\s*)(.+)$`)
 	repoLineRE  = regexp.MustCompile(`^\s*-\s*repo:\s*(\S+)`)
 )
+
+// JobHeader matches a workflow job key: two spaces, a name, a colon, nothing
+// after it. Job keys are the only thing at that indent in a generated workflow.
+//
+// It is the second terminator a custom section needs, and only a workflow needs
+// it. A pre-commit config puts a # generated: marker at the top of every block,
+// so a section there ends at the next one. A workflow puts that marker *inside*
+// the job, below the shared checkout, so a section reaching for it alone runs
+// past the end of its own job and takes the next job's key and steps with it —
+// which regeneration then emits a second time, duplicating the key.
+//
+// A pre-commit config has nothing at this shape to collide with: its repo
+// entries open with a dash and every key below one is indented four or more.
+var JobHeader = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
+
+// wholeScope is the one section key a job header does not terminate.
+//
+// after:all is appended below the last job rather than among a job's steps, so
+// a job key there is the section's own content — a repo whose deploy suite is a
+// hand-written job carries it exactly that way. Every other key names a block
+// inside a job, where the next job key is the end.
+const wholeScope = "after:all"
 
 // categoryMap maps a block to the declared stack category that pulls it in.
 //
@@ -226,36 +247,41 @@ func suffixHookNames(content, suffix string) string {
 
 // ExtractCustomSections parses an existing config for custom marker sections.
 // Returns a map keyed by "before:BLOCK" or "after:BLOCK".
+//
+// A section runs from its marker to the next marker, the next job key, or the
+// end of the text. JobHeader says why the job key is there and wholeScope says
+// which section it does not apply to.
 func ExtractCustomSections(configText string) map[string]string {
 	sections := make(map[string]string)
 	var currentKey string
 	var currentLines []string
 
+	closeSection := func() {
+		if currentKey != "" {
+			sections[currentKey] = joinTrimTrailing(currentLines)
+		}
+		currentKey = ""
+		currentLines = nil
+	}
+
 	for _, line := range strings.Split(configText, "\n") {
 		isCustom := markerRE.FindStringSubmatch(line)
-		isGenerated := generatedRE.FindStringSubmatch(line)
 
-		if isCustom != nil || isGenerated != nil {
-			if currentKey != "" {
-				sections[currentKey] = joinTrimTrailing(currentLines)
-			}
-
-			if isCustom != nil {
-				currentKey = isCustom[1] + ":" + isCustom[2]
-				currentLines = []string{line}
-			} else {
-				currentKey = ""
-				currentLines = nil
-			}
-		} else if currentKey != "" {
+		switch {
+		case isCustom != nil:
+			closeSection()
+			currentKey = isCustom[1] + ":" + isCustom[2]
+			currentLines = []string{line}
+		case generatedRE.MatchString(line):
+			closeSection()
+		case currentKey != wholeScope && JobHeader.MatchString(line):
+			closeSection()
+		case currentKey != "":
 			currentLines = append(currentLines, line)
 		}
 	}
 
-	if currentKey != "" {
-		sections[currentKey] = joinTrimTrailing(currentLines)
-	}
-
+	closeSection()
 	return sections
 }
 

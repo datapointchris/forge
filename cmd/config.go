@@ -49,6 +49,10 @@ and reads identically to the one you meant.`,
 
 func init() {
 	configShowCmd.Flags().BoolVar(&configJSON, "json", false, "machine-readable output")
+	// show reads the flag rather than the registry: naming a path is how you
+	// ask what forge resolves when told one, which is the question this command
+	// exists to answer.
+	addRegistryFlag(configCmd)
 	configCmd.AddCommand(configShowCmd)
 	rootCmd.AddCommand(configCmd)
 }
@@ -65,6 +69,17 @@ type resolved struct {
 type configReport struct {
 	Settings    []resolved          `json:"settings"`
 	Directories []directoryResolved `json:"maintained_directories"`
+}
+
+// value answers one setting by name, so a line naming a file does not depend on
+// the order the settings were appended in.
+func (r configReport) value(setting string) string {
+	for _, s := range r.Settings {
+		if s.Setting == setting {
+			return s.Value
+		}
+	}
+	return ""
 }
 
 type directoryResolved struct {
@@ -184,7 +199,7 @@ func printConfigReport(w io.Writer, report configReport) {
 
 	row(w, "\n  %s\n", label.Sprintf("maintained directories (%d)", len(report.Directories)))
 	if len(report.Directories) == 0 {
-		row(w, "    none declared in %s\n", report.Settings[1].Value)
+		row(w, "    none declared in %s\n", report.value("config file"))
 		return
 	}
 	for _, dir := range report.Directories {

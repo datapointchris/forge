@@ -9,7 +9,6 @@ import (
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/runner"
 	"github.com/datapointchris/forge/suites"
 )
@@ -48,11 +47,12 @@ func init() {
 	testCmd.Flags().BoolVar(&testJSON, "json", false, "Output as JSON to stdout")
 	testCmd.Flags().BoolVar(&testFailedOnly, "failed", false, "Print captured output for failures only, rather than nothing")
 	testCmd.Flags().IntVarP(&testJobs, "jobs", "j", 0, "Repos to test at once; 0 is one per CPU")
+	addRegistryFlag(testCmd)
 	rootCmd.AddCommand(testCmd)
 }
 
 func runTest(cmd *cobra.Command, args []string) error {
-	cfg, err := config.LoadRepos()
+	cfg, err := loadRepos(cmd)
 	if err != nil {
 		return fmt.Errorf("load repo registry: %w", err)
 	}

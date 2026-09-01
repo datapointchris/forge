@@ -57,7 +57,13 @@ The hook inventory is generated from the pinned-version declaration — `forge t
   - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: nomad's `api/` and `cli/` are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
 
   - **`sync_base`** (top level) and **`synced_dirs`** (per repo) are what the planning die reads. Declared rather than compiled in: `~/dev/repos` is one fleet's Syncthing layout, and `stats/data` belongs to ichrisbirch. Both were hardcoded in the bash die, which is what `DefaultReposPath`'s own comment rules out.
-  - The `-c` persistent flag overrides the repos file path.
+  - The `-c` flag overrides the repos file path, and is declared on the commands that read the
+    registry rather than on the root: `repos`, `directories`, `cli` and `config` each own it for
+    their whole subtree, and `test` declares it alone. Cobra prints a root persistent flag under
+    "Global Flags" on every subcommand, so declaring it once at the top made `forge version --help`
+    advertise a registry that command never opens. `cmd/flagscope_test.go` is what keeps the two
+    sets level: `loadRepos` is the only door to the registry and refuses a command that has not
+    declared the flag, so a new reader cannot ignore a path someone typed.
 - `reconcile` — the die contract and the walk. `Change` (Verdict × Repair), the check/plan lenses, `Assess`/`Apply`, exit codes, rendering. See below.
 - `dies` — one file per die, the `Builtin()` registry, and stats (JSONL append log at `~/.local/share/forge/stats.jsonl`).
 - `runner` — repo selection, and command execution for `repos exec`

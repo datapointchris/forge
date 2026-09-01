@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/cliaudit"
-	"github.com/datapointchris/forge/config"
 )
 
 var cliCmd = &cobra.Command{
@@ -111,12 +110,15 @@ func init() {
 	cliAuditCmd.Flags().BoolVar(&cliJSON, "json", false, "Output as JSON to stdout")
 	cliSnapshotCmd.Flags().BoolVar(&cliJSON, "json", false, "Output as JSON to stdout")
 	cliDiffCmd.Flags().BoolVar(&cliJSON, "json", false, "Output as JSON to stdout")
+	// Every verb here discovers its tools from the registry when no tool is
+	// named, which is the common form of all four.
+	addRegistryFlag(cliCmd)
 	cliCmd.AddCommand(cliSpecCmd, cliAuditCmd, cliSnapshotCmd, cliDiffCmd)
 	rootCmd.AddCommand(cliCmd)
 }
 
 func runCLISnapshot(cmd *cobra.Command, args []string) error {
-	tools, unresolved, err := resolveTools(args)
+	tools, unresolved, err := resolveTools(cmd, args)
 	if err != nil {
 		return err
 	}
@@ -148,9 +150,9 @@ func runCLISnapshot(cmd *cobra.Command, args []string) error {
 // resolveSurface turns one diff argument into a surface. An empty argument means
 // read the installed tools now, which is what makes a one-sided diff the useful
 // default.
-func resolveSurface(arg string) (*clisurface.Snapshot, error) {
+func resolveSurface(cmd *cobra.Command, arg string) (*clisurface.Snapshot, error) {
 	if arg == "" {
-		tools, _, err := resolveTools(nil)
+		tools, _, err := resolveTools(cmd, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -190,11 +192,11 @@ func runCLIDiff(cmd *cobra.Command, args []string) error {
 		from = strconv.Itoa(versions[len(versions)-1])
 	}
 
-	before, err := resolveSurface(from)
+	before, err := resolveSurface(cmd, from)
 	if err != nil {
 		return err
 	}
-	after, err := resolveSurface(to)
+	after, err := resolveSurface(cmd, to)
 	if err != nil {
 		return err
 	}
@@ -210,7 +212,7 @@ func runCLIDiff(cmd *cobra.Command, args []string) error {
 
 // resolveTools turns the positional arguments into extracted trees, falling
 // back to registry discovery when none are named.
-func resolveTools(args []string) ([]*clisurface.Tool, []cliaudit.Unresolved, error) {
+func resolveTools(cmd *cobra.Command, args []string) ([]*clisurface.Tool, []cliaudit.Unresolved, error) {
 	if len(args) > 0 {
 		tools := make([]*clisurface.Tool, 0, len(args))
 		for _, name := range args {
@@ -225,7 +227,7 @@ func resolveTools(args []string) ([]*clisurface.Tool, []cliaudit.Unresolved, err
 		return tools, nil, nil
 	}
 
-	cfg, err := config.LoadRepos()
+	cfg, err := loadRepos(cmd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load repo registry: %w", err)
 	}
@@ -245,7 +247,7 @@ func resolveTools(args []string) ([]*clisurface.Tool, []cliaudit.Unresolved, err
 }
 
 func runCLISpec(cmd *cobra.Command, args []string) error {
-	tools, unresolved, err := resolveTools(args)
+	tools, unresolved, err := resolveTools(cmd, args)
 	if err != nil {
 		return err
 	}
@@ -269,7 +271,7 @@ func runCLISpec(cmd *cobra.Command, args []string) error {
 }
 
 func runCLIAudit(cmd *cobra.Command, args []string) error {
-	tools, unresolved, err := resolveTools(args)
+	tools, unresolved, err := resolveTools(cmd, args)
 	if err != nil {
 		return err
 	}

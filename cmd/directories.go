@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"github.com/spf13/cobra"
+
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/runner"
 )
@@ -32,14 +34,14 @@ not-applicable rather than being hidden, so a row says why it found nothing.
 and a directory has neither.
 
 Exit codes: 0 converged, 1 changes pending (plan only), 3 something is wrong.`,
-	resolve: func(names []string) ([]config.Repo, *config.SyncerConfig, error) {
+	resolve: func(cmd *cobra.Command, names []string) ([]config.Repo, *config.SyncerConfig, error) {
 		// Both files: the declarations come from forge's config, and the dies
 		// still take the registry for the fleet-level facts they read from it.
 		cfg, err := config.Load()
 		if err != nil {
 			return nil, nil, err
 		}
-		registry, err := loadRepos()
+		registry, err := loadRepos(cmd)
 		if err != nil {
 			return nil, nil, err
 		}

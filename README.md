@@ -39,16 +39,14 @@ Downloads and installs the latest release binary from GitHub. No Go toolchain re
 
 ### Repo Registry
 
-`$XDG_DATA_HOME/forge/repos.json` — defines the repos forge operates on. Override
-a single run with `-c <path>`.
+`$XDG_DATA_HOME/forge/repos.json` — defines the repos forge operates on. A
+registry maintained elsewhere is named by `repos_registry` in forge's own
+config, and `forge config show` prints which layer answered.
 
-Forge reads the registry from its own data directory and does not know where the
-file is really maintained; point it at a shared registry with a symlink:
-
-```bash
-mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/forge"
-ln -sfn /path/to/repos.json "${XDG_DATA_HOME:-$HOME/.local/share}/forge/repos.json"
-```
+Override a single run with `-c <path>`. It is declared on the commands that read
+the registry and on no others, so `forge repos`, `forge directories`, `forge cli`
+and `forge config` take it anywhere under them, and `forge test` takes it
+directly. `forge version` and `forge dies` do not, because neither opens one.
 
 Dies are Go, compiled into the binary, so a development build is the current dies — there is no filesystem mode to switch into.
 

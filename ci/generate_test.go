@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/toolchain"
 )
 
@@ -281,6 +282,71 @@ func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 	}
 	if checkout >= section || section >= generated {
 		t.Error("before: section must sit between checkout and the generated block")
+	}
+}
+
+// An after:<stack> section on any job but the last one is where the extractor's
+// terminator is load-bearing.
+//
+// The # generated: marker sits inside the job, below the checkout, so a section
+// reaching for the next marker alone would take the following job's key and
+// steps as its own content. Regeneration writes both back and the workflow
+// carries the key twice — which actionlint catches, but only in what
+// regeneration produces, so the file on disk stays green and the fault lands on
+// whoever syncs next.
+func TestAnAfterSectionStopsAtTheNextJob(t *testing.T) {
+	custom := map[string]string{
+		"after:python": "      # > custom:after:python - extra\n" +
+			"      - run: echo extra",
+	}
+
+	first, err := Generate(os.DirFS("blocks"), testManifest(t),
+		comps("python", ".", "go", "api"), custom, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	extracted := precommit.ExtractCustomSections(first)
+	if strings.Contains(extracted["after:python"], "go-api:") {
+		t.Errorf("after:python swallowed the next job:\n%s", extracted["after:python"])
+	}
+
+	second, err := Generate(os.DirFS("blocks"), testManifest(t),
+		comps("python", ".", "go", "api"), extracted, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("regenerate: %v", err)
+	}
+	if second != first {
+		t.Error("regenerating from the extracted sections must be a no-op")
+	}
+	if count := strings.Count(second, "\n  go-api:\n"); count != 1 {
+		t.Errorf("go-api job key appears %d times, want 1:\n%s", count, second)
+	}
+}
+
+// after:all is the section a job key does not terminate. It is appended below
+// the last job rather than among a job's steps, so a whole hand-written job is
+// its content — a repo whose deploy suite lives in one carries it that way.
+func TestAnAfterAllSectionKeepsItsWholeJob(t *testing.T) {
+	custom := map[string]string{
+		"after:all": "# > custom:after:all - the deploy suite\n" +
+			"  pyinfra:\n" +
+			"    runs-on: ubuntu-latest\n" +
+			"    steps:\n" +
+			"      - run: pytest",
+	}
+
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), custom, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	extracted := precommit.ExtractCustomSections(workflow)
+	if !strings.Contains(extracted["after:all"], "pytest") {
+		t.Errorf("after:all lost its job body:\n%q", extracted["after:all"])
+	}
+	if extracted["after:all"] != custom["after:all"] {
+		t.Errorf("after:all = %q, want it back unchanged", extracted["after:all"])
 	}
 }
 
