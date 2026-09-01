@@ -63,7 +63,7 @@ could not happen.`,
 }
 
 func runDirectories(n *reconcileNoun, cmd *cobra.Command, rebuild bool) error {
-	selected, _, err := n.selected()
+	selected, _, err := n.selected(cmd)
 	if err != nil {
 		return err
 	}

@@ -36,7 +36,11 @@ type reconcileNoun struct {
 	long      string
 	// resolve answers which targets this noun addresses, and the registry the
 	// dies read fleet-level facts from.
-	resolve func(names []string) ([]config.Repo, *config.SyncerConfig, error)
+	//
+	// It takes the command because the registry is read through it: loadRepos
+	// refuses one that has not declared -c, which is what keeps the flag on the
+	// commands that honor it and off the ones that do not.
+	resolve func(cmd *cobra.Command, names []string) ([]config.Repo, *config.SyncerConfig, error)
 	// only are verbs this noun has and the other does not. The asymmetry is
 	// deliberate and small: exec sweeps repos, run executes a directory's hooks
 	// because nothing else will. Declared here so both stay visible in one place
@@ -60,6 +64,9 @@ func (n *reconcileNoun) command() *cobra.Command {
 		Long:  n.long,
 		RunE:  requireSubcommand,
 	}
+	// Every verb under either noun resolves its targets from the registry, so
+	// the flag belongs to the namespace rather than being repeated on each.
+	addRegistryFlag(root)
 
 	check := &cobra.Command{
 		Use:               "check [die]",
@@ -130,8 +137,8 @@ This is what --dry-run used to answer on a die run. It is its own question —
 // an empty selection becomes an error. Separate from targets because the verbs
 // that need no die — `run` — must answer a typo the same way the ones that do
 // already answer it, and they would otherwise pay for assets they never read.
-func (n *reconcileNoun) selected() ([]config.Repo, *config.SyncerConfig, error) {
-	selected, cfg, err := n.resolve(n.filterNames)
+func (n *reconcileNoun) selected(cmd *cobra.Command) ([]config.Repo, *config.SyncerConfig, error) {
+	selected, cfg, err := n.resolve(cmd, n.filterNames)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -149,8 +156,8 @@ func (n *reconcileNoun) selected() ([]config.Repo, *config.SyncerConfig, error) 
 }
 
 // targets resolves what to walk, with the assets every die may need.
-func (n *reconcileNoun) targets() ([]reconcile.Target, error) {
-	selected, cfg, err := n.selected()
+func (n *reconcileNoun) targets(cmd *cobra.Command) ([]reconcile.Target, error) {
+	selected, cfg, err := n.selected(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +179,7 @@ func (n *reconcileNoun) runReconcile(cmd *cobra.Command, args []string, lens rec
 	if err != nil {
 		return err
 	}
-	walked, err := n.targets()
+	walked, err := n.targets(cmd)
 	if err != nil {
 		return err
 	}
@@ -203,7 +210,7 @@ func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	walked, err := n.targets()
+	walked, err := n.targets(cmd)
 	if err != nil {
 		return err
 	}
@@ -304,7 +311,7 @@ func (n *reconcileNoun) confirmApply(cmd *cobra.Command, args []string, planned 
 }
 
 func (n *reconcileNoun) runList(cmd *cobra.Command, _ []string) error {
-	selected, _, err := n.resolve(n.filterNames)
+	selected, _, err := n.resolve(cmd, n.filterNames)
 	if err != nil {
 		return err
 	}

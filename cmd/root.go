@@ -92,13 +92,44 @@ func Execute() {
 	}
 }
 
-func init() {
-	rootCmd.PersistentFlags().StringVarP(&cfgPath, "config", "c", "", "path to repos file (overrides forge config)")
+// registryFlag is the flag a command declares to accept a registry path.
+const registryFlag = "config"
+
+// addRegistryFlag declares -c on a command whose subtree opens the repo
+// registry, and only on those.
+//
+// Cobra prints a root persistent flag under "Global Flags" on every subcommand,
+// so declaring it once at the top puts it on `forge version` and `forge dies
+// list`, neither of which ever opens a registry. A help screen naming a flag
+// its command ignores reads as a fact and is wrong, and nothing distinguishes
+// it from the flags that work.
+//
+// Persistent rather than local, because the namespaces that take it are the
+// ones every command under them reads it: repos and directories resolve their
+// targets from the registry, cli discovers its tools there, and config show
+// reports which registry was resolved. `forge test` has no subtree, so its own
+// persistent flag is a local one.
+func addRegistryFlag(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVarP(&cfgPath, registryFlag, "c", "",
+		"path to repos file (overrides forge config)")
 }
 
-// loadRepos resolves the repo registry, honoring the -c override when set and
-// otherwise reading the path from the forge config (with the syncer fallback).
-func loadRepos() (*config.SyncerConfig, error) {
+// loadRepos resolves the repo registry for one command, honoring the -c
+// override when set and otherwise reading the path from the forge config (with
+// the syncer fallback).
+//
+// It takes the command so the flag and the read cannot come apart: a command
+// that opens the registry without declaring -c would silently ignore a path
+// someone typed, and this names it instead. That is the half a list of carriers
+// cannot see, since such a command is absent from both sides of the comparison.
+func loadRepos(cmd *cobra.Command) (*config.SyncerConfig, error) {
+	// LocalFlags covers a command's own declaration, persistent or not;
+	// InheritedFlags covers the namespace form. Together they are what the help
+	// screen shows, which is the claim being kept honest.
+	if cmd.LocalFlags().Lookup(registryFlag) == nil && cmd.InheritedFlags().Lookup(registryFlag) == nil {
+		return nil, fmt.Errorf("%s reads the repo registry without declaring -c, "+
+			"so a path passed there would be ignored", cmd.CommandPath())
+	}
 	if cfgPath != "" {
 		return config.LoadSyncerConfig(cfgPath)
 	}

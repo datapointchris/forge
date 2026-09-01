@@ -38,8 +38,8 @@ person. One verb answering both means one exit code carrying both.
 Naming a die selects it; omitting one selects them all. -F narrows the repos.
 
 Exit codes: 0 converged, 1 changes pending (plan only), 3 something is wrong.`,
-	resolve: func(names []string) ([]config.Repo, *config.SyncerConfig, error) {
-		cfg, err := loadRepos()
+	resolve: func(cmd *cobra.Command, names []string) ([]config.Repo, *config.SyncerConfig, error) {
+		cfg, err := loadRepos(cmd)
 		if err != nil {
 			return nil, nil, err
 		}

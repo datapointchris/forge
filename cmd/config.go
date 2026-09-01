@@ -49,6 +49,10 @@ and reads identically to the one you meant.`,
 
 func init() {
 	configShowCmd.Flags().BoolVar(&configJSON, "json", false, "machine-readable output")
+	// show reads the flag rather than the registry: naming a path is how you
+	// ask what forge resolves when told one, which is the question this command
+	// exists to answer.
+	addRegistryFlag(configCmd)
 	configCmd.AddCommand(configShowCmd)
 	rootCmd.AddCommand(configCmd)
 }

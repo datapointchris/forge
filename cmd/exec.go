@@ -9,7 +9,6 @@ import (
 	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/runner"
 )
 
@@ -65,15 +64,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	var (
-		cfg *config.SyncerConfig
-		err error
-	)
-	if cfgPath != "" {
-		cfg, err = config.LoadSyncerConfig(cfgPath)
-	} else {
-		cfg, err = config.LoadRepos()
-	}
+	cfg, err := loadRepos(cmd)
 	if err != nil {
 		return err
 	}
