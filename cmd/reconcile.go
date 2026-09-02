@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/datapointchris/goselfupdate/cobracmd"
+	"github.com/datapointchris/goclikit"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
@@ -147,10 +147,10 @@ func (n *reconcileNoun) selected(cmd *cobra.Command) ([]config.Repo, *config.Syn
 		// is the one failure worth retrying with different arguments, and it is
 		// almost always a typo or a shell that did not split the list.
 		if len(n.filterNames) > 0 {
-			return nil, nil, cobracmd.UsageError(fmt.Errorf("no %s matched: %s",
+			return nil, nil, goclikit.UsageError(fmt.Errorf("no %s matched: %s",
 				n.many, strings.Join(n.filterNames, ", ")))
 		}
-		return nil, nil, cobracmd.UsageError(fmt.Errorf("no %s are declared", n.many))
+		return nil, nil, goclikit.UsageError(fmt.Errorf("no %s are declared", n.many))
 	}
 	return selected, cfg, nil
 }
@@ -292,7 +292,7 @@ func (n *reconcileNoun) confirmApply(cmd *cobra.Command, args []string, planned 
 	// Never block on a closed stdin: a prompt waiting on one deadlocks the
 	// caller with no output and no exit code.
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
-		return cobracmd.UsageError(fmt.Errorf("%s pending; pass --yes to apply non-interactively", scale))
+		return goclikit.UsageError(fmt.Errorf("%s pending; pass --yes to apply non-interactively", scale))
 	}
 
 	row(cmd.ErrOrStderr(), "\napply %s? [y/N] ", scale)
@@ -305,7 +305,7 @@ func (n *reconcileNoun) confirmApply(cmd *cobra.Command, args []string, planned 
 		// answer and prints nothing back leaves the operator unsure whether it
 		// was read, which is the state a confirmation exists to remove.
 		row(cmd.ErrOrStderr(), "canceled — nothing was applied\n")
-		return cobracmd.ErrReported
+		return goclikit.ErrReported
 	}
 	return nil
 }
@@ -340,7 +340,7 @@ func atMostOneDie(cmd *cobra.Command, args []string) error {
 	if len(args) <= 1 {
 		return nil
 	}
-	return cobracmd.UsageError(fmt.Errorf(
+	return goclikit.UsageError(fmt.Errorf(
 		"%s takes one die name or none, received %d: %s\n"+
 			"Name one die to run that one, or omit it to run them all — `forge dies list` names them",
 		cmd.CommandPath(), len(args), strings.Join(args, ", ")))

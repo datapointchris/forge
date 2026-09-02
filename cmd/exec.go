@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/datapointchris/goselfupdate/cobracmd"
+	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/runner"
@@ -44,10 +44,10 @@ func init() {
 
 func runExec(cmd *cobra.Command, args []string) error {
 	if scriptFile == "" && len(args) == 0 {
-		return cobracmd.UsageError(fmt.Errorf("provide a command after -- or use -f to specify a script file"))
+		return goclikit.UsageError(fmt.Errorf("provide a command after -- or use -f to specify a script file"))
 	}
 	if scriptFile != "" && len(args) > 0 {
-		return cobracmd.UsageError(fmt.Errorf("cannot use both -f and inline command"))
+		return goclikit.UsageError(fmt.Errorf("cannot use both -f and inline command"))
 	}
 
 	if scriptFile != "" {

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/datapointchris/forge/suites"
-	"github.com/datapointchris/goselfupdate/cobracmd"
+	"github.com/datapointchris/goclikit"
 )
 
 func results(outcomes ...suites.Outcome) []suites.Result {
@@ -56,7 +56,7 @@ func TestOnlyAFailureFailsTheRun(t *testing.T) {
 			if !tc.fails && err != nil {
 				t.Errorf("expected the run to pass, got %v", err)
 			}
-			if tc.fails && err != cobracmd.ErrReported {
+			if tc.fails && err != goclikit.ErrReported {
 				t.Errorf("a failure is already printed, so it must be ErrReported; got %v", err)
 			}
 		})

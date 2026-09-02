@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"github.com/datapointchris/goclikit"
 	"github.com/datapointchris/goselfupdate"
-	"github.com/datapointchris/goselfupdate/cobracmd"
 )
 
 // updateConfig describes where forge's releases come from. Shared by the
@@ -18,5 +18,5 @@ func updateConfig() goselfupdate.Config {
 }
 
 func init() {
-	rootCmd.AddCommand(cobracmd.New(updateConfig()))
+	rootCmd.AddCommand(goclikit.UpdateCommand(updateConfig()))
 }

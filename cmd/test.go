@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/datapointchris/goselfupdate/cobracmd"
+	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/runner"
@@ -93,7 +93,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 func verdict(results []suites.Result) error {
 	for _, result := range results {
 		if result.Outcome == suites.Failed {
-			return cobracmd.ErrReported
+			return goclikit.ErrReported
 		}
 	}
 	return nil

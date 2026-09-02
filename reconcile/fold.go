@@ -136,7 +136,7 @@ const (
 	// -detailed-exitcode`. Only plan returns it; drift is not check's subject.
 	ExitDrift ExitCode = 1
 	// ExitUsage means the command line was wrong, the one failure worth
-	// retrying with different arguments. Returned by cobracmd, never here.
+	// retrying with different arguments. Returned by goclikit, never here.
 	ExitUsage ExitCode = 2
 	// ExitIssue means something is wrong. Three exists so that check cannot
 	// report "a die crashed" as "no drift".

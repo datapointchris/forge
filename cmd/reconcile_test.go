@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/datapointchris/goselfupdate/cobracmd"
+	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -93,7 +93,7 @@ func TestTooManyDieNamesNamesBothWaysOut(t *testing.T) {
 				if err == nil {
 					t.Fatal("two die names were accepted")
 				}
-				if !errors.Is(err, cobracmd.ErrUsage) {
+				if !errors.Is(err, goclikit.ErrUsage) {
 					t.Errorf("not a usage error, so it exits 1 rather than 2: %v", err)
 				}
 				for _, want := range []string{"precommit", "ci", "omit it", "forge dies list"} {

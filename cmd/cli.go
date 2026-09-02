@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/datapointchris/clisurface"
-	"github.com/datapointchris/goselfupdate/cobracmd"
+	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/cliaudit"
@@ -187,7 +187,7 @@ func runCLIDiff(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		if len(versions) == 0 {
-			return cobracmd.UsageError(errors.New("no saved surface to compare against: run `forge cli snapshot` first"))
+			return goclikit.UsageError(errors.New("no saved surface to compare against: run `forge cli snapshot` first"))
 		}
 		from = strconv.Itoa(versions[len(versions)-1])
 	}

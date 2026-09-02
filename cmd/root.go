@@ -7,8 +7,8 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/datapointchris/goclikit"
 	"github.com/datapointchris/goselfupdate/autoupdate"
-	"github.com/datapointchris/goselfupdate/cobracmd"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/config"
@@ -33,7 +33,7 @@ func requireSubcommand(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
 	}
-	return cobracmd.UsageError(fmt.Errorf("unknown command %q for %q\nRun '%s --help' for usage",
+	return goclikit.UsageError(fmt.Errorf("unknown command %q for %q\nRun '%s --help' for usage",
 		args[0], cmd.CommandPath(), cmd.CommandPath()))
 }
 
@@ -69,7 +69,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	autoConfig := autoupdate.Config{Update: updateConfig()}
-	if err := cobracmd.Execute(context.Background(), rootCmd, autoConfig); err != nil {
+	if err := goclikit.Execute(context.Background(), rootCmd, autoConfig); err != nil {
 		// A reconcile verb has already printed its rows, so what is left is the
 		// number, not a message. Checked before the printer below: `plan` that
 		// found drift exits 1 and prints nothing extra, because pending changes
@@ -80,12 +80,12 @@ func Execute() {
 		}
 		// The update command writes its own ✗ line; printing here too would
 		// report the same failure twice.
-		if !errors.Is(err, cobracmd.ErrReported) {
+		if !errors.Is(err, goclikit.ErrReported) {
 			fmt.Fprintln(os.Stderr, err)
 		}
 		// 2 says the command line was wrong rather than the run, which is the
 		// only failure a caller should retry with different arguments.
-		if errors.Is(err, cobracmd.ErrUsage) {
+		if errors.Is(err, goclikit.ErrUsage) {
 			os.Exit(2)
 		}
 		os.Exit(1)
