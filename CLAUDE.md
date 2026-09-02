@@ -277,8 +277,7 @@ one `go.mod` arrives after the first settled it and reports `Skipped`.
 
 **The `pyproject` die is separate from `precommit`, and stays that way.** Adopting one better setting
 through the full sync means also fanning out whatever the declaration currently pins, to every Python
-repo at once. Coupling a cheap change to an expensive one is why the cheap change stopped being made
-and the settings drifted instead.
+repo at once. Coupling a cheap change to an expensive one is what stops the cheap change being made.
 
 Its `Observe` is the merge script's own `--check`, whose unified diff becomes the `Change`'s `Patch` —
 so `forge repos plan pyproject` shows a template edit as it will land across every Python repo, and is

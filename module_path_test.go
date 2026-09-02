@@ -67,7 +67,7 @@ func TestLatestReleaseMajor(t *testing.T) {
 }
 
 // The failure this exists to catch, stated as a case: a v5 tag against a /v4
-// go.mod is exactly what shipped four times.
+// go.mod.
 func TestMismatchIsDetected(t *testing.T) {
 	declared := moduleMajor("module github.com/datapointchris/forge/v4\n")
 	released := latestReleaseMajor([]string{"v5.0.0"})

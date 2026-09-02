@@ -117,8 +117,8 @@ func writeResults(cmd *cobra.Command, results []suites.Result, elapsed float64) 
 		_, _ = fmt.Fprintf(out, "%-9s %-28s %-7s %6.1fs%s\n", result.Outcome, where, result.Stack, result.Seconds, note)
 	}
 
-	// Both numbers, because they stopped being the same once repos ran together
-	// and the sum alone would read as the run having taken far longer than it did.
+	// Both numbers, because repos run concurrently and the sum alone would read
+	// as the run having taken far longer than it did.
 	_, _ = fmt.Fprintf(out, "\n%d passed  %d failed  %d unknown  %d no suite   %.1fs elapsed, %.1fs of suite time\n",
 		counts[suites.Passed], counts[suites.Failed], counts[suites.Unknown], counts[suites.NoSuite], elapsed, seconds)
 
