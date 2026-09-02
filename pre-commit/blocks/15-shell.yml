@@ -2,8 +2,8 @@
   #
   # exclude_types: [zsh] on both tools. Neither supports zsh, and neither says
   # so — shellcheck lints a .zshrc as bash and reports nothing, while shfmt
-  # reformats it under bash rules: on dotfiles it rewrote `>&2 }` to `>&2; }`,
-  # correct for bash and unnecessary in zsh. Both were silently out of contract,
+  # reformats it under bash rules, rewriting `>&2 }` to `>&2; }` — correct for
+  # bash and unnecessary in zsh. Both were silently out of contract,
   # which is worse than either erroring. identify already tags these files zsh,
   # so this is the native exclusion rather than a path regex that would have to
   # enumerate .zshrc, .zprofile, .zlogin and the rest.
@@ -31,9 +31,9 @@
   #
   # The guard distinguishes "this repo has no tests" from "this repo has tests
   # and bats is missing". Only the first is allowed to pass: a bare `bats
-  # tests/` under language: system would be the second hook in this portfolio to
-  # report success because its tool was absent, which is how font accumulated
-  # seven shellcheck findings behind a green hook.
+  # tests/` under language: system would be the second hook here to report
+  # success because its tool was absent. The first hid seven shellcheck
+  # findings behind a green run.
   - repo: local
     hooks:
       - id: bats

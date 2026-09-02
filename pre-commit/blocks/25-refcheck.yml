@@ -11,8 +11,8 @@
   # is itself a hit for it, in every repo this block is deployed to.
   #
   # Generic rather than shell-gated, because a pattern is language-agnostic:
-  # the hits landed in Go, Vue and Python repos as readily as in dotfiles, in
-  # YAML and prose as readily as in scripts. The compiled languages catch their
+  # the hits land in Go, Vue and Python repos alike, in YAML and prose as
+  # readily as in scripts. The compiled languages catch their
   # own broken *imports*, which is a different question from what a doc, a
   # Dockerfile or a shell wrapper still says.
   #

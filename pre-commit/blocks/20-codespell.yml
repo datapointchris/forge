@@ -3,8 +3,8 @@
     rev: v2.4.1
     hooks:
       # Lock files are generated and mostly integrity hashes, so a base64
-      # fragment reads as a typo — two of timeline's package-lock.json hashes
-      # each contained a two-letter sequence codespell corrects. Nobody writes
+      # fragment reads as a typo — a package-lock.json hash can contain a
+      # two-letter sequence codespell corrects. Nobody writes
       # prose in them and nobody would fix a hit, since the next install would
       # put it back.
       - id: codespell

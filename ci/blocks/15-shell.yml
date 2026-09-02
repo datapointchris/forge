@@ -48,7 +48,7 @@
       #
       # The zsh filter is not redundant with that. shfmt has no zsh support but
       # -f lists .zsh anyway, so CI formatted a file the hook excludes via
-      # exclude_types: [zsh] — dotfiles' prompt.zsh passed every hook and failed
+      # exclude_types: [zsh]. A .zsh file then passed every hook and failed
       # here. The two sides have to name the same set or a repo cannot be green
       # in both. shellcheck's scan above needs no such filter: it matches on a
       # bash or sh shebang, which no zsh file carries.
@@ -91,10 +91,10 @@
       # stands.
       #
       # Discovery stays flat, and says so when it finds a nested layout it will
-      # not run. Recursing was tried: dotfiles keeps every suite in a
-      # subdirectory of tests/, so `tests/*.bats` matched nothing and the step
-      # reported green having run nothing. But `bats -r` then swept in that
-      # repo's integration tier, which wants Docker images and live network and
+      # not run. Recursing was tried: where every suite sits in a subdirectory
+      # of tests/, `tests/*.bats` matches nothing and the step reports green
+      # having run nothing. But `bats -r` then sweeps in the integration tier
+      # alongside the unit one, which wants Docker images and live network and
       # fails on a bare runner.
       #
       # A generic block cannot tell a unit suite from an integration one — only

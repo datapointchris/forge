@@ -3,11 +3,11 @@
 # The vue block runs `cd {{dir}} && npx prettier --write .` with
 # pass_filenames: false, so `files:` decides whether the hook runs, not what it
 # touches — prettier formats the whole of {{dir}}. Where a repo keeps its Vue
-# app in a subdirectory that is harmless, but budget's component sits at the
-# repo root, so prettier reindented every `# generated:` marker in
-# .pre-commit-config.yaml and requoted node-version in the CI workflow. Forge
-# then rewrote them back on the next sync. Two writers on one file have no
-# fixed point, and the repo drifted on every run of either tool.
+# app in a subdirectory that is harmless. Where the component sits at the repo
+# root, prettier reaches the generated files: it reindented every `# generated:`
+# marker in .pre-commit-config.yaml and requoted node-version in the CI
+# workflow, and forge rewrote them back on the next sync. Two writers on one
+# file have no fixed point, and the repo drifts on every run of either tool.
 #
 # Ownership decides, not formatting preference: these files are generated, and
 # the generator is the only thing entitled to their shape.
