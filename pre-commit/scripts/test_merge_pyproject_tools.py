@@ -160,9 +160,10 @@ def test_retracts_a_key_dropped_from_the_standard():
 def test_retraction_is_scoped_to_what_forge_recorded():
     """The same key survives when the record does not claim it.
 
-    This is the whole guarantee. A project's own bugbear exemptions look exactly
-    like the ones the template used to inject; only the record distinguishes
-    a key forge wrote from one the project added.
+    This is the whole guarantee. Nothing in a key's shape says who wrote it.
+    A project's own bugbear exemptions read exactly like template output, so
+    the record is the only thing separating a key forge wrote from one the
+    project added.
     """
     target = tomlkit.parse(
         '[ruff.lint.flake8-bugbear]\nextend-immutable-calls = ["fastapi.Depends"]\n'
