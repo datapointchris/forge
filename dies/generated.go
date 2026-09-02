@@ -1,7 +1,6 @@
 package dies
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -113,57 +112,6 @@ func removeGenerated(root string, file generatedFile) error {
 		return err
 	}
 	return nil
-}
-
-// unifiedDiff renders the change to a file the way `diff -u` would.
-//
-// Hand-rolled rather than shelled out to diff: the content is already in
-// memory, and writing two temp files per file per repo to read a diff back is
-// a lot of syscalls for a plan that visits fifty repos.
-func unifiedDiff(name, have, want string) string {
-	if have == want {
-		return ""
-	}
-
-	from := splitKeepingEmpty(have)
-	to := splitKeepingEmpty(want)
-
-	var out strings.Builder
-	fmt.Fprintf(&out, "--- a/%s\n+++ b/%s\n", name, name)
-
-	// Trim the common head and tail so the hunk is the change and not the file.
-	// A generated config is mostly identical between versions, and printing all
-	// two hundred lines for a one-line rev bump is what makes a plan unreadable.
-	head := 0
-	for head < len(from) && head < len(to) && from[head] == to[head] {
-		head++
-	}
-	tail := 0
-	for tail < len(from)-head && tail < len(to)-head &&
-		from[len(from)-1-tail] == to[len(to)-1-tail] {
-		tail++
-	}
-
-	const context = 2
-	start := max(head-context, 0)
-	fromEnd := min(len(from)-tail+context, len(from))
-	toEnd := min(len(to)-tail+context, len(to))
-
-	fmt.Fprintf(&out, "@@ -%d,%d +%d,%d @@\n", start+1, fromEnd-start, start+1, toEnd-start)
-	for _, line := range from[start:max(len(from)-tail, start)] {
-		fmt.Fprintf(&out, "-%s\n", line)
-	}
-	for _, line := range to[start:max(len(to)-tail, start)] {
-		fmt.Fprintf(&out, "+%s\n", line)
-	}
-	return out.String()
-}
-
-func splitKeepingEmpty(text string) []string {
-	if text == "" {
-		return nil
-	}
-	return strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 }
 
 // handWritten reports whether a file exists without the generated stamp, which

@@ -199,20 +199,6 @@ func TestUnexpandedPlaceholderIgnoresActionsSyntax(t *testing.T) {
 	}
 }
 
-func TestUnifiedDiffShowsOnlyTheChangedHunk(t *testing.T) {
-	have := strings.Repeat("same\n", 50) + "old\n" + strings.Repeat("same\n", 50)
-	want := strings.Repeat("same\n", 50) + "new\n" + strings.Repeat("same\n", 50)
-
-	patch := unifiedDiff(".pre-commit-config.yaml", have, want)
-
-	if !strings.Contains(patch, "-old") || !strings.Contains(patch, "+new") {
-		t.Errorf("the change is missing from the diff:\n%s", patch)
-	}
-	if lineCount := strings.Count(patch, "\n"); lineCount > 12 {
-		t.Errorf("the diff printed %d lines for a one-line change:\n%s", lineCount, patch)
-	}
-}
-
 func TestPreCommitPerformRefusesAnItemNoLongerInTheStandard(t *testing.T) {
 	target := fixture(t, stacks("go"), nil)
 
