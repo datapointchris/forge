@@ -8,10 +8,9 @@ import (
 
 // lineFile is a text file read as the lines it declares.
 //
-// Shared by the append-only dies, which is a real shared mechanism rather than
-// incidental similarity: .gitignore and .markdownlintignore are both files
-// whose contents are legitimately per-repo, so neither can be deployed whole
-// and both assert that a baseline is PRESENT and leave everything else alone.
+// A .gitignore's contents are legitimately per-repo, so it cannot be deployed
+// whole the way .editorconfig is. Reading it as a set of lines is what lets the
+// die assert that a baseline is PRESENT and leave everything else alone.
 type lineFile struct {
 	exists bool
 	lines  []string
@@ -47,27 +46,19 @@ func (f lineFile) count(entry string) int {
 	return n
 }
 
-// appendBlock adds lines to a file, creating it when absent. A separated block
-// gets a blank line above it, which is what makes a commented entry readable.
+// appendBlock adds lines to a file, creating it when absent.
 //
 // The newline guard is not cosmetic: without it the first entry lands glued to
-// whatever the last line was, silently changing that line's meaning. Separation
-// is skipped for a file that did not exist, or the created file opens with a
-// blank line.
-func appendBlock(path string, block []string, separate bool) error {
+// whatever the last line was, silently changing that line's meaning.
+func appendBlock(path string, block []string) error {
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
 	var out strings.Builder
-	if len(existing) > 0 {
-		if !strings.HasSuffix(string(existing), "\n") {
-			out.WriteString("\n")
-		}
-		if separate {
-			out.WriteString("\n")
-		}
+	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
+		out.WriteString("\n")
 	}
 	for _, line := range block {
 		out.WriteString(line + "\n")

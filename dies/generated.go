@@ -17,7 +17,7 @@ import (
 const toolchainStamp = "# forge-toolchain:"
 
 // generatedFile is one file the standard owns whole, as opposed to the
-// append-only files gitignore and markdownlintignore assert entries in.
+// append-only .gitignore the gitignore die asserts entries in.
 type generatedFile struct {
 	// rel is the repo-relative path.
 	rel string

@@ -110,13 +110,10 @@ func TestEveryChangeIsClassified(t *testing.T) {
 // Each of these asserts something only a git repo can have. ci is the one that
 // would do damage rather than waste a subprocess: a directory declaring python
 // and shell would otherwise grow a .github/workflows/validate.yml that nothing
-// will ever run. markdownlintignore is here for a subtler reason — its only
-// entry protects a file semantic-release regenerates, and a target with no
-// commits has no release to be seeded before.
+// will ever run.
 func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
 	gitOnly := []string{
 		"ci", "planning", "branch-protection", "default-branch", "merge-settings",
-		"markdownlintignore",
 	}
 
 	for _, name := range gitOnly {

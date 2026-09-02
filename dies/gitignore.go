@@ -177,7 +177,7 @@ func (g Gitignore) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil
 	}
 
-	if err := appendBlock(t.Path(".gitignore"), []string{change.Item}, false); err != nil {
+	if err := appendBlock(t.Path(".gitignore"), []string{change.Item}); err != nil {
 		return reconcile.Outcome{}, err
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "added"}, nil
