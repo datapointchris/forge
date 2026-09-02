@@ -1,3 +1,5 @@
+# forge-managed
+#
 # Files forge generates. Prettier must not rewrite them.
 #
 # The vue block runs `cd {{dir}} && npx prettier --write .` with
@@ -11,6 +13,11 @@
 #
 # Ownership decides, not formatting preference: these files are generated, and
 # the generator is the only thing entitled to their shape.
+#
+# The entries name the spellings on disk across the portfolio. A release that
+# changes them changes this file's settings, and a deployed copy whose settings
+# do not match the template is one forge declines to adopt — so an entry swap
+# lands only once every copy carries the marker above.
 .pre-commit-config.yaml
 .github/workflows/validate.yml
 .markdownlint.json

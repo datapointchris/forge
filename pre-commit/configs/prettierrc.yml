@@ -1,0 +1,25 @@
+# forge-managed
+#
+# Deployed as .prettierrc.yaml.
+#
+# YAML rather than JSON so the file can carry the marker on its first line. JSON
+# has no comment syntax, and an unknown key is not a substitute here: prettier
+# honours the rest of the config but prints `Ignored unknown option` to stderr on
+# every run, in every repo that has one.
+#
+# prettier prefers .prettierrc.json when both are present, so a repo still
+# holding the JSON spelling has it removed in the same run that writes this one.
+
+printWidth: 140
+tabWidth: 2
+useTabs: false
+semi: false
+singleQuote: true
+trailingComma: all
+bracketSpacing: true
+bracketSameLine: true
+arrowParens: always
+endOfLine: lf
+htmlWhitespaceSensitivity: ignore
+singleAttributePerLine: true
+vueIndentScriptAndStyle: false
