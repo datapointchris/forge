@@ -52,9 +52,15 @@ import sys
 from pathlib import Path
 
 import tomlkit
+from tomlkit.items import Item
 
 MANAGED_TABLE = 'forge'
 MANAGED_KEY = 'managed'
+
+# Folding UNREADABLE into MISSING lets adoption write a table over the project.
+MISSING = 'missing'
+PRESENT = 'present'
+UNREADABLE = 'unreadable'
 
 MANAGED_COMMENT_LINES = [
     'Keys the shared toolchain standard owns, written by its generator.',
@@ -105,31 +111,41 @@ def write_managed_paths(tool, paths):
 
 
 def read_path(tool, path):
-    """The value at a leaf path, and whether the project set it at all.
+    """The value at a leaf path, and what kind of answer that is.
 
-    Absence and a falsy value are different answers here, so the caller gets a
-    flag rather than having to read `None` as "not there" — a key legitimately
-    set to `false` is exactly the case this whole distinction exists for.
+    Three answers rather than two, because absence and illegibility are
+    different and only one of them is safe to write over:
+
+        MISSING     nothing sets it — adoption may write
+        PRESENT     the project sets it — the value decides what happens
+        UNREADABLE  a segment on the way is not a table, so the leaf cannot be
+                    reached; the returned value is whatever blocks it
+
+    A falsy value is PRESENT, which is why the answer is a word rather than a
+    `None` the caller has to interpret. A key set to `false` is exactly the
+    case this distinction exists for.
     """
     table = tool
     for key in path[:-1]:
-        if key not in table or not isinstance(table[key], dict):
-            return None, False
+        if key not in table:
+            return None, MISSING
+        if not isinstance(table[key], dict):
+            return table[key], UNREADABLE
         table = table[key]
     if path[-1] not in table:
-        return None, False
-    return table[path[-1]], True
+        return None, MISSING
+    return table[path[-1]], PRESENT
 
 
 def plain(value):
     """A tomlkit item as the Python value it wraps.
 
-    Comparison has to go through this. tomlkit's boolean is not a `bool`
-    subclass — Python forbids subclassing it — so a wrapped `False` compares
-    unequal to `False` and every boolean key would read as a conflict.
+    Most comparisons would survive without this: an Array is a `list` subclass,
+    a String is a `str` subclass, and `Container.__getitem__` hands back a bare
+    `bool` for a boolean rather than an item at all. Normalising anyway keeps
+    the comparison from depending on which of those tomlkit chooses to do.
     """
-    unwrap = getattr(value, 'unwrap', None)
-    return unwrap() if callable(unwrap) else value
+    return value.unwrap() if isinstance(value, Item) else value
 
 
 def set_path(tool, path, value):
@@ -168,15 +184,20 @@ def apply_standard(standard_tool, target_tool):
     guarantee: a project's own keys are unreachable from here. Adoption is
     scoped the same way, so a value the project chose is unreachable too.
 
-    Each key the standard names is in one of four states:
+    Each key the standard names is in one of five states:
 
         absent from the target        adopt it, and record it
         recorded                      forge wrote it, so the template wins
         set, unrecorded, same value   record it; the file does not change
         set, unrecorded, differs      a conflict — report it, write nothing
+        unreachable                   a conflict — a segment is not a table
 
     The third state is what lets a repo converge. Agreement is not a conflict,
     and refusing to record it would leave the key outside the standard forever.
+
+    The fifth is the same guarantee reached by a different door. Reading an
+    unreachable path as absent would have adoption replace the segment that
+    blocks it, which destroys the value sitting there and reports nothing.
     """
     managed = flatten(standard_tool)
     recorded = read_managed_paths(target_tool)
@@ -190,13 +211,16 @@ def apply_standard(standard_tool, target_tool):
     adopted = {}
     conflicts = []
     for path, value in managed.items():
-        existing, present = read_path(target_tool, path)
-        if present and path not in claimed and plain(existing) != plain(value):
+        existing, answer = read_path(target_tool, path)
+        if answer == UNREADABLE:
+            conflicts.append((path, plain(existing), plain(value)))
+            continue
+        if answer == PRESENT and path not in claimed and plain(existing) != plain(value):
             conflicts.append((path, plain(existing), plain(value)))
             continue
         # Writing an equal value back would re-render the item and can move the
         # trivia attached to it, which turns an agreeing repo into a diff.
-        if not present or plain(existing) != plain(value):
+        if answer == MISSING or plain(existing) != plain(value):
             set_path(target_tool, path, value)
         adopted[path] = value
 
@@ -211,17 +235,15 @@ def format_path(path):
 def format_value(value):
     """A value spelled as TOML spells it, so a conflict reads like the file.
 
-    `False` printed as Python's `False` sends a reader looking for a line that
-    is not in their pyproject. Never truncated: a conflict on a long list is
-    where the reader most needs to see which entries differ.
+    tomlkit owns the spelling. Hand-writing it gets a string holding a quote or
+    a tab wrong, and the escaping is load-bearing twice over: the record below
+    is tab-separated and line-oriented, so a raw tab or newline reaching it
+    would split a field or a row.
+
+    Never truncated. A conflict on a long list is where a reader most needs to
+    see which entries differ.
     """
-    if isinstance(value, bool):
-        return 'true' if value else 'false'
-    if isinstance(value, str):
-        return f'"{value}"'
-    if isinstance(value, (list, tuple)):
-        return '[' + ', '.join(format_value(item) for item in value) + ']'
-    return str(value)
+    return tomlkit.item(value).as_string()
 
 
 def main(argv):

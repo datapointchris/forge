@@ -79,7 +79,12 @@ func (s pyprojectState) Summary() string {
 // The scan stops at the diff rather than filtering the whole output, because a
 // pyproject's own lines travel inside that diff and one of them could carry any
 // prefix this looks for.
-func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict, retracted []string, patch string) {
+//
+// A conflict record that does not split into three fields is an error rather
+// than a line to skip. Dropping it would leave `conflicts` empty and the die
+// would report the key converged, which turns "I could not read this" into "I
+// measured this and it was fine".
+func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict, retracted []string, patch string, err error) {
 	lines := strings.Split(out, "\n")
 	status = lines[0]
 
@@ -91,15 +96,18 @@ func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict,
 		switch {
 		case strings.HasPrefix(line, "  conflict\t"):
 			// path, project value, standard value — tab-separated so a value
-			// holding a space still arrives whole.
-			if fields := strings.Split(strings.TrimPrefix(line, "  conflict\t"), "\t"); len(fields) == 3 {
-				conflicts = append(conflicts, pyprojectConflict{path: fields[0], project: fields[1], standard: fields[2]})
+			// holding a space still arrives whole. tomlkit escapes a tab and a
+			// newline, so a rendered value cannot split a field or a row.
+			fields := strings.Split(strings.TrimPrefix(line, "  conflict\t"), "\t")
+			if len(fields) != 3 {
+				return "", nil, nil, "", fmt.Errorf("merge reported a conflict in %d fields, want 3: %q", len(fields), line)
 			}
+			conflicts = append(conflicts, pyprojectConflict{path: fields[0], project: fields[1], standard: fields[2]})
 		case strings.HasPrefix(line, "  retracted "):
 			retracted = append(retracted, strings.TrimPrefix(line, "  retracted "))
 		}
 	}
-	return status, conflicts, retracted, patch
+	return status, conflicts, retracted, patch, nil
 }
 
 func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -119,7 +127,10 @@ func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return nil, err
 	}
 
-	status, conflicts, _, patch := parseMergeOutput(out)
+	status, conflicts, _, patch, err := parseMergeOutput(out)
+	if err != nil {
+		return nil, err
+	}
 	switch status {
 	case "current":
 		return pyprojectState{applicable: true, conflicts: conflicts}, nil
@@ -174,7 +185,10 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 
-	status, conflicts, retracted, _ := parseMergeOutput(out)
+	status, conflicts, retracted, _, err := parseMergeOutput(out)
+	if err != nil {
+		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
+	}
 	switch status {
 	case "current":
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil

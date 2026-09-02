@@ -91,14 +91,32 @@ def test_adopts_a_key_the_project_already_agrees_on():
 def test_a_project_value_of_false_is_a_value_not_an_absence():
     """`false` is set, so the standard's `true` conflicts rather than adopting.
 
-    tomlkit's boolean is not a bool subclass, so an identity or a truthiness
-    test here reads every boolean key as a conflict or none of them.
+    A truthiness test in place of the presence answer reads an unset key and a
+    key set to `false` as the same thing, which is what would let the standard
+    adopt over a deliberate `false` without reporting it.
     """
     _, conflicts = sync_conflicts('[mypy]\nstrict = true\n', '[mypy]\nstrict = false\n')
     assert conflicts == [(('mypy', 'strict'), False, True)]
 
     _, agreed = sync_conflicts('[mypy]\nstrict = false\n', '[mypy]\nstrict = false\n')
     assert agreed == []
+
+
+def test_a_path_it_cannot_read_is_a_conflict_not_an_absence():
+    """A blocked segment is not the same answer as an unset key.
+
+    The standard writes `ruff.lint.select`, and the project has put a string at
+    `ruff.lint`. Reading that as absent lets adoption replace the segment, which
+    destroys the value and reports nothing — the same loss this ownership rule
+    exists to prevent, reached through a different door.
+    """
+    target, conflicts = sync_conflicts(
+        '[ruff.lint]\nselect = ["E"]\n', '[ruff]\nlint = "the project put a value here"\n'
+    )
+
+    assert conflicts == [(('ruff', 'lint', 'select'), 'the project put a value here', ['E'])]
+    assert target['ruff']['lint'] == 'the project put a value here'
+    assert read_managed_paths(target) == []
 
 
 def test_never_deletes_a_key_it_did_not_write():
@@ -287,6 +305,7 @@ if __name__ == '__main__':
     test_a_conflicted_key_stays_out_of_the_record_across_repeat_syncs()
     test_adopts_a_key_the_project_already_agrees_on()
     test_a_project_value_of_false_is_a_value_not_an_absence()
+    test_a_path_it_cannot_read_is_a_conflict_not_an_absence()
     test_never_deletes_a_key_it_did_not_write()
     test_retracts_a_key_dropped_from_the_standard()
     test_retraction_is_scoped_to_what_forge_recorded()

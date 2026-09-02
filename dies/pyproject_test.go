@@ -99,9 +99,18 @@ func TestPyprojectKeepsTheProjectsOwnSettings(t *testing.T) {
 			"[tool.ruff]\nexclude = [\"migrations\"]\n",
 	})
 
-	applyAll(t, target, Pyproject{})
+	outcomes := applyAll(t, target, Pyproject{})
+	if len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
+		t.Fatalf("outcomes = %v, want one done", outcomes)
+	}
 
-	if got := readFile(t, target.Path("pyproject.toml")); !strings.Contains(got, `exclude = ["migrations"]`) {
+	got := readFile(t, target.Path("pyproject.toml"))
+	// The positive half. Without it the survival assertion below is satisfied by
+	// a die that refused before writing anything.
+	if !strings.Contains(got, "[tool.forge]") {
+		t.Fatalf("the merge did not run: no record table was written:\n%s", got)
+	}
+	if !strings.Contains(got, `exclude = ["migrations"]`) {
 		t.Errorf("the merge deleted a setting forge does not own:\n%s", got)
 	}
 }
@@ -153,9 +162,18 @@ func TestPyprojectApplyLeavesADisagreedValueAlone(t *testing.T) {
 			"ignore_missing_imports = false\n",
 	})
 
-	applyAll(t, target, Pyproject{})
+	outcomes := applyAll(t, target, Pyproject{})
+	// Every assertion below is that something did not happen, and a die that
+	// never ran satisfies all of them. Requiring the merge to have reported Done
+	// and to have landed a key is what separates honored from not attempted.
+	if len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
+		t.Fatalf("outcomes = %v, want one done", outcomes)
+	}
 
 	got := readFile(t, target.Path("pyproject.toml"))
+	if !strings.Contains(got, "pretty = true") {
+		t.Fatalf("the merge did not run: the standard's own mypy key is absent:\n%s", got)
+	}
 	if !strings.Contains(got, "ignore_missing_imports = false") {
 		t.Errorf("apply inverted a value the project chose:\n%s", got)
 	}
@@ -183,8 +201,10 @@ func TestParseMergeOutputStopsScanningAtTheDiff(t *testing.T) {
 		"   conflict\tnot.a.finding\tx\ty",
 	}, "\n")
 
-	status, conflicts, retracted, patch := parseMergeOutput(out)
-
+	status, conflicts, retracted, patch, err := parseMergeOutput(out)
+	if err != nil {
+		t.Fatalf("parseMergeOutput: %v", err)
+	}
 	if status != "would-update" {
 		t.Errorf("status = %q", status)
 	}
@@ -199,5 +219,16 @@ func TestParseMergeOutputStopsScanningAtTheDiff(t *testing.T) {
 	}
 	if !strings.HasPrefix(patch, "--- pyproject.toml (current)") {
 		t.Errorf("patch does not start at the diff header:\n%s", patch)
+	}
+}
+
+// Skipping a record it cannot read would leave conflicts empty, and the die
+// would then report the key converged — the reading that turns "I could not
+// measure this" into "I measured it and it was fine".
+func TestParseMergeOutputRefusesAMalformedConflict(t *testing.T) {
+	out := "would-update\n  conflict\tmypy.strict\tfalse\n"
+
+	if _, _, _, _, err := parseMergeOutput(out); err == nil {
+		t.Fatal("a two-field conflict parsed without error, so the key reads as converged")
 	}
 }
