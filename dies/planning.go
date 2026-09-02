@@ -29,7 +29,7 @@ func (Planning) Description() string {
 }
 
 func (Planning) Tags() []string {
-	return []string{"planning", "symlink", "syncthing", "setup"}
+	return []string{"planning", "symlink", "sync", "setup"}
 }
 
 // syncedDir is one repo-relative directory and where it belongs.
@@ -259,10 +259,10 @@ func (p Planning) Perform(t reconcile.Target, change reconcile.Change) (reconcil
 }
 
 func syncBase(t reconcile.Target) (string, error) {
-	if t.Config != nil {
-		return t.Config.ResolvedSyncBase()
+	if t.Config == nil {
+		return "", config.ErrNoSyncBase
 	}
-	return config.ExpandTilde(config.DefaultSyncBase)
+	return t.Config.ResolvedSyncBase()
 }
 
 // sameTree reports whether two paths hold identical content, recursively —

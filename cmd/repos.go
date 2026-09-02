@@ -115,12 +115,12 @@ func loadVersions() (*toolchain.Toolchain, error) {
 }
 
 // errNoVersionDeclaration names the key rather than a path, and points at the
-// command that resolves it, per help.md § "Point onward with a command, never
-// with a location".
+// command that resolves it. A reader can run a command; a location leaves them
+// to work out what to do with it.
 var errNoVersionDeclaration = errors.New(
 	"no pinned-version declaration\n\n" +
 		"Every generated config takes its hook revs, action versions and language floors\n" +
 		"from one file, and forge has been told about none.\n\n" +
-		"Set `versions_file` in forge's config to the file that pins what this fleet\n" +
-		"installs, or export FORGE_VERSIONS_FILE to name one for a single run.\n" +
+		"Set `versions_file` in forge's config to the file that pins what these\n" +
+		"machines install, or export FORGE_VERSIONS_FILE to name one for a single run.\n" +
 		"`forge config show` prints where forge looks and which layer answered")

@@ -30,14 +30,14 @@ golangci-lint run          # Lint (enabled set is in .golangci.yml)
 go run . <subcommand>      # Run without building
 ```
 
-The hook inventory is generated from the pinned-version declaration — `forge toolchain show` prints it and names the file, which is what to read rather than a list here, along with a repo's own `.pre-commit-config.yaml`. `standards/ci.md` § "forge is the source of truth" is the rule, and this repo owns the generator that makes it enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
+The hook inventory is generated from the pinned-version declaration — `forge toolchain show` prints it and names the file, which is what to read rather than a list here, along with a repo's own `.pre-commit-config.yaml`. Forge is the source of truth for what a repo's hooks are, and this repo owns the generator that makes that enforceable. A custom hook runs the Python test suite when `pre-commit/` files change.
 
 ## Architecture
 
 **CLI layer** (`cmd/`) uses Cobra. Top-level commands:
 
 - `repos` — the reconcile verbs, and everything that acts on repos. `check` / `plan` / `apply` each take an optional die name, and `-F` narrows the repos. Naming a die is its own confirmation — the word is the scope — so that form of `apply` runs unprompted; the unaliased form prints the plan and asks, taking `--yes` to skip and refusing off a TTY rather than blocking on a closed stdin. Widening the arity does not widen what apply may touch: `reconcile.Apply` skips anything not `Actionable()`, so a `ByHand` finding is unreachable from either form. `list` answers which repos a verb would visit; `exec` runs an arbitrary command or script file, which is where a one-off sweep lives now that dies are Go
-- `directories` — the same reconcile verbs over the targets git does not version: a Syncthing folder, a home directory, anything held to the standard without a remote. Built by the same `reconcileNoun` factory as `repos`, so the two cannot drift in flag names, exit codes or output shape — `cli-design.md` § "Two front doors on one dataset spell everything identically" is the rule, and `TestBothNounsSpellTheSharedVerbsIdentically` is what keeps it true. They are declared in **forge's own config**, never in the registry: The registry is read by more than one tool, and each takes an entry there to be a git repo with a GitHub remote. `run` is the verb only this noun has
+- `directories` — the same reconcile verbs over the targets git does not version: a Syncthing folder, a home directory, anything held to the standard without a remote. Built by the same `reconcileNoun` factory as `repos`, so the two cannot drift in flag names, exit codes or output shape. Two front doors on one dataset have to spell everything identically, and `TestBothNounsSpellTheSharedVerbsIdentically` is what keeps that true. They are declared in **forge's own config**, never in the registry: The registry is read by more than one tool, and each takes an entry there to be a git repo with a GitHub remote. `run` is the verb only this noun has
 - `config` — print the resolved config with the layer that set each value, per `configuration.md`. The registry path is among them: `repos_registry` names a registry maintained outside forge's own data directory, `-c` still beats it, and forge's data directory answers for a machine that declares neither. This reverses an earlier decision that made `-c` the only override on the grounds that a tool resolving its own data directory needs no config key — which conflates carrying a path with accepting one. A path compiled in is what makes a tool fleet-specific; a path it is told is what keeps it generic. The alternative in practice was a symlink from forge's data directory to the real registry, made by hand on every machine and reported by nothing
 - `dies` — the library, which executes nothing: `list`, `show`, `search`, `stats`
   - `stats` aggregates one row per die, most-recently-run first, with `--since` (git's own spelling — `2 weeks`, `30.days.ago` — plus Go durations and ISO dates) and `--json`. Naming a die gives its run-by-run history instead. Per-run rows grow without bound while the number of dies does not, so the old per-run dump put the oldest screen in front of the reader first
@@ -93,7 +93,7 @@ That replaced a `FORGE_CHECK` environment variable read just before each script'
 
 The old `checks/` vs `maintenance/` directory split was this distinction at the wrong granularity — `has-clean-gitignore` ended by printing "run sync-gitignore", the same desired-state list written twice in two files. Each concern is one die now.
 
-**Exit codes** (`cli-design.md` § Machine contract, plus terraform's `-detailed-exitcode`): 0 converged, 1 pending changes, 2 usage, 3 something is wrong. `plan` answers 0/1 and 3 only on a refusal; `check` answers 0/3 and never 1.
+**Exit codes**, following terraform's `-detailed-exitcode`: 0 converged, 1 pending changes, 2 usage, 3 something is wrong. `plan` answers 0/1 and 3 only on a refusal; `check` answers 0/3 and never 1.
 
 **The property test is the point.** `dies/property_test.go` runs `Observe` + `Diff` for every registered die against a fixture sandbox and fails if anything changed. A new die is safe by default rather than safe by declaration, which is exactly what `supports_check` could not be.
 
@@ -124,7 +124,7 @@ The manifest's `version` is stamped into every generated config as a `# forge-to
 - `editorconfig.ini` — deployed as `.editorconfig` to all repos, because the shell block is generic and shfmt takes its style from there rather than from hook args. Shell keys sit under `[*]`, not `[*.sh]`: a shell executable is commonly shipped with no extension at all, a suffix pattern cannot reach one, and shfmt does not skip a file it fails to match — it formats it at its tab default. shfmt reads these keys only for files it identifies as shell, so `[*]` costs nothing there; the per-language sections exist because editors read `[*]` for everything. **Never put a parser or printer flag on the shfmt hook**: a flag replaces the EditorConfig file rather than merging with it, so one `--indent` silently drops `switch_case_indent` and `binary_next_line` as well
 - `golangci.yml` — Go repos
 - `prettierrc.json` — Vue repos
-- `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. The narrowed ruleset and why the defaults were unusable are `standards/ci.md` § "sqlfluff ships a narrowed ruleset, lint-only"
+- `sqlfluff.ini` — deployed as `.sqlfluff` wherever a `sql_dialect` is declared. The ruleset is narrowed and lint-only, because the defaults reformat SQL nobody asked to have reformatted
 - `pyproject-tools.toml` — merged into Python repos' pyproject.toml (ruff, mypy, codespell, pytest, pyright). The ruff `select` is the six rules every repo already runs, not an aspirational set: a template nothing conforms to reads as the standard while being unable to measure drift. `[tool.pyright]` is here despite the hook enforcing mypy, because basedpyright runs in every editor on every machine and is therefore exactly what drifts — it was dropped once as "an editor concern" and the four repos configuring it diverged. Named `pyright`, not `basedpyright`, so one section serves nvim and Pylance. `typeCheckingMode = "standard"` replaced the twelve-key blocks repos had accumulated; that collapse was a one-time migration, already applied everywhere, and is not something the steady-state sync repeats
 
 **Config generation** — `precommit/generate.go`. Block composition, custom section preservation, hook deduplication, and safety checks, all as pure functions over text. The `precommit` die composes them directly rather than through `Run`/`DryRun`, which is what makes `Observe` a read: `Generate` and `SafetyCheck` cannot write, so the read verbs have no path to a write.
@@ -160,8 +160,8 @@ on `pull_request` and exposed via `workflow_call` so a release workflow can `nee
 `# > custom:` markers preserve repo-specific steps.
 
 **The `push: main` trigger is emitted only when nothing else covers main** — the rule and the
-duplicate-run measurement behind it are `standards/ci.md` § "`push: main` is emitted only when
-nothing else validates main", which names this file as its canonical source.
+duplicate-run measurement behind it belong with the rule itself; this repo owns the generator that
+applies it.
 
 `ReleaseGatesOnValidate` is the implementation, and it decides by **reading `release.yml` for a
 `uses:` naming this workflow**.
@@ -218,7 +218,7 @@ script and the workspace repos' missing `lint:fix` surfaced. `${{ ... }}` is wor
 unexpanded generator placeholder; the placeholder check has to exclude it.
 
 `ls ci/blocks/` is which stacks have one. **docker deliberately has none** — the reason is
-`standards/ci.md` § "Docker gets no generated CI block". A declared stack with no block is skipped
+that a Dockerfile is built by the deploy rather than by validation. A declared stack with no block is skipped
 rather than emitting an empty job, which is what makes the absence safe.
 
 **Every pinned version comes from the declaration, not from this repo.** `versions_file` in forge's
@@ -314,7 +314,7 @@ Python tests run as a pre-commit hook on files matching `^pre-commit/`.
 
 - `.goreleaser.yaml` — goreleaser config with ldflags injecting version/commit/date into the binary
 - `.github/workflows/release.yml` — release workflow, triggered on push to `main`. go-semantic-release decides the version and creates the tag; triggering on the tag instead is the broken pattern `standards/release.md` rejects, because a `GITHUB_TOKEN` tag push does not retrigger Actions
-- Installed via `go install github.com/datapointchris/forge@latest` or dotfiles `go-tools.sh`
+- Installed via `go install github.com/datapointchris/forge@latest`, or by whatever installs Go tools on the machine
 - `forge update` — self-updates by downloading the latest release binary from GitHub (no Go toolchain needed)
 - `forge version` — shows version, commit SHA, and build date (`dev` when built without ldflags)
 
@@ -338,8 +338,8 @@ them unanchored against the raw message and ORs the result with the configured m
 `.semrelrc` cannot stop it and it majors even a `fix:` commit.
 
 The module path carries no `/vN` suffix, so once a major exists `go install …@latest` cannot see it
-and silently resolves the highest v1 instead — `dotfiles check` reports the tool stale forever
-while `apply` exits 0 having installed nothing. Every already-installed binary is stranded too:
+and silently resolves the highest v1 instead, so an installer reports the tool stale forever while
+its apply exits 0 having installed nothing. Every already-installed binary is stranded too:
 `goselfupdate` refuses a lower version and reports "already up to date". Recovery is a reinstall on
 each machine, and it is not a rewrite — branch protection refuses one on `main`, and the offending
 commit re-cuts the major on every push until a tag above it takes it out of range.
@@ -347,6 +347,5 @@ commit re-cuts the major on every push until a tag above it takes it out of rang
 **The ban covers a commit that merely discusses the trailer.** One explaining this exact caveat cut
 a fresh major on push. Name it some other way — "that marker" — and never quote it.
 
-Deliberate majors use `chore(release-major)`, the one subject `.semrelrc` leaves as a major. Full
-reasoning and the reset procedure: `standards/release.md` § "Never write the breaking-change
-trailer in a Go repo's commit message".
+Deliberate majors use `chore(release-major)`, the one subject `.semrelrc` leaves as a major. The reset
+procedure is long enough that avoiding the situation is the whole of the advice.

@@ -17,10 +17,10 @@ func directoriesOnly(n *reconcileNoun) []*cobra.Command {
 // directoriesRunCmd is the verb repos do not have.
 //
 // A repo's generated config is executed twice without forge: by the git hook on
-// every commit, and by validate.yml on every pull request. ci.md § "Don't run
-// `pre-commit run` manually before committing" exists because that coverage is
-// already there. A maintained directory has neither, so the config forge writes
-// for one would never run at all — this is what runs it.
+// every commit, and by validate.yml on every pull request. Running the hooks by
+// hand is redundant against that coverage. A maintained directory has neither,
+// so the config forge writes for one would never run at all — this is what runs
+// it.
 //
 // Takes the noun rather than reaching for the package variable, which would be
 // an initialization cycle: the value being built is the one this hangs off.

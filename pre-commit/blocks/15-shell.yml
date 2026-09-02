@@ -3,8 +3,8 @@
   # exclude_types: [zsh] on both tools. Neither supports zsh, and neither says
   # so — shellcheck lints a .zshrc as bash and reports nothing, while shfmt
   # reformats it under bash rules, rewriting `>&2 }` to `>&2; }` — correct for
-  # bash and unnecessary in zsh. Both were silently out of contract,
-  # which is worse than either erroring. identify already tags these files zsh,
+  # bash and unnecessary in zsh. Both were silently out of contract, which is
+  # worse than either erroring. identify already tags these files zsh,
   # so this is the native exclusion rather than a path regex that would have to
   # enumerate .zshrc, .zprofile, .zlogin and the rest.
   - repo: https://github.com/koalaman/shellcheck-precommit

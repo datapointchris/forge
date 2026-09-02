@@ -102,7 +102,7 @@ func TestDiffFailureBecomesARefusal(t *testing.T) {
 // portfolio.
 func TestPanicBecomesARefusalRatherThanEndingTheWalk(t *testing.T) {
 	dies := []Die{&fakeDie{name: "boom", observePanic: true}, &fakeDie{name: "fine"}}
-	targets := []Target{{Repo: repoNamed("forge")}, {Repo: repoNamed("dotfiles")}}
+	targets := []Target{{Repo: repoNamed("forge")}, {Repo: repoNamed("beta")}}
 
 	measurements := AssessAll(targets, dies)
 

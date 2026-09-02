@@ -82,10 +82,9 @@ func runTest(cmd *cobra.Command, args []string) error {
 // rendered in.
 //
 // Its own function because the two render paths returning separately is what
-// broke: `--json` exited 0 on a failing suite while the text form exited 1, so a
-// caller reading the exit code — which cli-design.md § "Machine contract" calls
-// the API — got the opposite answer depending on a formatting flag. `fleet test`
-// recorded exactly that wrong answer on its first run.
+// broke: `--json` exited 0 on a failing suite while the text form exited 1. The
+// exit code is the API a caller branches on, so it got the opposite answer
+// depending on a formatting flag, and a caller recorded that wrong answer.
 //
 // ErrReported rather than a message: the failing rows are already printed, and a
 // second line would report the same failure twice.

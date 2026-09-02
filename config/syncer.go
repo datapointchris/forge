@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -177,24 +178,31 @@ type SyncerConfig struct {
 	// SyncBase is where per-repo directories are kept so a file-sync tool can
 	// see them — the target every .planning symlink points into.
 	//
-	// Declared rather than compiled in. The path is a fact about one fleet's
-	// Syncthing layout, and a generic tool carrying it has no way to be pointed
-	// somewhere else. Empty means DefaultSyncBase, which preserves what the
-	// bash die did and asks nobody to edit a registry to keep working.
+	// Declared, with no default to fall back on. The path is a property of one
+	// deployment rather than of the tool, so a binary carrying one would point
+	// every installation at somebody else's directory layout with no way to be
+	// told otherwise.
 	SyncBase string `json:"sync_base,omitempty"`
 }
 
-// DefaultSyncBase is where synced repo directories live when the registry does
-// not say. Kept as the historical value so an existing registry needs no edit.
-const DefaultSyncBase = "~/dev/repos"
+// ErrNoSyncBase names the key to declare rather than the resolution that fails
+// underneath it. Somebody installing this against their own registry gets the
+// edit to make; a path error further down would only be the symptom.
+var ErrNoSyncBase = errors.New(
+	"no sync_base in the repo registry\n\n" +
+		"The planning die keeps each repo's .planning directory under one base, so a\n" +
+		"file-sync tool can see them all. Declare where that is, as a top-level key\n" +
+		"beside the repo list:\n\n" +
+		`    "sync_base": "~/somewhere/synced"` + "\n\n" +
+		"`forge config show` prints which registry answered",
+)
 
 // ResolvedSyncBase returns the sync base as an absolute path.
 func (c *SyncerConfig) ResolvedSyncBase() (string, error) {
-	base := c.SyncBase
-	if base == "" {
-		base = DefaultSyncBase
+	if c.SyncBase == "" {
+		return "", ErrNoSyncBase
 	}
-	return ExpandTilde(base)
+	return ExpandTilde(c.SyncBase)
 }
 
 func LoadSyncerConfig(path string) (*SyncerConfig, error) {
@@ -287,8 +295,8 @@ func LoadRepos() (*SyncerConfig, error) {
 // should declare the path once for every reader. It came out because that
 // variable lives in ~/.env and a process sourcing no profile never sees it, so
 // the rung was empty in every unattended run. The config file is the machine
-// layer already and it reaches every process. See standards/data.md § "A shared
-// file is named in config; only the tool's own default is compiled in".
+// layer already and it reaches every process. A file more than one tool reads
+// is named in config; only a tool's own default belongs in its binary.
 //
 // Expanded here rather than left to the loader. LoadSyncerConfig expands too, so
 // reading worked either way — but `forge config` stats what this returns to say

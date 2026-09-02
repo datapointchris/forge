@@ -16,9 +16,9 @@ var (
 	date    = "unknown"
 )
 
-// buildVersion reports the running binary's version. `go install pkg@latest` — how the
-// dotfiles installer deploys forge — applies no ldflags but does stamp the module version
-// into build info, so without this fallback every fleet install identifies as a dev build
+// buildVersion reports the running binary's version. `go install pkg@latest` — how an
+// installer deploys this — applies no ldflags but does stamp the module version into
+// build info, so without this fallback every installed copy identifies as a dev build
 // and `forge update` refuses to run.
 func buildVersion() string {
 	info, ok := debug.ReadBuildInfo()

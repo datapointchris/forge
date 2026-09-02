@@ -1,10 +1,46 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// A tool that shipped a fallback pointed every installation at one deployment's
+// directory layout. The error is the whole replacement, so it has to name the
+// key rather than fail at the path underneath it.
+func TestAnUndeclaredSyncBaseIsAnErrorNamingTheKey(t *testing.T) {
+	_, err := (&SyncerConfig{}).ResolvedSyncBase()
+
+	if err == nil {
+		t.Fatal("an undeclared sync_base resolved, so a default is still compiled in")
+	}
+	if !errors.Is(err, ErrNoSyncBase) {
+		t.Errorf("err = %v, want ErrNoSyncBase", err)
+	}
+	if !strings.Contains(err.Error(), "sync_base") {
+		t.Errorf("the error does not name the key to declare:\n%s", err)
+	}
+	// Dropping the constant was to keep one deployment's layout out of the
+	// binary, and an error message is shipped text like any other.
+	for _, leaked := range []string{"~/dev", "~/tools", "~/notes"} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Errorf("the error names a private path %q:\n%s", leaked, err)
+		}
+	}
+}
+
+func TestADeclaredSyncBaseResolves(t *testing.T) {
+	got, err := (&SyncerConfig{SyncBase: "~/somewhere"}).ResolvedSyncBase()
+	if err != nil {
+		t.Fatalf("ResolvedSyncBase: %v", err)
+	}
+	if !strings.HasSuffix(got, "/somewhere") {
+		t.Errorf("got %q, want the tilde expanded", got)
+	}
+}
 
 func TestLoadSyncerConfig(t *testing.T) {
 	home, err := os.UserHomeDir()

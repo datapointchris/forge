@@ -10,7 +10,7 @@ func TestPendingSummaryCountsChangesAndDistinctRepos(t *testing.T) {
 	planned := []reconcile.Result{
 		{Repo: "forge", Die: "gitignore", Pending: 2},
 		{Repo: "forge", Die: "precommit", Pending: 1},
-		{Repo: "dotfiles", Die: "gitignore", Pending: 3},
+		{Repo: "beta", Die: "gitignore", Pending: 3},
 		// Attention and unmeasured are not apply's to do, so neither counts.
 		{Repo: "refcheck", Die: "claude-md", Attention: 1},
 		{Repo: "mimic", Die: "merge-settings", Unmeasured: 1},

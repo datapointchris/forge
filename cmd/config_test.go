@@ -72,9 +72,9 @@ func TestTheConfigFlagDoesNotMoveTheConfigPath(t *testing.T) {
 	}
 }
 
-// stdout is data: the JSON has to be parseable with nothing else on the stream,
-// because a caller pipes it. cli-design.md § "stdout is data, stderr is
-// everything else" — a bare fmt.Println anywhere in the report breaks this.
+// stdout is data and stderr is everything else. The JSON has to be parseable
+// with nothing else on the stream, because a caller pipes it, so a bare
+// fmt.Println anywhere in the report breaks this.
 func TestJSONOutputIsTheOnlyThingOnStdout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", home)

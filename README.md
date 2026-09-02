@@ -112,7 +112,7 @@ forge repos check
 
 # What apply would change, writing nothing
 forge repos plan
-forge repos plan precommit -F forge,dotfiles
+forge repos plan precommit -F alpha,beta
 
 # Make it so. Naming a die applies that one; omitting it applies them all,
 # after a confirmation showing the count (--yes to skip, required off a TTY).

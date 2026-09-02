@@ -18,8 +18,8 @@
 // the variable would write to every repo while the operator believed they were
 // previewing.
 //
-// Ported from dotfiles' resource protocol (src/dotfiles/resources/__init__.py),
-// which solved the same problem for one machine's worth of state.
+// Ported from a resource protocol that solved the same problem for one
+// machine's worth of state.
 package reconcile
 
 // Verdict is what one item turned out to be.

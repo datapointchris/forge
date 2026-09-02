@@ -228,9 +228,9 @@ func plan(stack, dir string) (argv []string, outcome Outcome, note string) {
 		}
 		// node_modules checked here rather than inferred from exit 127, because
 		// 127 is also what a genuinely broken test command produces. Measured:
-		// three components on this machine have no node_modules, and reporting
-		// them as failures says the code is broken when the machine is not set
-		// up. Installing is dotfiles' job, not a test runner's.
+		// a component with no node_modules reported as a failure says the code is
+		// broken when the machine is simply not set up. Installing dependencies is
+		// a setup step's job, not a test runner's.
 		if !exists(filepath.Join(dir, "node_modules")) {
 			return nil, Unknown, "no node_modules — dependencies are not installed here"
 		}

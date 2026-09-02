@@ -8,9 +8,9 @@
 // What it actually needs is an index enumerating the files, and an index is
 // cheap to fabricate. A bare repository somewhere else, pointed at the
 // directory as its work tree, supplies one for the length of a run. No .git is
-// created inside the directory itself — these are Syncthing folders, and a .git
-// inside one is a conflict on every peer the moment two machines both have hooks
-// that write.
+// created inside the directory itself — these are file-synced directories, and
+// a .git inside one is a conflict on every peer the moment two machines both
+// have hooks that write.
 package directory
 
 import (
@@ -344,9 +344,8 @@ type Result struct {
 
 // Run builds the index and executes every pre-commit-stage hook against it.
 //
-// Output is streamed rather than captured. ci.md § "Show the full hook output
-// when a commit fails" is the rule, and a summary of a hook failure is missing
-// the part that says what to change.
+// Output is streamed rather than captured. A hook failure has to arrive whole,
+// because a summary of one is missing the part that says what to change.
 func Run(index Index, stdout, stderr io.Writer) (Result, error) {
 	result := Result{Name: index.Name, Path: index.WorkTree}
 

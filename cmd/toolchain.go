@@ -60,9 +60,9 @@ func runToolchainShow(cmd *cobra.Command, _ []string) error {
 	dim := color.New(color.Faint)
 
 	row(out, "\n%s %d\n", bold.Sprint("toolchain version"), manifest.Version)
-	// Which file answered, per configuration.md § "A resolved value reports
-	// which layer set it". Any file of this shape prints the same numbers, so
-	// the path is the only thing tying them to something somebody chose.
+	// A resolved value reports which layer set it. Any file of this shape prints
+	// the same numbers, so the path is the only thing tying them to something
+	// somebody chose.
 	row(out, "%s\n\n", dim.Sprint(config.VersionsPath()))
 	for _, hook := range manifest.Hooks {
 		row(out, "  %s %s\n", cyan.Sprintf("%-52s", shortRepo(hook.Repo)), hook.Rev)
