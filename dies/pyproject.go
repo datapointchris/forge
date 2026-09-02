@@ -30,6 +30,12 @@ import (
 // the template is removed everywhere on the next apply, because the record
 // proves forge put it there — and a key absent from the record is the
 // project's and is unreachable from the delete path.
+//
+// The record gates adoption too. A key the project already sets, to a value the
+// standard disagrees with and the record does not claim, is reported as a
+// conflict and left alone. It comes back ByHand, so check surfaces it and apply
+// cannot reach it — only a person can say whether the project or the standard
+// is right, and the prose around the key usually argues for the project.
 type Pyproject struct{}
 
 func (Pyproject) Name() string { return "pyproject" }
@@ -42,18 +48,58 @@ func (Pyproject) Tags() []string {
 	return []string{"python", "pyproject", "standardization", "golden-path"}
 }
 
+// pyprojectConflict is one key the project sets, the standard disagrees with,
+// and the record does not claim. Only a person can settle which value wins.
+type pyprojectConflict struct {
+	path     string
+	project  string
+	standard string
+}
+
 type pyprojectState struct {
 	applicable bool
 	reason     string
 	patch      string
 	drifted    bool
+	conflicts  []pyprojectConflict
 }
 
 func (s pyprojectState) Summary() string {
 	if !s.applicable {
 		return s.reason
 	}
+	if len(s.conflicts) > 0 {
+		return fmt.Sprintf("pyproject current, %s the standard disagrees with", plural(len(s.conflicts), "key", "keys"))
+	}
 	return "pyproject current"
+}
+
+// parseMergeOutput splits the script's report into its three parts.
+//
+// The scan stops at the diff rather than filtering the whole output, because a
+// pyproject's own lines travel inside that diff and one of them could carry any
+// prefix this looks for.
+func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict, retracted []string, patch string) {
+	lines := strings.Split(out, "\n")
+	status = lines[0]
+
+	for i, line := range lines[1:] {
+		if strings.HasPrefix(line, "--- ") {
+			patch = strings.Join(lines[i+1:], "\n")
+			break
+		}
+		switch {
+		case strings.HasPrefix(line, "  conflict\t"):
+			// path, project value, standard value — tab-separated so a value
+			// holding a space still arrives whole.
+			if fields := strings.Split(strings.TrimPrefix(line, "  conflict\t"), "\t"); len(fields) == 3 {
+				conflicts = append(conflicts, pyprojectConflict{path: fields[0], project: fields[1], standard: fields[2]})
+			}
+		case strings.HasPrefix(line, "  retracted "):
+			retracted = append(retracted, strings.TrimPrefix(line, "  retracted "))
+		}
+	}
+	return status, conflicts, retracted, patch
 }
 
 func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -73,12 +119,12 @@ func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return nil, err
 	}
 
-	status, detail, _ := strings.Cut(out, "\n")
+	status, conflicts, _, patch := parseMergeOutput(out)
 	switch status {
 	case "current":
-		return pyprojectState{applicable: true}, nil
+		return pyprojectState{applicable: true, conflicts: conflicts}, nil
 	case "would-update":
-		return pyprojectState{applicable: true, drifted: true, patch: detail}, nil
+		return pyprojectState{applicable: true, drifted: true, patch: patch, conflicts: conflicts}, nil
 	default:
 		return nil, fmt.Errorf("unexpected merge output: %q", status)
 	}
@@ -89,20 +135,33 @@ func (Pyproject) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 	if !ok {
 		return nil, fmt.Errorf("pyproject: unexpected observation %T", observed)
 	}
-	if !state.drifted {
-		return nil, nil
+	var changes []reconcile.Change
+	if state.drifted {
+		changes = append(changes, reconcile.Change{
+			Item:    "pyproject.toml",
+			Verdict: reconcile.Stale,
+			Repair:  reconcile.Automatic,
+			Detail:  "the standard [tool.*] sections have drifted",
+			// The diff travels with the change so a plan across every Python repo
+			// shows the template edit as it will land, which is the whole reason
+			// this die was split out.
+			Patch: state.patch,
+		})
 	}
 
-	return []reconcile.Change{{
-		Item:    "pyproject.toml",
-		Verdict: reconcile.Stale,
-		Repair:  reconcile.Automatic,
-		Detail:  "the standard [tool.*] sections have drifted",
-		// The diff travels with the change so a plan across every Python repo
-		// shows the template edit as it will land, which is the whole reason
-		// this die was split out.
-		Patch: state.patch,
-	}}, nil
+	// ByHand, so apply cannot reach it and check is where it surfaces. Adopting
+	// the standard here would overwrite a value the project chose, and the
+	// comment explaining that value would survive to contradict the new one.
+	for _, c := range state.conflicts {
+		changes = append(changes, reconcile.Change{
+			Item:     "pyproject.toml " + c.path,
+			Verdict:  reconcile.Stale,
+			Repair:   reconcile.ByHand,
+			Detail:   "the project sets this; the standard wants " + c.standard,
+			Observed: c.project,
+		})
+	}
+	return changes, nil
 }
 
 func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
@@ -115,15 +174,24 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 
-	status, detail, _ := strings.Cut(out, "\n")
+	status, conflicts, retracted, _ := parseMergeOutput(out)
 	switch status {
 	case "current":
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
 	case "updated":
+		// Neither a retraction nor a conflict is ever silent. The first names
+		// what was removed; the second names a key this run deliberately left
+		// alone, which would otherwise read as merged.
+		notes := make([]string, 0, len(retracted)+len(conflicts))
+		for _, path := range retracted {
+			notes = append(notes, "retracted "+path)
+		}
+		for _, c := range conflicts {
+			notes = append(notes, "left "+c.path+" at "+c.project)
+		}
 		message := "merged"
-		// A retraction is never silent: the script names the keys it removed.
-		if detail != "" {
-			message = "merged — " + strings.ReplaceAll(strings.TrimSpace(detail), "\n", "; ")
+		if len(notes) > 0 {
+			message = "merged — " + strings.Join(notes, "; ")
 		}
 		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: message}, nil
 	default:
