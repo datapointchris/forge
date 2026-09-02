@@ -62,7 +62,7 @@ func (s planningState) Summary() string {
 func (Planning) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// This die exists to carry a gitignored directory out to where a file-sync
 	// tool can see it. A target that git does not version is already there —
-	// and for ~/dev the sync base is inside the target, so the link would point
+	// and where the sync base is inside the target, the link would point
 	// from a synced folder into itself.
 	if !t.Versioned() {
 		return planningState{unversioned: true}, nil

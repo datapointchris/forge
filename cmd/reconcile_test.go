@@ -60,7 +60,7 @@ func TestEachNounKeepsItsOwnVerb(t *testing.T) {
 // registry: nothing that means "repos" may return one.
 func TestSelectReposNeverReturnsAMaintainedDirectory(t *testing.T) {
 	registry := []config.Repo{
-		{Name: "forge", Path: "~/tools/forge", Status: "active"},
+		{Name: "forge", Path: "~/src/forge", Status: "active"},
 	}
 	maintained := []config.Repo{
 		{Name: "claude", Path: "~/.claude"},

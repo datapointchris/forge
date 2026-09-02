@@ -77,7 +77,7 @@ def test_retracts_a_key_dropped_from_the_standard():
 def test_retraction_is_scoped_to_what_forge_recorded():
     """The same key survives when the record does not claim it.
 
-    This is the whole guarantee. ichrisbirch's bugbear exemptions look exactly
+    This is the whole guarantee. A project's own bugbear exemptions look exactly
     like the ones the template used to inject; only the record distinguishes
     a key forge wrote from one the project added.
     """

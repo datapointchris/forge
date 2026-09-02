@@ -261,7 +261,7 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 }
 
 // A before:<stack> section runs before the stack's steps, not before checkout.
-// ichrisbirch decrypts test secrets out of secrets/ in one, which needs the
+// A repo can decrypt test secrets out of secrets/ in one, which needs the
 // workspace to exist.
 func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 	custom := map[string]string{

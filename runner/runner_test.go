@@ -40,7 +40,7 @@ func TestOwnedRepos(t *testing.T) {
 		{Name: "mimic", Path: "~/mimic"},
 		{Name: "mimic", Path: "~/code/refs/mimic", Owner: "someoneelse", Reference: true},
 		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode", Reference: true},
-		{Name: "forge", Path: "~/tools/forge"},
+		{Name: "forge", Path: "~/src/forge"},
 	}
 
 	got := OwnedRepos(repos)
@@ -60,9 +60,9 @@ func TestOwnedRepos(t *testing.T) {
 
 func TestSelectRepos(t *testing.T) {
 	repos := []config.Repo{
-		{Name: "forge", Path: "~/tools/forge"},
+		{Name: "forge", Path: "~/src/forge"},
 		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode", Reference: true},
-		{Name: "sess", Path: "~/tools/sess", Status: "retired"},
+		{Name: "sess", Path: "~/src/sess", Status: "retired"},
 		{Name: "reddit-nlp", Path: "~/code/reddit-nlp", Status: "dormant"},
 	}
 
@@ -93,7 +93,7 @@ func TestSelectRepos(t *testing.T) {
 	// repos.json is hand-edited; an entry that omits status must not vanish
 	// from every maintenance operation without a word.
 	t.Run("an entry with no status is treated as active", func(t *testing.T) {
-		got := SelectRepos([]config.Repo{{Name: "fresh", Path: "~/tools/fresh"}}, nil)
+		got := SelectRepos([]config.Repo{{Name: "fresh", Path: "~/src/fresh"}}, nil)
 		if len(got) != 1 {
 			t.Errorf("got %v, want fresh — a missing status must not silently exclude", got)
 		}
@@ -121,11 +121,11 @@ func TestExecuteInRepoExportsRepoName(t *testing.T) {
 	script := filepath.Join(t.TempDir(), "name.sh")
 	// The registry name differs from the cwd basename, so a basename-derived
 	// value would fail here — which is the bug this env var exists to prevent.
-	body := "#!/bin/bash\n[ \"$FORGE_REPO_NAME\" = zmk-config-corne42 ] || exit 1\n"
+	body := "#!/bin/bash\n[ \"$FORGE_REPO_NAME\" = widget-config-alpha ] || exit 1\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	repo := config.Repo{Name: "zmk-config-corne42", Path: dir}
+	repo := config.Repo{Name: "widget-config-alpha", Path: dir}
 	if r := ExecuteInRepo(repo, Opts{ScriptFile: script}); r.Status != "OK" {
 		t.Errorf("status = %q, want OK (FORGE_REPO_NAME not exported)", r.Status)
 	}

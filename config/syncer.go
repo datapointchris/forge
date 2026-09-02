@@ -41,8 +41,8 @@ type Repo struct {
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	// Owner is the GitHub owner, required on every entry because a bare name
 	// does not identify a repository — the registry holds entries whose names are
-	// also common upstream project names, and pull-requests filtering on the name
-	// alone admitted crate-ci/typos under the same label as ~/code/typos.
+	// also common upstream project names, and filtering on the name alone admitted
+	// an upstream crate under the same label as the local clone of it.
 	//
 	// It is not a marker that the repo is somebody else's. Reading it as one is
 	// what Reference below exists to replace.
@@ -65,7 +65,7 @@ type Repo struct {
 	// SyncedDirs are extra repo-relative directories kept in the sync base
 	// alongside .planning, which every repo gets.
 	//
-	// Declared because the planning die hardcoded `if repo_name = ichrisbirch`
+	// Declared because the planning die hardcoded one repo's name in a branch
 	// to reach that repo's stats/data — a fleet-specific fact inside a generic
 	// tool, which is the thing DefaultReposPath's comment above rules out. The
 	// repo is what knows it keeps generated data outside git; forge only has to
@@ -73,7 +73,8 @@ type Repo struct {
 	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty" yaml:"synced_dirs,omitempty"`
 	// Binary is the command this repo installs, when that name cannot be read
 	// out of the repo. Declared for the same reason Toolchain is: a Go CLI has
-	// no standard place to state its binary name, so ichrisbirch's `icb` lives
+	// no standard place to state its binary name, so a repo whose binary is
+	// named unlike the repo lives
 	// only in a cobra Use: string and a `go build -o` path, and nothing that
 	// reads the registry can find it. Omit it wherever the repo name, a
 	// pyproject [project.scripts] key, or a goreleaser binary: already says so.
@@ -109,10 +110,10 @@ type Toolchain struct {
 	// SC2155s per repo. But "never disable anything" is not a standard either —
 	// a provisioning repo's deploy scripts interpolate local variables into
 	// remote ssh commands dozens of times, which is what those scripts are for,
-	// and SC2029 flags every one. The choice was between an inline suppression
-	// at every call site and a lie, so
-	// this is the third option: declared once, in the registry, with a reason
-	// attached, visible to anyone reading what the repo asks for.
+	// and SC2029 flags every one. The choice was between an inline suppression at
+	// every call site and a lie, so this is the third option: declared once, in
+	// the registry, with a reason attached, visible to anyone reading what the
+	// repo asks for.
 	ShellcheckDisable []ShellcheckException `json:"shellcheck_disable,omitempty" yaml:"shellcheck_disable,omitempty"`
 	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
 	// whose content is invalid on purpose. logsift keeps a tree of deliberately
@@ -127,7 +128,7 @@ type Toolchain struct {
 // SyncedDir is one repo-relative directory kept in the sync base, and the name
 // it takes there.
 //
-// As is explicit rather than derived. ichrisbirch syncs `stats/data` into a
+// As is explicit rather than derived. A repo can sync a data directory into a
 // directory called `stats`, so neither the basename nor the first segment is
 // the rule — and a tool that guessed would silently point an existing link
 // somewhere new, which reads as drift and repairs into a second copy.
@@ -269,7 +270,7 @@ func ExpandTilde(path string) (string, error) {
 // resolving its own data directory needs no config key — which conflates
 // carrying a path with accepting one. A path compiled in is what would make
 // this tool fleet-specific; a path it is told is what keeps it generic, and it
-// is the answer syncer and indy both already give.
+// is the answer the other readers of this registry already give.
 //
 // A config that cannot be read is not an error. It is optional by design, and
 // failing here would break every machine that keeps its registry exactly where

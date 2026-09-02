@@ -27,13 +27,12 @@ Four outcomes, not two. ` + "`no_suite`" + ` is a repo with no tests yet, which 
 failing repo, and pytest's exit 5 lands here. ` + "`unknown`" + ` is a component that
 could not be measured at all — a missing runner, absent node_modules, a timeout.
 Nothing is installed to fix that: it is a fact about this machine rather than
-about the code, and repairing it is dotfiles' job.
+about the code, and repairing it is the machine's configuration manager's job.
 
-Exit 1 if anything failed. ` + "`unknown`" + ` does not fail the run, for the reason
-~/dev/architecture/status-layers.md gives: an unmeasurable item is not drift and
-must not move an exit code, or a machine missing one runner reports a screen of
-failures.`,
-	Example: "  forge test\n  forge test fleet forge\n  forge test --json",
+Exit 1 if anything failed. ` + "`unknown`" + ` does not fail the run: an unmeasurable
+item is not drift and must not move an exit code, or a machine missing one runner
+reports a screen of failures.`,
+	Example: "  forge test\n  forge test alpha beta\n  forge test --json",
 	RunE:    runTest,
 }
 

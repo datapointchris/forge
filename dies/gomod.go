@@ -22,10 +22,11 @@ import (
 // machine is skipped there — silently, returning 0 and leaving the old binary
 // while the installer reports the machine converged.
 //
-// Measured 2026-08-14 on archlinux with system go1.26.5. todoui was floored at
-// 1.26.6 to clear five standard-library advisories; `go install @latest`
-// returned 0 in 0.25s and left v1.11.1 in place. fleet took a toolchain
-// directive against the same advisories instead: govulncheck came back clean,
+// Measured against a system Go one patch below the pin. A module floored above
+// it to clear standard-library advisories was skipped: `go install @latest`
+// returned 0 in a quarter of a second and left the old binary in place. A module
+// taking a toolchain directive against the same advisories worked — govulncheck
+// came back clean,
 // `go list` still reported the module at 1.26.5, `GOTOOLCHAIN=local go build`
 // still worked, and the release installed on that same machine.
 //

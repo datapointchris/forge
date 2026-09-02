@@ -123,17 +123,17 @@ func TestFindRepoByPath(t *testing.T) {
 		t.Fatalf("UserHomeDir: %v", err)
 	}
 	repos := []Repo{
-		{Name: "todoui", Path: "~/tools/todoui"},
-		{Name: "forge", Path: "~/tools/forge"},
+		{Name: "widget", Path: "~/src/widget"},
+		{Name: "forge", Path: "~/src/forge"},
 	}
 
 	// A subdirectory resolves to its repo — dies run from wherever the user is.
-	got := FindRepoByPath(repos, filepath.Join(home, "tools", "todoui", "db"))
-	if got == nil || got.Name != "todoui" {
-		t.Errorf("subdirectory did not resolve to todoui: %+v", got)
+	got := FindRepoByPath(repos, filepath.Join(home, "src", "widget", "db"))
+	if got == nil || got.Name != "widget" {
+		t.Errorf("subdirectory did not resolve to widget: %+v", got)
 	}
 
-	if got := FindRepoByPath(repos, filepath.Join(home, "tools")); got != nil {
+	if got := FindRepoByPath(repos, filepath.Join(home, "src")); got != nil {
 		t.Errorf("a parent of several repos must not match one: %+v", got)
 	}
 }
@@ -162,8 +162,8 @@ func TestEveryEntryDeclaringTheRegistrysOwnOwnerStaysInThePortfolio(t *testing.T
 	body := `{
 		"owner": "datapointchris",
 		"repos": [
-			{"name": "forge", "path": "~/tools/forge", "owner": "datapointchris"},
-			{"name": "shouty", "path": "~/tools/shouty", "owner": "DATAPOINTCHRIS"},
+			{"name": "forge", "path": "~/src/forge", "owner": "datapointchris"},
+			{"name": "shouty", "path": "~/src/shouty", "owner": "DATAPOINTCHRIS"},
 			{"name": "httpx", "path": "~/code/refs/httpx", "owner": "encode"}
 		]
 	}`

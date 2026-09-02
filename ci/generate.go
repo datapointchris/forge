@@ -266,7 +266,7 @@ func Generate(
 		lines = append(lines, "    steps:")
 
 		// Checkout comes first, then before:<stack>. "Before" means before the
-		// stack's own steps, not before the repo exists: ichrisbirch decrypts
+		// stack's own steps, not before the repo exists: a repo can decrypt
 		// its test secrets out of secrets/ in one of these, which cannot work
 		// against a workspace that has not been checked out. Nothing has wanted
 		// to run ahead of checkout.

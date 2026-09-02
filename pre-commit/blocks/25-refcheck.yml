@@ -12,9 +12,9 @@
   #
   # Generic rather than shell-gated, because a pattern is language-agnostic:
   # the hits land in Go, Vue and Python repos alike, in YAML and prose as
-  # readily as in scripts. The compiled languages catch their
-  # own broken *imports*, which is a different question from what a doc, a
-  # Dockerfile or a shell wrapper still says.
+  # readily as in scripts. The compiled languages catch their own broken
+  # *imports*, which is a different question from what a doc, a Dockerfile or a
+  # shell wrapper still says.
   #
   # No --strict: one advisory warning across every repo, and a warning is
   # about fragility rather than breakage.

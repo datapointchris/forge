@@ -27,7 +27,7 @@ func TestLoadConfigReadsMaintainedDirectories(t *testing.T) {
 	path := writeConfig(t, `
 maintained_directories:
   - name: dev
-    path: ~/dev
+    path: ~/documents
     description: Workspace root.
     toolchain:
       components: []
@@ -97,7 +97,7 @@ func TestLoadConfigCommentsOnlyIsAnEmptyConfig(t *testing.T) {
 // A misspelled key must fail loudly. Silently dropping it would leave a
 // directory undeclared, and an undeclared directory reads as a converged one.
 func TestLoadConfigRejectsUnknownKeys(t *testing.T) {
-	_, err := LoadConfig(writeConfig(t, "maintained_dirs:\n  - name: dev\n    path: ~/dev\n"))
+	_, err := LoadConfig(writeConfig(t, "maintained_dirs:\n  - name: docs\n    path: ~/documents\n"))
 	if err == nil {
 		t.Fatal("LoadConfig() accepted an unknown key, want an error")
 	}
@@ -113,7 +113,7 @@ func TestLoadConfigRejectsUnknownKeys(t *testing.T) {
 func TestRepoParsesIdenticallyFromJSONAndYAML(t *testing.T) {
 	const asJSON = `{
 		"name": "logsift",
-		"path": "~/tools/logsift",
+		"path": "~/src/widget",
 		"status": "active",
 		"toolchain": {
 			"components": [{"stack": "go", "dir": "."}],
@@ -126,7 +126,7 @@ func TestRepoParsesIdenticallyFromJSONAndYAML(t *testing.T) {
 
 	const asYAML = `
 name: logsift
-path: ~/tools/logsift
+path: ~/src/widget
 status: active
 toolchain:
   components:

@@ -65,7 +65,7 @@ type Result struct {
 func (r Result) OK() bool { return r.Outcome == Passed || r.Outcome == NoSuite }
 
 // Timeout bounds one component. Generous: the slowest measured component is
-// ichrisbirch's python at 46s, and a suite that has genuinely hung is worth
+// the slowest python suite here, and a suite that has genuinely hung is worth
 // waiting a few minutes to be sure about rather than reporting as flaky.
 const Timeout = 5 * time.Minute
 
@@ -107,7 +107,7 @@ func Run(repo config.Repo) []Result {
 // suite is not idle either. Half leaves room for that.
 //
 // The floor is not the worker count: at eight, the run is as long as
-// ichrisbirch's own suite. Going below a minute means splitting that, not adding
+// the single slowest suite. Going below a minute means splitting that, not adding
 // workers.
 func RunRepos(repos []config.Repo, jobs int) []Result {
 	if jobs < 1 {
