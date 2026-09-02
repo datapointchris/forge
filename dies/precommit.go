@@ -57,11 +57,15 @@ type toolConfig struct {
 	rel string
 	// category gates it; empty means every repo.
 	category string
-	// supersedes is a spelling of this config forge deployed before rel, or
-	// empty where there is none. Both tools that read one of these prefer the
-	// superseded spelling, so a repo keeping both would have forge's file sit
-	// unread while the old one still governed.
-	supersedes string
+	// supersedes are the spellings of this config that the tool reading it
+	// resolves ahead of rel, nearest first, or empty where there are none.
+	//
+	// A list rather than one name, because these tools search an ordered list
+	// of filenames rather than a single one. Any higher-ranked file left in
+	// place governs, and forge's config then sits unread with every verb
+	// reporting the repo converged. Two active repos hold such a file: one a
+	// .markdownlint.jsonc, one a bare .prettierrc.
+	supersedes []string
 }
 
 // Deployed to every repo, or gated on a declared category. The three generic
@@ -75,12 +79,18 @@ type toolConfig struct {
 // a substitute — markdownlint ignores an unknown key silently but prettier
 // prints `Ignored unknown option` to stderr on every run.
 var toolConfigs = []toolConfig{
-	{asset: "configs/markdownlint.yml", rel: ".markdownlint.yaml", supersedes: ".markdownlint.json"},
+	{
+		asset: "configs/markdownlint.yml", rel: ".markdownlint.yaml",
+		supersedes: []string{".markdownlint.jsonc", ".markdownlint.json"},
+	},
 	{asset: "configs/editorconfig.ini", rel: ".editorconfig"},
 	{asset: "configs/shellcheckrc.ini", rel: ".shellcheckrc"},
 	{asset: "configs/golangci.yml", rel: ".golangci.yml", category: "go"},
 	{asset: "configs/rustfmt.toml", rel: "rustfmt.toml", category: "rust"},
-	{asset: "configs/prettierrc.yml", rel: ".prettierrc.yaml", category: "vue", supersedes: ".prettierrc.json"},
+	{
+		asset: "configs/prettierrc.yml", rel: ".prettierrc.yaml", category: "vue",
+		supersedes: []string{".prettierrc", ".prettierrc.json"},
+	},
 	{asset: "configs/prettierignore.txt", rel: ".prettierignore", category: "vue"},
 	{asset: "configs/sqlfluff.ini", rel: ".sqlfluff", category: "sql"},
 }
@@ -225,15 +235,25 @@ func strandedToolConfigs(root string, basis maintenance) []reconcile.Change {
 		return nil
 	}
 
+	// Any spelling counts, not just the one forge writes now. Almost every repo
+	// in the portfolio still holds a superseded spelling, and looking only for
+	// the current one would take this finding silent across all of them.
 	var generic []string
 	for _, tool := range toolConfigs {
 		if tool.category != "" {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(root, tool.rel)); err != nil {
+		found := ""
+		for _, rel := range append([]string{tool.rel}, tool.supersedes...) {
+			if _, err := os.Stat(filepath.Join(root, rel)); err == nil {
+				found = rel
+				break
+			}
+		}
+		if found == "" {
 			return nil
 		}
-		generic = append(generic, tool.rel)
+		generic = append(generic, found)
 	}
 
 	var changes []reconcile.Change
@@ -303,20 +323,45 @@ func settings(body string) string {
 // Where the content differs it is reported and left alone. Both tools prefer the
 // superseded spelling, so a repo keeping one is running that config rather than
 // forge's, and only a person can say which was meant.
-func supersededSpelling(root string, tool toolConfig, want string) (generatedFile, *reconcile.Change) {
-	data, err := os.ReadFile(filepath.Join(root, tool.supersedes))
+func supersededSpelling(root, spelling, rel, want string) (generatedFile, *reconcile.Change) {
+	data, err := os.ReadFile(filepath.Join(root, spelling))
 	if err != nil {
 		return generatedFile{}, nil
 	}
 
 	if same, err := sameConfig(data, []byte(want)); err != nil || !same {
-		finding := blocker(tool.supersedes, "the tool that reads it prefers this spelling over "+
-			tool.rel+", and its content differs from what forge writes there, so forge's config is "+
+		finding := blocker(spelling, "the tool that reads it resolves this spelling ahead of "+
+			rel+", and its content differs from what forge writes there, so forge's config is "+
 			"not the one in force — reconcile the two by hand")
 		return generatedFile{}, &finding
 	}
 	// want is empty, which is what makes this a retraction rather than a write.
-	return generatedFile{rel: tool.supersedes, have: string(data), exists: true}, nil
+	return generatedFile{rel: spelling, have: string(data), exists: true}, nil
+}
+
+// replacementInPlace reports whether the config that supersedes this spelling is
+// on disk and carries what forge writes there.
+//
+// The removal's whole justification is that the same content lands at the new
+// path in the same run. reconcile.Apply continues past a failed change, so
+// without this a write that failed followed by a removal that succeeded leaves
+// the repo with no config for that tool at all — and the next check reports it
+// converged, because the superseded file is gone and the new one is pending.
+//
+// Read from disk here rather than trusted from the plan, for the same reason
+// every other Perform precondition is: the plan was printed before apply ran.
+func replacementInPlace(root string, state preCommitState, spelling string) bool {
+	for _, tool := range toolConfigs {
+		if !slices.Contains(tool.supersedes, spelling) {
+			continue
+		}
+		for _, file := range state.configs {
+			if file.rel == tool.rel {
+				return readGenerated(root, tool.rel, file.want).matches()
+			}
+		}
+	}
+	return false
 }
 
 // sameConfig reports whether two config bodies carry the same data.
@@ -405,15 +450,14 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		}
 		state.configs = append(state.configs, readGenerated(root, tool.rel, want))
 
-		if tool.supersedes == "" {
-			continue
-		}
-		old, finding := supersededSpelling(root, tool, want)
-		if finding != nil {
-			state.blockers = append(state.blockers, *finding)
-		}
-		if old.managed() {
-			state.configs = append(state.configs, old)
+		for _, spelling := range tool.supersedes {
+			old, finding := supersededSpelling(root, spelling, tool.rel, want)
+			if finding != nil {
+				state.blockers = append(state.blockers, *finding)
+			}
+			if old.managed() {
+				state.configs = append(state.configs, old)
+			}
 		}
 	}
 
@@ -643,6 +687,13 @@ func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		// Checked before the write, because an empty want is exactly what a
 		// retraction has and writeIfStale would read it as a file to blank.
 		if file.retracting() {
+			if !replacementInPlace(t.Repo.Path, state, file.rel) {
+				return reconcile.Outcome{
+					Change: change, Status: reconcile.Refused,
+					Message: "the config that replaces " + file.rel + " is not on disk, so removing it " +
+						"would leave the repo with no config for that tool",
+				}, nil
+			}
 			if err := removeGenerated(t.Repo.Path, file); err != nil {
 				return reconcile.Outcome{}, err
 			}

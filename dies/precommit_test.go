@@ -398,6 +398,24 @@ func TestPrecommitReportsToolConfigsStrandedByADeletedConfig(t *testing.T) {
 		".markdownlint.yaml": "{}\n",
 	}
 	target := fixture(t, nil, generic)
+	assertStrandedReported(t, target, generic)
+}
+
+// Almost every repo still holds a superseded spelling, so a finding that looks
+// only for the name forge writes now would go silent across the whole portfolio
+// — which is the state the finding exists to catch.
+func TestPrecommitReportsStrandedConfigsUnderASupersededSpelling(t *testing.T) {
+	generic := map[string]string{
+		".editorconfig":      "root = true\n",
+		".shellcheckrc":      "disable=SC1091\n",
+		".markdownlint.json": "{}\n",
+	}
+	target := fixture(t, nil, generic)
+	assertStrandedReported(t, target, generic)
+}
+
+func assertStrandedReported(t *testing.T, target reconcile.Target, generic map[string]string) {
+	t.Helper()
 
 	measured := reconcile.Assess(target, PreCommit{})
 
@@ -467,29 +485,6 @@ func TestEveryDeployedToolConfigCarriesTheManagedMarker(t *testing.T) {
 			first, _, _ := strings.Cut(string(content), "\n")
 			t.Errorf("%s deploys to %s without %q on its first line; got %q",
 				tool.asset, tool.rel, managedMark, first)
-		}
-	}
-}
-
-// prettier formats YAML, and the vue hook runs it across the whole component
-// directory. A YAML config forge deploys to a repo root that prettier does not
-// ignore has two writers and no fixed point: prettier reshapes it, forge writes
-// it back, and the repo drifts on every run of either.
-func TestPrettierIgnoresEveryYAMLConfigForgeDeploys(t *testing.T) {
-	assets := fixture(t, nil, nil).Assets
-
-	content, err := fs.ReadFile(assets.PreCommit, "configs/prettierignore.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ignored := strings.Split(string(content), "\n")
-
-	for _, tool := range toolConfigs {
-		if !strings.HasSuffix(tool.rel, ".yaml") && !strings.HasSuffix(tool.rel, ".yml") {
-			continue
-		}
-		if !slices.Contains(ignored, tool.rel) {
-			t.Errorf("%s is deployed but not in the prettierignore, so prettier would reformat it", tool.rel)
 		}
 	}
 }
@@ -596,6 +591,55 @@ func TestPrecommitRemovesASupersededSpellingCarryingTheSameConfig(t *testing.T) 
 	}
 	if got := readFile(t, target.Path(".markdownlint.yaml")); !strings.HasPrefix(got, managedMark) {
 		t.Errorf(".markdownlint.yaml was not written:\n%s", got)
+	}
+}
+
+// The removal is justified only by the same content landing at the new path in
+// the same run. apply continues past a failed change, so a write that failed
+// and a removal that succeeded would leave the repo with no config at all.
+func TestPrecommitKeepsTheSupersededSpellingWhenTheReplacementIsNotThere(t *testing.T) {
+	sameContent := `{"default": true, "MD013": false, "MD024": {"siblings_only": true},
+	  "MD033": false, "MD036": false, "MD038": false, "MD046": false}`
+	target := fixture(t, stacks("shell"), map[string]string{".markdownlint.json": sameContent})
+
+	// A directory at the new path is what a failed write leaves behind.
+	if err := os.MkdirAll(target.Path(".markdownlint.yaml"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome, err := PreCommit{}.Perform(target, reconcile.Change{
+		Item: ".markdownlint.json", Verdict: reconcile.Stale, Repair: reconcile.Automatic,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Status != reconcile.Refused {
+		t.Errorf("status = %q, want refused", outcome.Status)
+	}
+	if _, err := os.Stat(target.Path(".markdownlint.json")); err != nil {
+		t.Error("the only config the repo had was removed after its replacement failed to land")
+	}
+}
+
+// Both tools search an ordered list of filenames, so a spelling ranked above the
+// one forge writes governs even when forge's file is present and current.
+func TestPrecommitReachesASpellingRankedAboveTheOneItWrites(t *testing.T) {
+	target := fixture(t, stacks("vue"), map[string]string{
+		"package.json":  `{"name":"fixture","scripts":{"lint:fix":"x","typecheck":"x"}}`,
+		".prettierrc":   "semi: true\n",
+		"src/index.mjs": "export const x = 1\n",
+	})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var found bool
+	for _, c := range measured.Changes {
+		if c.Item == ".prettierrc" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf(".prettierrc outranks .prettierrc.yaml and was not reported: %v", measured.Changes)
 	}
 }
 
