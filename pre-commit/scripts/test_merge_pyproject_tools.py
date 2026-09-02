@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Tests for merge_pyproject_tools.py."""
 
+import io
 import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 
 from merge_pyproject_tools import apply_standard, flatten, main, read_managed_paths
@@ -13,8 +15,16 @@ def sync(standard_toml, target_toml):
     """Apply the standard to a target, returning (target, retracted)."""
     standard = tomlkit.parse(standard_toml)
     target = tomlkit.parse(target_toml)
-    retracted = apply_standard(standard, target)
+    retracted, _ = apply_standard(standard, target)
     return target, retracted
+
+
+def sync_conflicts(standard_toml, target_toml):
+    """Apply the standard to a target, returning (target, conflicts)."""
+    standard = tomlkit.parse(standard_toml)
+    target = tomlkit.parse(target_toml)
+    _, conflicts = apply_standard(standard, target)
+    return target, conflicts
 
 
 def test_adds_missing_sections():
@@ -24,16 +34,89 @@ def test_adds_missing_sections():
     assert target['ruff']['line-length'] == 140
 
 
-def test_forces_every_key_the_standard_names():
-    """A repo cannot hold a weaker value for a key the standard sets."""
-    target, _ = sync(
-        '[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E", "F"]\nignore = ["SIM108"]\n',
-        '[ruff]\nline-length = 120\n\n[ruff.lint]\nselect = ["ALL"]\nignore = ["D100"]\n',
+def test_forces_a_key_the_record_already_claims():
+    """Once the record proves forge wrote a key, the template wins outright."""
+    target, _ = sync('[ruff]\nline-length = 140\n\n[ruff.lint]\nselect = ["E", "F"]\n', '')
+    assert target['ruff']['line-length'] == 140
+
+    # The template moves on a later run. Both keys are recorded by now.
+    apply_standard(
+        tomlkit.parse('[ruff]\nline-length = 100\n\n[ruff.lint]\nselect = ["ALL"]\n'), target
     )
 
-    assert target['ruff']['line-length'] == 140
-    assert target['ruff']['lint']['select'] == ['E', 'F']
-    assert target['ruff']['lint']['ignore'] == ['SIM108']
+    assert target['ruff']['line-length'] == 100
+    assert target['ruff']['lint']['select'] == ['ALL']
+
+
+def test_reports_a_conflict_rather_than_inverting_a_project_value():
+    """A key the project set, and the record does not claim, is not forge's.
+
+    Built from lambda-durable-functions, which sets `ignore_missing_imports =
+    false` under a comment explaining that an unresolved SDK import turns every
+    decorated handler into Any. The first sync inverted the value and left the
+    comment arguing for the old one, so the file asserted both.
+    """
+    target, conflicts = sync_conflicts(
+        '[mypy]\nignore_missing_imports = true\npretty = true\n',
+        '[mypy]\nignore_missing_imports = false\n',
+    )
+
+    assert conflicts == [(('mypy', 'ignore_missing_imports'), False, True)]
+    assert target['mypy']['ignore_missing_imports'] is False
+    # The rest of the standard still lands; one disagreement stops one key.
+    assert target['mypy']['pretty'] is True
+    # And forge never claims what it did not write, so retraction cannot reach it.
+    assert read_managed_paths(target) == [('mypy', 'pretty')]
+
+
+def test_a_conflicted_key_stays_out_of_the_record_across_repeat_syncs():
+    """The conflict does not decay into an adoption on the second run."""
+    standard = '[mypy]\nignore_missing_imports = true\n'
+    target, _ = sync_conflicts(standard, '[mypy]\nignore_missing_imports = false\n')
+
+    _, conflicts = apply_standard(tomlkit.parse(standard), target)
+
+    assert conflicts == [(('mypy', 'ignore_missing_imports'), False, True)]
+    assert target['mypy']['ignore_missing_imports'] is False
+
+
+def test_adopts_a_key_the_project_already_agrees_on():
+    """Agreement is not a conflict, or a repo could never converge."""
+    target, conflicts = sync_conflicts('[ruff]\nline-length = 140\n', '[ruff]\nline-length = 140\n')
+
+    assert conflicts == []
+    assert read_managed_paths(target) == [('ruff', 'line-length')]
+
+
+def test_a_project_value_of_false_is_a_value_not_an_absence():
+    """`false` is set, so the standard's `true` conflicts rather than adopting.
+
+    A truthiness test in place of the presence answer reads an unset key and a
+    key set to `false` as the same thing, which is what would let the standard
+    adopt over a deliberate `false` without reporting it.
+    """
+    _, conflicts = sync_conflicts('[mypy]\nstrict = true\n', '[mypy]\nstrict = false\n')
+    assert conflicts == [(('mypy', 'strict'), False, True)]
+
+    _, agreed = sync_conflicts('[mypy]\nstrict = false\n', '[mypy]\nstrict = false\n')
+    assert agreed == []
+
+
+def test_a_path_it_cannot_read_is_a_conflict_not_an_absence():
+    """A blocked segment is not the same answer as an unset key.
+
+    The standard writes `ruff.lint.select`, and the project has put a string at
+    `ruff.lint`. Reading that as absent lets adoption replace the segment, which
+    destroys the value and reports nothing — the same loss this ownership rule
+    exists to prevent, reached through a different door.
+    """
+    target, conflicts = sync_conflicts(
+        '[ruff.lint]\nselect = ["E"]\n', '[ruff]\nlint = "the project put a value here"\n'
+    )
+
+    assert conflicts == [(('ruff', 'lint', 'select'), 'the project put a value here', ['E'])]
+    assert target['ruff']['lint'] == 'the project put a value here'
+    assert read_managed_paths(target) == []
 
 
 def test_never_deletes_a_key_it_did_not_write():
@@ -65,7 +148,7 @@ def test_retracts_a_key_dropped_from_the_standard():
     assert read_managed_paths(target) == [('ruff', 'lint', 'flake8-bugbear', 'extend-immutable-calls')]
 
     # The template drops the section entirely on a later run.
-    retracted = apply_standard(tomlkit.parse('[ruff]\nline-length = 140\n'), target)
+    retracted, _ = apply_standard(tomlkit.parse('[ruff]\nline-length = 140\n'), target)
 
     assert retracted == [('ruff', 'lint', 'flake8-bugbear', 'extend-immutable-calls')]
     # Pruning cascades: the empty flake8-bugbear table takes `lint` with it,
@@ -84,7 +167,7 @@ def test_retraction_is_scoped_to_what_forge_recorded():
     target = tomlkit.parse(
         '[ruff.lint.flake8-bugbear]\nextend-immutable-calls = ["fastapi.Depends"]\n'
     )
-    retracted = apply_standard(tomlkit.parse('[ruff]\nline-length = 140\n'), target)
+    retracted, _ = apply_standard(tomlkit.parse('[ruff]\nline-length = 140\n'), target)
 
     assert retracted == []
     assert target['ruff']['lint']['flake8-bugbear']['extend-immutable-calls'] == ['fastapi.Depends']
@@ -104,9 +187,12 @@ def test_records_every_leaf_the_standard_writes():
 
 def test_preserves_unrelated_sections():
     """Sections not in standard are left untouched."""
-    target, _ = sync('[mypy]\npretty = true\n', '[mypy]\npretty = false\n[coverage]\nbranch = true\n')
+    target, _ = sync(
+        '[mypy]\npretty = true\n', '[mypy]\nplugins = ["pydantic.mypy"]\n\n[coverage]\nbranch = true\n'
+    )
 
     assert target['mypy']['pretty'] is True
+    assert target['mypy']['plugins'] == ['pydantic.mypy']
     assert target['coverage']['branch'] is True
 
 
@@ -164,6 +250,33 @@ def test_check_reports_without_writing():
         assert target_path.read_text() == before
 
 
+def test_a_conflict_alone_is_reported_under_current():
+    """Nothing to write and something to say is a state the status word lacks.
+
+    Every standard key is either already agreed or conflicting, so the file does
+    not change. Printing `current` and stopping would report the repo converged
+    while a key it disagrees on goes unmentioned.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.mypy]\nignore_missing_imports = true\npretty = true\n')
+        target_path.write_text('[tool.mypy]\nignore_missing_imports = false\n')
+
+        # The first run adopts `pretty` and writes the record, so the file moves.
+        assert main([str(standard_path), str(target_path)]) == 0
+        settled = target_path.read_text()
+
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            assert main([str(standard_path), str(target_path)]) == 0
+
+        lines = captured.getvalue().splitlines()
+        assert lines[0] == 'current'
+        assert lines[1] == '  conflict\tmypy.ignore_missing_imports\tfalse\ttrue'
+        assert target_path.read_text() == settled
+
+
 def test_full_pyproject_roundtrip():
     """Merge into a realistic pyproject.toml preserves project metadata."""
     target, _ = sync(
@@ -187,7 +300,12 @@ def test_full_pyproject_roundtrip():
 
 if __name__ == '__main__':
     test_adds_missing_sections()
-    test_forces_every_key_the_standard_names()
+    test_forces_a_key_the_record_already_claims()
+    test_reports_a_conflict_rather_than_inverting_a_project_value()
+    test_a_conflicted_key_stays_out_of_the_record_across_repeat_syncs()
+    test_adopts_a_key_the_project_already_agrees_on()
+    test_a_project_value_of_false_is_a_value_not_an_absence()
+    test_a_path_it_cannot_read_is_a_conflict_not_an_absence()
     test_never_deletes_a_key_it_did_not_write()
     test_retracts_a_key_dropped_from_the_standard()
     test_retraction_is_scoped_to_what_forge_recorded()
@@ -197,5 +315,6 @@ if __name__ == '__main__':
     test_second_sync_is_a_no_op()
     test_leaves_exactly_one_newline_at_eof()
     test_check_reports_without_writing()
+    test_a_conflict_alone_is_reported_under_current()
     test_full_pyproject_roundtrip()
     print('all tests passed')

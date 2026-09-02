@@ -140,6 +140,8 @@ That scan is detection, against the rule above and for the reason `ReleaseGatesO
 - `generate_config.py` — legacy Python generator (replaced by Go implementation, kept as reference)
 - `merge_pyproject_tools.py` — merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing). **The standard owns exactly the keys it writes**, recorded as `[tool.forge] managed` in each repo's pyproject. That record is what makes retraction possible: a key dropped from the template is removed everywhere on the next sync, because the record proves forge put it there, and the retraction is printed rather than silent. A key absent from the record is the project's and is unreachable from the delete path.
 
+  It gates adoption on the same terms, so forcing a key is conditional rather than unconditional. A key the project already sets, to a value the standard disagrees with and the record does not claim, is reported as a conflict and left alone — `Stale` + `ByHand`, so `check` surfaces it and `apply` cannot reach it. A path whose intermediate segment is not a table is the same answer, because reading it as absent would have adoption replace the segment. Agreement is recorded without writing, which is what lets a repo converge; refusing to record it would leave the key outside the standard permanently. The comment above a key is why this matters: forge cannot see prose, so inverting a value it did not write leaves the explanation arguing for a value that is gone
+
   This replaced a `REPLACE_SECTIONS` set naming whole sections to overwrite wholesale. Owning a section and setting a floor under one are different jobs, and one verb doing both deleted project config three times — a repo's ruff `exclude`, then a FastAPI repo's bugbear exemptions, its pydantic mypy plugin and an alembic per-file-ignore. Per-key ownership recorded at write time cannot express that mistake, which is why the fix is a mechanism rather than a fourth entry removed from a list. Paths are stored as arrays, not dotted strings, because a segment can contain a dot (`per-file-ignores."__init__.py"`) and the record that authorizes deletion does not get to depend on quoting being right. The record table is rebuilt from scratch on every write, so a resync is byte-identical — the die reporting converged depends on that idempotence
 
 **Custom hook markers** — repos with project-specific hooks use these markers in their `.pre-commit-config.yaml`:
@@ -305,7 +307,7 @@ Nothing shells out to `forge`, so `go test ./...` needs no prior `go install`.
 
 **Python tests** (`pre-commit/scripts/run_tests.sh`):
 
-- `test_merge_pyproject_tools.py` — pyproject merge: what the standard forces, what it never deletes, and what it retracts
+- `test_merge_pyproject_tools.py` — pyproject merge: what the standard forces once the record claims it, what it never deletes, what it retracts, and what it reports as a conflict rather than writing
 - `test_generate_config.py`, `test_integration.py` — the legacy Python generator, kept as reference
 
 Python tests run as a pre-commit hook on files matching `^pre-commit/`.

@@ -7,6 +7,19 @@ dropped from the template is removed from every repo, because the record proves
 forge put it there. A key absent from the record belongs to the project and is
 never deleted.
 
+The record authorizes adoption on the same terms. A key the project already
+sets, to a value the standard disagrees with, and which the record does not
+claim, is a conflict: the standard is reported and the project's value stays.
+Adoption and deletion ask one question between them — did forge write this? —
+so neither needs to know what any individual key means.
+
+Forcing a key regardless is what makes a file contradict itself. The value the
+project chose is inverted, the comment above it survives arguing for the old
+one, and the file then asserts two things of which one is false. Nothing here
+can detect that prose, so not writing the value is the only thing that keeps it
+true. Once the record claims a key the hazard is gone, because the record is
+proof forge chose the value that is sitting there.
+
 This replaced a hand-maintained REPLACE_SECTIONS set naming whole sections to
 overwrite wholesale. Owning a section and setting a floor under one are
 different jobs, and a single verb doing both deleted config three times: a
@@ -21,8 +34,17 @@ that authorizes deletion; it does not get to depend on quoting being right.
 Usage: merge_pyproject_tools.py [--check] <standard.toml> <target-pyproject.toml>
 
 The first line of output is a status word — `current`, `updated`, or
-`would-update` under --check. Everything after it is detail for a human:
-retracted keys, and the diff when checking.
+`would-update` under --check. Under it come the conflicts, then the retracted
+keys, then the diff when checking.
+
+A conflict line is tab-separated so a caller can split it without guessing where
+a value ends:
+
+    conflict<TAB>mypy.ignore_missing_imports<TAB>false<TAB>true
+
+`current` and a conflict list appear together when the only thing to say about a
+repo is a key it disagrees on. Nothing would be written there, and something is
+still wrong, so the status word alone cannot carry it.
 """
 
 import difflib
@@ -30,9 +52,15 @@ import sys
 from pathlib import Path
 
 import tomlkit
+from tomlkit.items import Item
 
 MANAGED_TABLE = 'forge'
 MANAGED_KEY = 'managed'
+
+# Folding UNREADABLE into MISSING lets adoption write a table over the project.
+MISSING = 'missing'
+PRESENT = 'present'
+UNREADABLE = 'unreadable'
 
 MANAGED_COMMENT_LINES = [
     'Keys the shared toolchain standard owns, written by its generator.',
@@ -82,6 +110,44 @@ def write_managed_paths(tool, paths):
     tool[MANAGED_TABLE] = table
 
 
+def read_path(tool, path):
+    """The value at a leaf path, and what kind of answer that is.
+
+    Three answers rather than two, because absence and illegibility are
+    different and only one of them is safe to write over:
+
+        MISSING     nothing sets it — adoption may write
+        PRESENT     the project sets it — the value decides what happens
+        UNREADABLE  a segment on the way is not a table, so the leaf cannot be
+                    reached; the returned value is whatever blocks it
+
+    A falsy value is PRESENT, which is why the answer is a word rather than a
+    `None` the caller has to interpret. A key set to `false` is exactly the
+    case this distinction exists for.
+    """
+    table = tool
+    for key in path[:-1]:
+        if key not in table:
+            return None, MISSING
+        if not isinstance(table[key], dict):
+            return table[key], UNREADABLE
+        table = table[key]
+    if path[-1] not in table:
+        return None, MISSING
+    return table[path[-1]], PRESENT
+
+
+def plain(value):
+    """A tomlkit item as the Python value it wraps.
+
+    Most comparisons would survive without this: an Array is a `list` subclass,
+    a String is a `str` subclass, and `Container.__getitem__` hands back a bare
+    `bool` for a boolean rather than an item at all. Normalising anyway keeps
+    the comparison from depending on which of those tomlkit chooses to do.
+    """
+    return value.unwrap() if isinstance(value, Item) else value
+
+
 def set_path(tool, path, value):
     table = tool
     for key in path[:-1]:
@@ -112,27 +178,72 @@ def delete_path(tool, path):
 
 
 def apply_standard(standard_tool, target_tool):
-    """Force every key the standard names, retract the ones it no longer does.
+    """Adopt the keys forge may write, retract the ones the standard dropped.
 
     Deletion is scoped to the recorded paths by construction, which is the whole
-    guarantee: a project's own keys are unreachable from here.
+    guarantee: a project's own keys are unreachable from here. Adoption is
+    scoped the same way, so a value the project chose is unreachable too.
+
+    Each key the standard names is in one of five states:
+
+        absent from the target        adopt it, and record it
+        recorded                      forge wrote it, so the template wins
+        set, unrecorded, same value   record it; the file does not change
+        set, unrecorded, differs      a conflict — report it, write nothing
+        unreachable                   a conflict — a segment is not a table
+
+    The third state is what lets a repo converge. Agreement is not a conflict,
+    and refusing to record it would leave the key outside the standard forever.
+
+    The fifth is the same guarantee reached by a different door. Reading an
+    unreachable path as absent would have adoption replace the segment that
+    blocks it, which destroys the value sitting there and reports nothing.
     """
     managed = flatten(standard_tool)
+    recorded = read_managed_paths(target_tool)
 
     retracted = []
-    for path in read_managed_paths(target_tool):
+    for path in recorded:
         if path not in managed and delete_path(target_tool, path):
             retracted.append(path)
 
+    claimed = set(recorded)
+    adopted = {}
+    conflicts = []
     for path, value in managed.items():
-        set_path(target_tool, path, value)
+        existing, answer = read_path(target_tool, path)
+        if answer == UNREADABLE:
+            conflicts.append((path, plain(existing), plain(value)))
+            continue
+        if answer == PRESENT and path not in claimed and plain(existing) != plain(value):
+            conflicts.append((path, plain(existing), plain(value)))
+            continue
+        # Writing an equal value back would re-render the item and can move the
+        # trivia attached to it, which turns an agreeing repo into a diff.
+        if answer == MISSING or plain(existing) != plain(value):
+            set_path(target_tool, path, value)
+        adopted[path] = value
 
-    write_managed_paths(target_tool, managed)
-    return retracted
+    write_managed_paths(target_tool, adopted)
+    return retracted, conflicts
 
 
 def format_path(path):
     return '.'.join(f'"{segment}"' if '.' in segment else segment for segment in path)
+
+
+def format_value(value):
+    """A value spelled as TOML spells it, so a conflict reads like the file.
+
+    tomlkit owns the spelling. Hand-writing it gets a string holding a quote or
+    a tab wrong, and the escaping is load-bearing twice over: the record below
+    is tab-separated and line-oriented, so a raw tab or newline reaching it
+    would split a field or a row.
+
+    Never truncated. A conflict on a long list is where a reader most needs to
+    see which entries differ.
+    """
+    return tomlkit.item(value).as_string()
 
 
 def main(argv):
@@ -156,7 +267,7 @@ def main(argv):
     if 'tool' not in target:
         target['tool'] = tomlkit.table()
 
-    retracted = apply_standard(standard['tool'], target['tool'])
+    retracted, conflicts = apply_standard(standard['tool'], target['tool'])
 
     # The record table carries a trailing blank line so it does not abut the next
     # header. When it lands at EOF there is no next header, and end-of-file-fixer
@@ -164,13 +275,19 @@ def main(argv):
     # other on every run. Normalising here settles it in the sync's favour.
     merged = tomlkit.dumps(target).rstrip('\n') + '\n'
 
-    if merged == original:
-        print('current')
-        return 0
+    changed = merged != original
+    print(('would-update' if check else 'updated') if changed else 'current')
 
-    print('would-update' if check else 'updated')
+    # Conflicts are reported whether or not anything else moved. A repo whose
+    # only finding is a key it disagrees on writes nothing, and saying `current`
+    # and stopping there would report it converged.
+    for path, project_value, standard_value in conflicts:
+        print(f'  conflict\t{format_path(path)}\t{format_value(project_value)}\t{format_value(standard_value)}')
     for path in retracted:
         print(f'  retracted {format_path(path)}')
+
+    if not changed:
+        return 0
 
     if check:
         sys.stdout.writelines(
