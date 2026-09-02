@@ -15,6 +15,19 @@ import (
 // discard work with no way back.
 const toolchainStamp = "# forge-toolchain:"
 
+// managedMark marks a file forge deploys whole from a static template.
+//
+// Separate from toolchainStamp because the two answer different questions. A
+// generated file's content is derived from the manifest, so its marker carries
+// the version and a staged rollout reads it. A tool config is a template copied
+// verbatim, so ownership is the only fact its marker has to carry — a version
+// there would make every manifest bump report eight files per repo as drift
+// that no content change had touched.
+const managedMark = "# forge-managed"
+
+// forgeMarks are the first lines that identify a file as forge's own.
+var forgeMarks = []string{toolchainStamp, managedMark}
+
 // generatedFile is one file the standard owns whole, as opposed to the
 // append-only .gitignore the gitignore die asserts entries in.
 type generatedFile struct {
@@ -114,11 +127,22 @@ func removeGenerated(root string, file generatedFile) error {
 	return nil
 }
 
-// handWritten reports whether a file exists without the generated stamp, which
-// is the one state the generators must never overwrite.
+// handWritten reports whether a file exists carrying none of forge's markers,
+// which is the one state the generators must never overwrite.
+//
+// An absent file is not hand-written. First deployment writes it, and a repo
+// forge has never touched is reached only by a declaration.
 func handWritten(root, rel string) bool {
 	data, err := os.ReadFile(filepath.Join(root, rel))
-	return err == nil && !strings.HasPrefix(string(data), toolchainStamp)
+	if err != nil {
+		return false
+	}
+	for _, mark := range forgeMarks {
+		if strings.HasPrefix(string(data), mark) {
+			return false
+		}
+	}
+	return true
 }
 
 // blocker is a finding that stops a sync landing and that apply cannot clear.

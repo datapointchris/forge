@@ -6,9 +6,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/precommit"
@@ -54,19 +57,30 @@ type toolConfig struct {
 	rel string
 	// category gates it; empty means every repo.
 	category string
+	// supersedes is a spelling of this config forge deployed before rel, or
+	// empty where there is none. Both tools that read one of these prefer the
+	// superseded spelling, so a repo keeping both would have forge's file sit
+	// unread while the old one still governed.
+	supersedes string
 }
 
 // Deployed to every repo, or gated on a declared category. The three generic
 // ones are generic because the shell block is: a repo that got the hook without
 // .editorconfig would be formatted at shfmt's tab default, and one without
 // .shellcheckrc would follow sourced files it cannot resolve.
+//
+// Every one is a format with a comment syntax, so every one carries managedMark
+// on its first line. markdownlint and prettier are configured in YAML rather
+// than JSON for that reason alone: JSON has no comment, and a marker key is not
+// a substitute — markdownlint ignores an unknown key silently but prettier
+// prints `Ignored unknown option` to stderr on every run.
 var toolConfigs = []toolConfig{
-	{asset: "configs/markdownlint.json", rel: ".markdownlint.json"},
+	{asset: "configs/markdownlint.yml", rel: ".markdownlint.yaml", supersedes: ".markdownlint.json"},
 	{asset: "configs/editorconfig.ini", rel: ".editorconfig"},
 	{asset: "configs/shellcheckrc.ini", rel: ".shellcheckrc"},
 	{asset: "configs/golangci.yml", rel: ".golangci.yml", category: "go"},
 	{asset: "configs/rustfmt.toml", rel: "rustfmt.toml", category: "rust"},
-	{asset: "configs/prettierrc.json", rel: ".prettierrc.json", category: "vue"},
+	{asset: "configs/prettierrc.yml", rel: ".prettierrc.yaml", category: "vue", supersedes: ".prettierrc.json"},
 	{asset: "configs/prettierignore.txt", rel: ".prettierignore", category: "vue"},
 	{asset: "configs/sqlfluff.ini", rel: ".sqlfluff", category: "sql"},
 }
@@ -231,6 +245,95 @@ func strandedToolConfigs(root string, basis maintenance) []reconcile.Change {
 	return changes
 }
 
+// unattributable reports whether a file at a managed path can be shown to be
+// neither forge's nor safe to replace.
+//
+// A marker settles it outright. Without one there is still something forge can
+// prove: a file whose settings match the template it is about to write is
+// forge's own output from before these files were marked, so writing the marker
+// in is forge adopting what it already put there rather than taking someone's.
+// Every managed file in the portfolio predates the marker, and without that
+// second test the first run would report all of them and maintain none.
+//
+// Settings, not bytes. These templates carry long explanatory comments and those
+// get rewritten on their own — the reason 30 .editorconfig files in the
+// portfolio differ from the current template is one rewritten comment paragraph,
+// with every key identical. A person adjusting a config changes a setting, so
+// comparing the settings is what separates the two cases. Every one of these
+// formats comments with #, which is the same property that lets them carry the
+// marker at all.
+//
+// Anything else is a file forge cannot account for. It is reported, and the
+// finding carries the two ways out.
+func unattributable(root, rel, want string) bool {
+	data, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		// Absent, so there is nothing to attribute and nothing to lose.
+		return false
+	}
+	if !handWritten(root, rel) {
+		return false
+	}
+	return settings(string(data)) != settings(want)
+}
+
+// settings is a config body with its comments and blank lines dropped, so two
+// bodies compare on what they configure rather than on what they explain.
+func settings(body string) string {
+	var kept []string
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// supersededSpelling decides what to do about a config still on disk under the
+// spelling this one replaces.
+//
+// Removable when its content means the same as what forge is writing at the new
+// path. That is a weaker claim than "forge wrote this file", and it is the only
+// one a removal needs: the same content lands at the new path in the same run,
+// so removing the old one loses nothing. No marker can be asked for here, since
+// the whole reason for the new spelling is that the old format cannot carry one.
+//
+// Where the content differs it is reported and left alone. Both tools prefer the
+// superseded spelling, so a repo keeping one is running that config rather than
+// forge's, and only a person can say which was meant.
+func supersededSpelling(root string, tool toolConfig, want string) (generatedFile, *reconcile.Change) {
+	data, err := os.ReadFile(filepath.Join(root, tool.supersedes))
+	if err != nil {
+		return generatedFile{}, nil
+	}
+
+	if same, err := sameConfig(data, []byte(want)); err != nil || !same {
+		finding := blocker(tool.supersedes, "the tool that reads it prefers this spelling over "+
+			tool.rel+", and its content differs from what forge writes there, so forge's config is "+
+			"not the one in force — reconcile the two by hand")
+		return generatedFile{}, &finding
+	}
+	// want is empty, which is what makes this a retraction rather than a write.
+	return generatedFile{rel: tool.supersedes, have: string(data), exists: true}, nil
+}
+
+// sameConfig reports whether two config bodies carry the same data.
+//
+// yaml.v3 reads both spellings, JSON being a subset of YAML, so the comparison
+// needs one parser rather than one per format.
+func sameConfig(a, b []byte) (bool, error) {
+	var left, right any
+	if err := yaml.Unmarshal(a, &left); err != nil {
+		return false, err
+	}
+	if err := yaml.Unmarshal(b, &right); err != nil {
+		return false, err
+	}
+	return reflect.DeepEqual(left, right), nil
+}
+
 func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	root := t.Repo.Path
 	blocksFS, err := fs.Sub(t.Assets.PreCommit, "blocks")
@@ -287,7 +390,31 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if tool.rel == ".shellcheckrc" {
 			want += precommit.ShellcheckDisables(declared)
 		}
+
+		// A file at a managed path carrying none of forge's markers is a
+		// person's, unless it is forge's own output from before these files
+		// were marked. Reported rather than repaired, so check names it and
+		// apply cannot reach it. Asked per file: one hand-written config is no
+		// reason to stop deploying the others.
+		if unattributable(root, tool.rel, want) {
+			state.blockers = append(state.blockers, blocker(tool.rel,
+				"exists without the "+managedMark+" marker and does not match what forge deploys, so forge "+
+					"cannot tell its own earlier output from a file someone wrote — reconcile it by hand, or "+
+					"delete it and re-apply to take the standard"))
+			continue
+		}
 		state.configs = append(state.configs, readGenerated(root, tool.rel, want))
+
+		if tool.supersedes == "" {
+			continue
+		}
+		old, finding := supersededSpelling(root, tool, want)
+		if finding != nil {
+			state.blockers = append(state.blockers, *finding)
+		}
+		if old.managed() {
+			state.configs = append(state.configs, old)
+		}
 	}
 
 	// Measured whatever the basis is. A stamp does not authorize installing a
@@ -438,8 +565,23 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 		}
 	}
 
+	// Writes first, retractions after. apply performs them in this order, so a
+	// run interrupted between the two leaves the superseded config still on
+	// disk and still in force — which is the state the repo was already in,
+	// rather than a repo with no config for that tool at all.
 	for _, file := range state.configs {
+		if file.retracting() {
+			continue
+		}
 		if change, drifted := file.change("deploy the standard tool config"); drifted {
+			changes = append(changes, change)
+		}
+	}
+	for _, file := range state.configs {
+		if !file.retracting() {
+			continue
+		}
+		if change, drifted := file.change("the tool reads this spelling in preference, so it comes out"); drifted {
 			changes = append(changes, change)
 		}
 	}
@@ -489,9 +631,24 @@ func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconci
 	}
 
 	for _, file := range state.configs {
-		if file.rel == change.Item {
-			return writeIfStale(t.Repo.Path, file, change)
+		if file.rel != change.Item {
+			continue
 		}
+		if hasItem(state.blockers, file.rel) {
+			return reconcile.Outcome{
+				Change: change, Status: reconcile.Refused,
+				Message: "a hand-written " + file.rel + " appeared since the plan",
+			}, nil
+		}
+		// Checked before the write, because an empty want is exactly what a
+		// retraction has and writeIfStale would read it as a file to blank.
+		if file.retracting() {
+			if err := removeGenerated(t.Repo.Path, file); err != nil {
+				return reconcile.Outcome{}, err
+			}
+			return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "removed " + file.rel}, nil
+		}
+		return writeIfStale(t.Repo.Path, file, change)
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "no longer part of the standard"}, nil
 }

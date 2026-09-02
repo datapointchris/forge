@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"io/fs"
 	"os"
 	"slices"
 	"strings"
@@ -24,9 +25,9 @@ func TestPreCommitDeploysTheConfigsItsDeclaredStacksNeed(t *testing.T) {
 		want    []string
 		notWant []string
 	}{
-		"go":      {stacks: []string{"go"}, want: []string{".golangci.yml"}, notWant: []string{".prettierrc.json"}},
-		"vue":     {stacks: []string{"vue"}, want: []string{".prettierrc.json"}, notWant: []string{".golangci.yml"}},
-		"generic": {stacks: []string{"python"}, want: []string{".markdownlint.json", ".editorconfig", ".shellcheckrc"}, notWant: []string{".golangci.yml", ".prettierrc.json"}},
+		"go":      {stacks: []string{"go"}, want: []string{".golangci.yml"}, notWant: []string{".prettierrc.yaml"}},
+		"vue":     {stacks: []string{"vue"}, want: []string{".prettierrc.yaml"}, notWant: []string{".golangci.yml"}},
+		"generic": {stacks: []string{"python"}, want: []string{".markdownlint.yaml", ".editorconfig", ".shellcheckrc"}, notWant: []string{".golangci.yml", ".prettierrc.yaml"}},
 	}
 
 	for name, tc := range cases {
@@ -236,12 +237,12 @@ func TestPrecommitMaintainsARepoItStampedButDoesNotTrack(t *testing.T) {
 	}
 	// The three generic tool configs plus the config itself. A stack the registry
 	// does not name is not guessed at, so nothing go- or vue-shaped appears.
-	for _, want := range []string{preCommitConfigPath, ".editorconfig", ".shellcheckrc", ".markdownlint.json"} {
+	for _, want := range []string{preCommitConfigPath, ".editorconfig", ".shellcheckrc", ".markdownlint.yaml"} {
 		if !slices.Contains(items, want) {
 			t.Errorf("no change for %s; got %v", want, items)
 		}
 	}
-	for _, unwanted := range []string{".golangci.yml", ".prettierrc.json"} {
+	for _, unwanted := range []string{".golangci.yml", ".prettierrc.yaml"} {
 		if slices.Contains(items, unwanted) {
 			t.Errorf("%s was generated for a repo declaring no components: %v", unwanted, items)
 		}
@@ -394,7 +395,7 @@ func TestPrecommitReportsToolConfigsStrandedByADeletedConfig(t *testing.T) {
 	generic := map[string]string{
 		".editorconfig":      "root = true\n",
 		".shellcheckrc":      "disable=SC1091\n",
-		".markdownlint.json": "{}\n",
+		".markdownlint.yaml": "{}\n",
 	}
 	target := fixture(t, nil, generic)
 
@@ -447,5 +448,182 @@ func TestPrecommitStaysQuietAboutAnEditorconfigItDidNotDeploy(t *testing.T) {
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none for one file forge cannot claim", measured.Changes)
+	}
+}
+
+// Every file forge deploys whole has to carry the marker, or handWritten cannot
+// answer for it and the guard is decoration. This is what stops a ninth tool
+// config arriving without one.
+func TestEveryDeployedToolConfigCarriesTheManagedMarker(t *testing.T) {
+	assets := fixture(t, nil, nil).Assets
+
+	for _, tool := range toolConfigs {
+		content, err := fs.ReadFile(assets.PreCommit, tool.asset)
+		if err != nil {
+			t.Errorf("%s: %s", tool.asset, err)
+			continue
+		}
+		if !strings.HasPrefix(string(content), managedMark) {
+			first, _, _ := strings.Cut(string(content), "\n")
+			t.Errorf("%s deploys to %s without %q on its first line; got %q",
+				tool.asset, tool.rel, managedMark, first)
+		}
+	}
+}
+
+// prettier formats YAML, and the vue hook runs it across the whole component
+// directory. A YAML config forge deploys to a repo root that prettier does not
+// ignore has two writers and no fixed point: prettier reshapes it, forge writes
+// it back, and the repo drifts on every run of either.
+func TestPrettierIgnoresEveryYAMLConfigForgeDeploys(t *testing.T) {
+	assets := fixture(t, nil, nil).Assets
+
+	content, err := fs.ReadFile(assets.PreCommit, "configs/prettierignore.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignored := strings.Split(string(content), "\n")
+
+	for _, tool := range toolConfigs {
+		if !strings.HasSuffix(tool.rel, ".yaml") && !strings.HasSuffix(tool.rel, ".yml") {
+			continue
+		}
+		if !slices.Contains(ignored, tool.rel) {
+			t.Errorf("%s is deployed but not in the prettierignore, so prettier would reformat it", tool.rel)
+		}
+	}
+}
+
+// The whole point of the marker: a config a person wrote is reported and left
+// where it is, rather than replaced by the template.
+func TestPrecommitRefusesToOverwriteAHandWrittenToolConfig(t *testing.T) {
+	mine := "root = true\n\n[*]\nindent_size = 8\n"
+	target := fixture(t, stacks("shell"), map[string]string{".editorconfig": mine})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var found bool
+	for _, c := range measured.Changes {
+		if c.Item != ".editorconfig" {
+			continue
+		}
+		found = true
+		if c.Actionable() {
+			t.Error(".editorconfig is actionable, so apply would overwrite a file a person wrote")
+		}
+	}
+	if !found {
+		t.Fatalf("a hand-written .editorconfig was not reported: %v", measured.Changes)
+	}
+
+	applyAll(t, target, PreCommit{})
+	if got := readFile(t, target.Path(".editorconfig")); got != mine {
+		t.Errorf("apply rewrote a hand-written file:\n%s", got)
+	}
+}
+
+// Every managed file in the portfolio predates the marker, so the guard has to
+// recognize forge's own earlier output or its first run reports every repo and
+// maintains none. The 30 .editorconfig files that differ from the template
+// differ by a rewritten comment paragraph with every key identical, which is
+// the shape this adopts.
+func TestPrecommitAdoptsItsOwnOutputThatDiffersOnlyInComments(t *testing.T) {
+	target := fixture(t, stacks("shell"), nil)
+	applyAll(t, target, PreCommit{})
+
+	// Put it back the way an older template left it: same keys, different prose.
+	deployed := readFile(t, target.Path(".editorconfig"))
+	legacy := "# An older run wrote this comment.\n"
+	for _, line := range strings.Split(deployed, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			legacy += line + "\n"
+		}
+	}
+	if err := os.WriteFile(target.Path(".editorconfig"), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	applyAll(t, target, PreCommit{})
+
+	if got := readFile(t, target.Path(".editorconfig")); !strings.HasPrefix(got, managedMark) {
+		t.Errorf("forge did not adopt its own earlier output:\n%s", got)
+	}
+}
+
+// The counterpart, and what keeps the adoption above from being a license to
+// overwrite anything: a changed setting is not a rewritten comment.
+func TestPrecommitWillNotAdoptAFileWhoseSettingsDiffer(t *testing.T) {
+	target := fixture(t, stacks("shell"), nil)
+	applyAll(t, target, PreCommit{})
+
+	edited := strings.Replace(readFile(t, target.Path(".editorconfig")), managedMark+"\n", "", 1)
+	edited = strings.Replace(edited, "indent_size = 2", "indent_size = 8", 1)
+	if err := os.WriteFile(target.Path(".editorconfig"), []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	applyAll(t, target, PreCommit{})
+
+	if got := readFile(t, target.Path(".editorconfig")); !strings.Contains(got, "indent_size = 8") {
+		t.Errorf("apply overwrote a file whose settings someone had changed:\n%s", got)
+	}
+}
+
+// An absent file is not hand-written, so first deployment is untouched by the
+// guard. Without this the guard would read "nothing there" as "not forge's".
+func TestPrecommitStillDeploysAToolConfigThatIsNotThereYet(t *testing.T) {
+	target := fixture(t, stacks("shell"), nil)
+
+	applyAll(t, target, PreCommit{})
+
+	if got := readFile(t, target.Path(".editorconfig")); !strings.HasPrefix(got, managedMark) {
+		t.Errorf(".editorconfig was not deployed with its marker:\n%s", got)
+	}
+}
+
+// markdownlint prefers .markdownlint.json over the spelling forge now writes, so
+// leaving one behind would keep it in force and forge's file unread. It is
+// removable because the same content lands at the new path in the same run.
+func TestPrecommitRemovesASupersededSpellingCarryingTheSameConfig(t *testing.T) {
+	sameContent := `{"default": true, "MD013": false, "MD024": {"siblings_only": true},
+	  "MD033": false, "MD036": false, "MD038": false, "MD046": false}`
+	target := fixture(t, stacks("shell"), map[string]string{".markdownlint.json": sameContent})
+
+	applyAll(t, target, PreCommit{})
+
+	if _, err := os.Stat(target.Path(".markdownlint.json")); err == nil {
+		t.Error("the superseded spelling is still there, so it is still the one in force")
+	}
+	if got := readFile(t, target.Path(".markdownlint.yaml")); !strings.HasPrefix(got, managedMark) {
+		t.Errorf(".markdownlint.yaml was not written:\n%s", got)
+	}
+}
+
+// A superseded file whose content differs is a config someone changed, and it is
+// the one the tool actually reads. Reported, never removed.
+func TestPrecommitReportsASupersededSpellingThatDiffers(t *testing.T) {
+	target := fixture(t, stacks("shell"), map[string]string{
+		".markdownlint.json": `{"default": true, "MD033": true, "MD013": 120}`,
+	})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var found bool
+	for _, c := range measured.Changes {
+		if c.Item != ".markdownlint.json" {
+			continue
+		}
+		found = true
+		if c.Actionable() {
+			t.Error("apply would delete a superseded config whose content nobody has reconciled")
+		}
+	}
+	if !found {
+		t.Fatalf("a differing .markdownlint.json was not reported: %v", measured.Changes)
+	}
+
+	applyAll(t, target, PreCommit{})
+	if _, err := os.Stat(target.Path(".markdownlint.json")); err != nil {
+		t.Error("apply removed a superseded config it was supposed to report")
 	}
 }

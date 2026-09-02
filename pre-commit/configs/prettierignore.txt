@@ -1,3 +1,5 @@
+# forge-managed
+#
 # Files forge generates. Prettier must not rewrite them.
 #
 # The vue block runs `cd {{dir}} && npx prettier --write .` with
@@ -13,7 +15,8 @@
 # the generator is the only thing entitled to their shape.
 .pre-commit-config.yaml
 .github/workflows/validate.yml
-.markdownlint.json
+.markdownlint.yaml
+.prettierrc.yaml
 .editorconfig
 .golangci.yml
 .sqlfluff
