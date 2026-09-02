@@ -5,7 +5,7 @@ go 1.26.5
 toolchain go1.26.6
 
 require (
-	github.com/datapointchris/goselfupdate v0.10.0
+	github.com/datapointchris/goselfupdate v0.11.0
 	github.com/fatih/color v1.19.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.10.2
@@ -13,7 +13,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/datapointchris/goclikit v0.1.0
+require github.com/datapointchris/goclikit v0.1.1
 
 require (
 	github.com/datapointchris/clisurface v0.5.0
