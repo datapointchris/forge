@@ -419,8 +419,14 @@ func TestPrecommitReportsToolConfigsStrandedByADeletedConfig(t *testing.T) {
 	if len(measured.Fold(reconcile.LensCheck).Changes) == 0 {
 		t.Error("check reported nothing, so the state stays invisible at exit 3")
 	}
-	if got := measured.Fold(reconcile.LensPlan).Changes; len(got) != 0 {
-		t.Errorf("plan offers %v, but forge may not touch these", got)
+	planned := measured.Fold(reconcile.LensPlan)
+	if len(planned.Changes) != 0 {
+		t.Errorf("plan offers %v, but forge may not touch these", planned.Changes)
+	}
+	// plan's row here says converged and then states a fault it cannot repair,
+	// so it has to name the verb that shows the fault rather than stopping.
+	if !strings.Contains(planned.Detail, "check") {
+		t.Errorf("plan detail = %q, want it to name the verb that lists them", planned.Detail)
 	}
 
 	// Nothing was written, and nothing was removed.

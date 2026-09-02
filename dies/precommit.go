@@ -93,8 +93,12 @@ func (s preCommitState) Summary() string {
 		// The only blockers reachable here are the stranded tool configs, and
 		// the plain reason contradicts them: it says forge wrote nothing to
 		// maintain while three files it deploys are sitting there.
+		// Named with the verb that shows them, not with their paths. This row
+		// renders under plan, which keeps Automatic repairs and so has nothing
+		// to offer here — stating the fault without the way onward leaves a
+		// converged row that reads as broken.
 		if len(s.blockers) > 0 {
-			return fmt.Sprintf("declares no toolchain, and %s forge deploys sit here with no stamped %s beside them",
+			return fmt.Sprintf("declares no toolchain, and %s forge deploys sit here with no stamped %s beside them; `check` names them",
 				plural(len(s.blockers), "file", "files"), preCommitConfigPath)
 		}
 		return s.basis.reason()
