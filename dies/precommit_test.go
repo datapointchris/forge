@@ -2,6 +2,7 @@ package dies
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -213,5 +214,115 @@ func TestPreCommitPerformRefusesAnItemNoLongerInTheStandard(t *testing.T) {
 	}
 	if _, err := os.Stat(target.Path(".retired-config")); err == nil {
 		t.Error("a refused change still wrote a file")
+	}
+}
+
+// The stamp is `# forge-toolchain: 11` because that is what every repo in this
+// population actually carries — forge wrote them, then stopped being told what
+// they hold, and they froze there. A synthetic stamp would prove the branch
+// runs and nothing about the files it exists to reach.
+const strandedStamp = "# forge-toolchain: 11\nfail_fast: true\ndefault_stages: [pre-commit]\nrepos: []\n"
+
+func TestPrecommitMaintainsARepoItStampedButDoesNotTrack(t *testing.T) {
+	target := fixture(t, nil, map[string]string{preCommitConfigPath: strandedStamp})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	if len(measured.Changes) == 0 {
+		t.Fatalf("summary = %q, want the stale files reported", measured.Summary)
+	}
+	var items []string
+	for _, c := range measured.Changes {
+		items = append(items, c.Item)
+	}
+	// The three generic tool configs plus the config itself. A stack the registry
+	// does not name is not guessed at, so nothing go- or vue-shaped appears.
+	for _, want := range []string{preCommitConfigPath, ".editorconfig", ".shellcheckrc", ".markdownlint.json"} {
+		if !slices.Contains(items, want) {
+			t.Errorf("no change for %s; got %v", want, items)
+		}
+	}
+	for _, unwanted := range []string{".golangci.yml", ".prettierrc.json"} {
+		if slices.Contains(items, unwanted) {
+			t.Errorf("%s was generated for a repo declaring no components: %v", unwanted, items)
+		}
+	}
+}
+
+// Without a stamp there is no file forge wrote, so there is nothing to maintain
+// and first deployment stays gated on the declaration. This is what keeps
+// runner.ActiveRepos' reasoning intact: naming an untouched repo with -F still
+// writes nothing into it.
+func TestPrecommitLeavesARepoItNeverWroteTo(t *testing.T) {
+	target := fixture(t, nil, nil)
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	if len(measured.Changes) != 0 {
+		t.Errorf("changes = %v, want none for a repo forge has never written to", measured.Changes)
+	}
+	if measured.Summary != "declares no toolchain" {
+		t.Errorf("summary = %q, want it to say why", measured.Summary)
+	}
+}
+
+// A hand-written config is not forge's to maintain, whatever else is true. The
+// stamp is the only thing separating the two, so its absence has to be enough
+// on its own.
+func TestPrecommitLeavesAnUnstampedConfigAlone(t *testing.T) {
+	handWritten := "repos:\n  - repo: local\n    hooks: []\n"
+	target := fixture(t, nil, map[string]string{preCommitConfigPath: handWritten})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	if len(measured.Changes) != 0 {
+		t.Errorf("changes = %v, want none for a config forge did not write", measured.Changes)
+	}
+}
+
+// A stamp says forge wrote these files. It says nothing about hooks forge never
+// installed, and installing them would put a commit gate on a repo nobody works
+// in and build every hook environment its frozen config names.
+func TestPrecommitDoesNotInstallHooksInARepoItOnlyStamped(t *testing.T) {
+	target := fixture(t, nil, map[string]string{preCommitConfigPath: strandedStamp})
+	for _, stage := range hookStages {
+		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
+			t.Fatalf("remove hook %s: %s", stage, err)
+		}
+	}
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	// The positive half: the die did run, so "no hook change" is not "no run".
+	if len(measured.Changes) == 0 {
+		t.Fatalf("the die reported nothing at all: %q", measured.Summary)
+	}
+	for _, c := range measured.Changes {
+		if strings.HasPrefix(c.Item, ".git/hooks/") {
+			t.Errorf("would install %s into a repo it only stamped", c.Item)
+		}
+	}
+}
+
+// The same fixture with a declaration still reports the missing hooks, which is
+// what makes the assertion above a narrowing rather than a removal.
+func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T) {
+	target := fixture(t, stacks("shell"), map[string]string{preCommitConfigPath: strandedStamp})
+	for _, stage := range hookStages {
+		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
+			t.Fatalf("remove hook %s: %s", stage, err)
+		}
+	}
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var hooks int
+	for _, c := range measured.Changes {
+		if strings.HasPrefix(c.Item, ".git/hooks/") {
+			hooks++
+		}
+	}
+	if hooks == 0 {
+		t.Errorf("a declared repo lost its hook installation: %v", measured.Changes)
 	}
 }

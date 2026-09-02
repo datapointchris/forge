@@ -96,11 +96,40 @@ func (s preCommitState) Summary() string {
 	return fmt.Sprintf("pre-commit current (%s deployed)", plural(len(s.configs)+1, "file", "files"))
 }
 
-func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
-	if t.Repo.Toolchain == nil {
-		return preCommitState{reason: "declares no toolchain"}, nil
+// maintained decides whether this die has anything to say about a repo, and
+// what it should generate if so.
+//
+// A declaration is the answer for a repo somebody works in. The stamp is the
+// answer for one nobody does: forge wrote the file, so forge owns keeping it
+// right, and a registry silent about which stacks are there has not unwritten
+// it. Asking the declaration alone would strand every repo forge has written to
+// but does not track, holding whatever it last generated, with every verb
+// reporting converged because nothing looked.
+//
+// An undeclared repo is generated as if it declared no components, which is the
+// existing spelling for "the generic blocks and nothing else" and is what those
+// files already are. Nothing new is written, and a stack the registry stopped
+// naming is not guessed at from what happens to be on disk.
+//
+// First deployment is untouched. Without a stamp there is no file, so a repo
+// forge has never written to stays untouched however it is reached — which is
+// what keeps the reasoning in runner.ActiveRepos intact.
+//
+// byStamp is what the caller narrows on. A stamp says forge wrote these files;
+// it says nothing about hooks forge never installed, and installing them would
+// put a commit gate on a repo nobody works in and build every hook environment
+// its nine-version-old config names.
+func maintained(declared *config.Toolchain, existing string) (resolved *config.Toolchain, byStamp bool, applicable bool, reason string) {
+	if declared != nil {
+		return declared, false, true, ""
 	}
+	if !strings.HasPrefix(existing, toolchainStamp) {
+		return nil, false, false, "declares no toolchain"
+	}
+	return &config.Toolchain{}, true, true, ""
+}
 
+func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	root := t.Repo.Path
 	blocksFS, err := fs.Sub(t.Assets.PreCommit, "blocks")
 	if err != nil {
@@ -111,11 +140,17 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	if data, err := os.ReadFile(filepath.Join(root, preCommitConfigPath)); err == nil {
 		existing = string(data)
 	}
+
+	declared, byStamp, applicable, reason := maintained(t.Repo.Toolchain, existing)
+	if !applicable {
+		return preCommitState{reason: reason}, nil
+	}
+
 	customSections := precommit.ExtractCustomSections(existing)
 
 	scripts := shebangScripts(root, t.Versioned())
 
-	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain, customSections, t.Versioned(), scripts)
+	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, declared, customSections, t.Versioned(), scripts)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +161,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// them is the whole point: the fix is adding markers, not letting the sync
 	// take them.
 	if existing != "" {
-		unknown, err := precommit.SafetyCheck(existing, blocksFS, t.Repo.Toolchain, customSections)
+		unknown, err := precommit.SafetyCheck(existing, blocksFS, declared, customSections)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +172,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		}
 	}
 
-	categories := declaredCategories(t.Repo.Toolchain)
+	categories := declaredCategories(declared)
 	for _, tool := range toolConfigs {
 		if tool.category != "" && !slices.Contains(categories, tool.category) {
 			continue
@@ -148,12 +183,14 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		}
 		want := string(content)
 		if tool.rel == ".shellcheckrc" {
-			want += precommit.ShellcheckDisables(t.Repo.Toolchain)
+			want += precommit.ShellcheckDisables(declared)
 		}
 		state.configs = append(state.configs, readGenerated(root, tool.rel, want))
 	}
 
-	state.missingHooks = uninstalledHooks(root, wanted)
+	if !byStamp {
+		state.missingHooks = uninstalledHooks(root, wanted)
+	}
 
 	// A schema-valid config can still fail on the first commit, which is the
 	// check `pre-commit validate-config` cannot make.
