@@ -197,9 +197,9 @@ that turns public has the declaration **removed**, because a path nothing reads 
 reports converged. The stamp is what authorises that delete, so a hand-written config at either
 spelling — `.yaml` or `.yml` — is reported and left alone.
 
-The output is **`validate.yml`, not `ci.yml`** — several repos hand-wrote a `ci.yml` long before this
-existed (one is a multi-job pipeline with working directories and image env), and generating over
-one would destroy work nothing could recover. The `ci` die refuses any `validate.yml` lacking the
+The output is **`validate.yml`, not `ci.yml`** — several repos carry a hand-written `ci.yml` (one is
+a multi-job pipeline with working directories and image env), and generating over one would destroy
+work nothing could recover. The `ci` die refuses any `validate.yml` lacking the
 `# forge-toolchain:` header for the same reason. Bespoke pipelines stay as separate workflow files;
 the generated one is additive.
 
@@ -225,16 +225,15 @@ rather than emitting an empty job, which is what makes the absence safe.
 
 **Every pinned version comes from the declaration, not from this repo.** `versions_file` in forge's
 config names it, resolved exactly like `repos_registry` — flag, then `$FORGE_VERSIONS_FILE`, then
-the config key. Unset means the manifest embedded in this binary, which is what forge did before
-the file existed and is what a machine with no declaration still gets.
+the config key. Unset means the manifest embedded in this binary, which is what a machine with no
+declaration gets.
 
-That inverts what `toolchain.yml` was. The embedded copy cannot drift and cannot move without
-cutting a release, so a version bump used to mean releasing forge; naming a file makes it one edit
-and a sweep. A declared file that cannot be read is an error rather than a fallback — quietly
-rolling out whatever the binary shipped with is the failure this replaced, a bump that reports
-success and changes nothing.
+The embedded copy cannot drift and cannot move without cutting a release, so a bump against it is a
+forge release; naming a file makes it one edit and a sweep. A declared file that cannot be read is
+an error rather than a fallback — quietly rolling out whatever the binary shipped with is a bump
+that reports success and changes nothing.
 
-`toolchain.yml` stays as that embedded default and is still the shape the generators consume;
+`toolchain.yml` is that embedded default and is the shape the generators consume;
 `toolchain.LoadFile` reads the declaration into the same type, so nothing downstream knows which
 answered. `forge toolchain show` is where a person finds out — it prints the resolved path beside
 the version, because the two sources print identical numbers and only the path separates a pin
@@ -265,8 +264,7 @@ reading it needs the module proxy and a die that reaches the network to decide o
 that fails offline. The refusal is `ByHand`, so it surfaces in `check` and `apply` cannot reach it.
 
 **A floor moves in either direction.** Lowering one is safe for every consumer; raising one excludes
-them. Two modules were floored above the declaration before this existed and were pulled back to
-it, which is what makes the floor uniform with no exceptions.
+them. Every module takes the declaration's floor, so the floor is uniform with no exceptions.
 
 A module already floored at or above the toolchain pin gets no toolchain line, since it would be a
 second copy of the same fact — and an existing one there is reported `Undeclared` rather than
