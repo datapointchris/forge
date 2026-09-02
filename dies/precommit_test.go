@@ -3,6 +3,8 @@ package dies
 import (
 	"io/fs"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -489,6 +491,59 @@ func TestEveryDeployedToolConfigCarriesTheManagedMarker(t *testing.T) {
 	}
 }
 
+// Every YAML config forge deploys is either ignored by prettier or left
+// unchanged by it. Failing both means two writers on one file with no fixed
+// point: prettier reshapes it, forge writes it back, and the repo drifts on
+// every run of either.
+//
+// A disjunction because the ignore list and the formatter's own behavior are
+// two ways to satisfy the same property, and the release that marks these files
+// deliberately does not change the ignore list. Without this the second half
+// rests on one measurement taken once against one prettier version.
+func TestNoDeployedYAMLConfigIsBothUnignoredAndReformattedByPrettier(t *testing.T) {
+	if _, err := exec.LookPath("prettier"); err != nil {
+		t.Skip("prettier is not installed, so its formatting cannot be measured here")
+	}
+	assets := fixture(t, nil, nil).Assets
+
+	ignoreList, err := fs.ReadFile(assets.PreCommit, "configs/prettierignore.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignored := strings.Split(string(ignoreList), "\n")
+
+	for _, tool := range toolConfigs {
+		if !strings.HasSuffix(tool.rel, ".yaml") && !strings.HasSuffix(tool.rel, ".yml") {
+			continue
+		}
+		if slices.Contains(ignored, tool.rel) {
+			continue
+		}
+
+		content, err := fs.ReadFile(assets.PreCommit, tool.asset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		path := filepath.Join(dir, filepath.Base(tool.rel))
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runIn(dir, "prettier", "--write", path); err != nil {
+			t.Fatalf("%s: %s", tool.rel, err)
+		}
+
+		after, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(after) != string(content) {
+			t.Errorf("%s is not in the prettierignore and prettier rewrites it, so prettier and "+
+				"forge would each undo the other on every run", tool.rel)
+		}
+	}
+}
+
 // The whole point of the marker: a config a person wrote is reported and left
 // where it is, rather than replaced by the template.
 func TestPrecommitRefusesToOverwriteAHandWrittenToolConfig(t *testing.T) {
@@ -640,6 +695,39 @@ func TestPrecommitReachesASpellingRankedAboveTheOneItWrites(t *testing.T) {
 	}
 	if !found {
 		t.Errorf(".prettierrc outranks .prettierrc.yaml and was not reported: %v", measured.Changes)
+	}
+}
+
+// A file forge could not parse and a file forge parsed and found different are
+// separate answers. JSONC exists to carry // comments and the YAML parser
+// rejects them, so folding the two together reports a content difference that
+// nothing measured.
+func TestPrecommitSaysWhenASupersededSpellingCouldNotBeParsed(t *testing.T) {
+	target := fixture(t, stacks("shell"), map[string]string{
+		".markdownlint.jsonc": "{\n  // markdownlint reads this; the YAML parser does not\n  \"default\": true\n}\n",
+	})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var detail string
+	for _, c := range measured.Changes {
+		if c.Item == ".markdownlint.jsonc" {
+			detail = c.Detail
+		}
+	}
+	if detail == "" {
+		t.Fatalf("an unparsable superseded spelling was not reported: %v", measured.Changes)
+	}
+	if !strings.Contains(detail, "could not be parsed") {
+		t.Errorf("detail = %q, want it to say the comparison never ran", detail)
+	}
+	if strings.Contains(detail, "content differs") {
+		t.Errorf("detail = %q, which asserts a difference nothing measured", detail)
+	}
+
+	applyAll(t, target, PreCommit{})
+	if _, err := os.Stat(target.Path(".markdownlint.jsonc")); err != nil {
+		t.Error("apply removed a file it could not read")
 	}
 }
 

@@ -329,10 +329,23 @@ func supersededSpelling(root, spelling, rel, want string) (generatedFile, *recon
 		return generatedFile{}, nil
 	}
 
-	if same, err := sameConfig(data, []byte(want)); err != nil || !same {
-		finding := blocker(spelling, "the tool that reads it resolves this spelling ahead of "+
-			rel+", and its content differs from what forge writes there, so forge's config is "+
-			"not the one in force — reconcile the two by hand")
+	ahead := "the tool that reads it resolves this spelling ahead of " + rel +
+		", so forge's config is not the one in force"
+
+	// Parsed and differing are separate answers. A .markdownlint.jsonc carries
+	// // comments by definition and the YAML parser rejects them, so folding
+	// the parse error into the mismatch would report a difference nothing
+	// measured. Both refuse the removal, which is the safe direction, and only
+	// one of them is a claim about the content.
+	same, err := sameConfig(data, []byte(want))
+	if err != nil {
+		finding := blocker(spelling, ahead+", and it could not be parsed, so forge cannot tell "+
+			"whether it carries the same configuration — reconcile the two by hand")
+		return generatedFile{}, &finding
+	}
+	if !same {
+		finding := blocker(spelling, ahead+", and its content differs from what forge writes "+
+			"there — reconcile the two by hand")
 		return generatedFile{}, &finding
 	}
 	// want is empty, which is what makes this a retraction rather than a write.
