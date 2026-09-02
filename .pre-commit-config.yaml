@@ -109,9 +109,9 @@ repos:
   #
   # The guard distinguishes "this repo has no tests" from "this repo has tests
   # and bats is missing". Only the first is allowed to pass: a bare `bats
-  # tests/` under language: system would be the second hook in this portfolio to
-  # report success because its tool was absent, which is how font accumulated
-  # seven shellcheck findings behind a green hook.
+  # tests/` under language: system would be the second hook here to report
+  # success because its tool was absent. The first hid seven shellcheck
+  # findings behind a green run.
   - repo: local
     hooks:
       - id: bats
@@ -125,10 +125,9 @@ repos:
     rev: v2.4.1
     hooks:
       # Lock files are generated and mostly integrity hashes, so a base64
-      # fragment reads as a typo — two of timeline's package-lock.json hashes
-      # each contained a two-letter sequence codespell corrects. Nobody writes
-      # prose in them and nobody would fix a hit, since the next install would
-      # put it back.
+      # fragment reads as a typo — a package-lock.json hash can contain a
+      # two-letter sequence codespell corrects. Nobody writes prose in them and
+      # nobody would fix a hit, since the next install would put it back.
       - id: codespell
         # The second alternation is sops output. Ciphertext is base64, so it
         # produces the same false hits a lock file's hashes do. The plain
