@@ -74,12 +74,12 @@ func TestAssessCarriesChangesAndSummary(t *testing.T) {
 func TestObserveFailureBecomesARefusalNamingTheRepo(t *testing.T) {
 	die := &fakeDie{name: "merge-settings", observeErr: errors.New("gh: not logged in")}
 
-	m := Assess(Target{Repo: repoNamed("nomad")}, die)
+	m := Assess(Target{Repo: repoNamed("mimic")}, die)
 
 	if m.Refusal == "" {
 		t.Fatal("an observe failure produced no refusal")
 	}
-	for _, want := range []string{"merge-settings", "nomad", "not logged in"} {
+	for _, want := range []string{"merge-settings", "mimic", "not logged in"} {
 		if !strings.Contains(m.Refusal, want) {
 			t.Errorf("refusal %q does not name %q", m.Refusal, want)
 		}
@@ -102,7 +102,7 @@ func TestDiffFailureBecomesARefusal(t *testing.T) {
 // portfolio.
 func TestPanicBecomesARefusalRatherThanEndingTheWalk(t *testing.T) {
 	dies := []Die{&fakeDie{name: "boom", observePanic: true}, &fakeDie{name: "fine"}}
-	targets := []Target{{Repo: repoNamed("forge")}, {Repo: repoNamed("dotfiles")}}
+	targets := []Target{{Repo: repoNamed("forge")}, {Repo: repoNamed("beta")}}
 
 	measurements := AssessAll(targets, dies)
 

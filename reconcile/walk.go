@@ -32,8 +32,8 @@ func (m Measurement) Fold(lens Lens) Result {
 func Assess(t Target, d Die) (m Measurement) {
 	m = Measurement{Target: t, Die: d}
 
-	// Recovering is the Go spelling of the isolation dotfiles gets from
-	// catching Exception around each resource: a panic in one die against one
+	// Recovering is the Go spelling of catching an exception around each
+	// resource: a panic in one die against one
 	// repo must not abandon the other forty-seven. The value is carried into
 	// the refusal rather than swallowed, so a forge bug still shows up as an
 	// Issue on the repo that triggered it.
@@ -65,8 +65,8 @@ func Assess(t Target, d Die) (m Measurement) {
 //
 // Repo-major so that a walk over several dies reads as a report on each repo
 // rather than interleaving them. The die order is the caller's, and it is
-// presentation only — forge's dies are independent of each other, unlike the
-// dotfiles resource order, which is a real dependency chain.
+// presentation only — forge's dies are independent of each other, unlike a
+// resource order where each step depends on the one before.
 func AssessAll(targets []Target, dies []Die) []Measurement {
 	measurements := make([]Measurement, 0, len(targets)*len(dies))
 	for _, t := range targets {

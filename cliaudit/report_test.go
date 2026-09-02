@@ -120,10 +120,10 @@ func TestTextReportShowsTheDistribution(t *testing.T) {
 
 func TestUnresolvedReposAreListed(t *testing.T) {
 	var sb strings.Builder
-	if err := WriteText(&sb, Analyze(nil, []Unresolved{{Repo: "ichrisbirch", Tried: []string{"ichrisbirch"}}})); err != nil {
+	if err := WriteText(&sb, Analyze(nil, []Unresolved{{Repo: "widget", Tried: []string{"widget"}}})); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sb.String(), "ichrisbirch") {
+	if !strings.Contains(sb.String(), "widget") {
 		t.Error("a repo whose binary was not found must appear; a silent skip reads as a clean sweep")
 	}
 }

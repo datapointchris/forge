@@ -516,7 +516,7 @@ func TestCustomHooksNotDuplicatedInStandard(t *testing.T) {
 // forgeBlocksDir locates the real blocks, which sit beside this package rather
 // than inside it: precommit/ is the generator, pre-commit/ is what it composes.
 //
-// One `..`, not two. With two, this resolved to ~/tools/pre-commit/blocks and
+// One `..`, not two. With two, this resolved a directory above the repo and
 // realBlocks skipped every TestIntegration_ in this file — a green run
 // asserting nothing about the blocks that actually ship.
 func forgeBlocksDir(t *testing.T) string {

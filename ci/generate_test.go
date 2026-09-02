@@ -29,8 +29,8 @@ func comps(pairs ...string) []config.Component {
 	return components
 }
 
-// nomad holds api/ and cli/ as separate Go modules. One serial job would hide
-// which failed and make them share a setup step.
+// A repo can hold api/ and cli/ as separate Go modules. One serial job would
+// hide which failed and make them share a setup step.
 func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
 		comps("go", "api", "go", "cli", "vue", "web"), nil, Ungated, Hosted)
@@ -115,8 +115,8 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 			Gated,
 		},
 		{
-			// learning and nomad ship a nested CLI from release-cli.yml, and
-			// matching release.yml alone missed both.
+			// A repo shipping a nested CLI gates from release-cli.yml, so
+			// matching release.yml alone missed every one of them.
 			"a differently-named release workflow gates on it",
 			map[string]string{"release-cli.yml": gate},
 			Gated,
@@ -261,7 +261,7 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 }
 
 // A before:<stack> section runs before the stack's steps, not before checkout.
-// ichrisbirch decrypts test secrets out of secrets/ in one, which needs the
+// A repo can decrypt test secrets out of secrets/ in one, which needs the
 // workspace to exist.
 func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 	custom := map[string]string{

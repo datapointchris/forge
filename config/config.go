@@ -17,7 +17,7 @@ import (
 // DefaultConfigPath is forge's own XDG config directory.
 //
 // Separate from DefaultReposPath, and holding nothing the registry holds. The
-// registry is shared — syncer, fleet and indy all read it, and each takes an
+// registry is shared — several tools read it, and each takes an
 // entry there to be a git repo with a remote. A fact only forge can act on has
 // to live somewhere those readers never look, or it changes what iterating the
 // registry means for all of them at once.

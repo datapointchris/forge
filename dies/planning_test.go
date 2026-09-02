@@ -158,7 +158,7 @@ func TestPlanningRecreatesAMissingTarget(t *testing.T) {
 	}
 }
 
-// The fleet-specific `if repo_name = ichrisbirch` is a registry field now, so
+// The one repo name the die used to hardcode is a registry field now, so
 // the tool carries the operation and the repo carries the fact.
 func TestPlanningSyncsDeclaredExtraDirectories(t *testing.T) {
 	target := fixture(t, stacks("python"), map[string]string{"stats/data/rows.csv": "a,b\n"})
@@ -194,12 +194,12 @@ func TestPlanningMergesDisjointFiles(t *testing.T) {
 	}
 }
 
-// Basenames are neither unique (two `homelab` repos) nor always equal to the
-// registry name (`zmk-config-corne42` lives at ~/code/zmk/corne42), so the
-// synced path is keyed on the registry name and never on the directory.
+// Basenames are neither unique — a reference clone can share a name with a
+// portfolio repo — nor always equal to the registry name, so the synced path is
+// keyed on the registry name and never on the directory.
 func TestPlanningKeysTheSyncedPathOnTheRegistryName(t *testing.T) {
 	target := fixture(t, stacks("go"), nil)
-	target.Repo.Name = "zmk-config-corne42"
+	target.Repo.Name = "widget-config-alpha"
 
 	applyAll(t, target, Planning{})
 
@@ -207,7 +207,7 @@ func TestPlanningKeysTheSyncedPathOnTheRegistryName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(sandbox(target), "sync", "zmk-config-corne42", "planning"); link != want {
+	if want := filepath.Join(sandbox(target), "sync", "widget-config-alpha", "planning"); link != want {
 		t.Errorf("link = %s, want %s — keyed on the directory basename, not the registry name", link, want)
 	}
 }

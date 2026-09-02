@@ -19,9 +19,9 @@ type Job struct {
 	Variants []string
 }
 
-// jobs mirrors cli-design.md § Grammar. `add`, `remove` and `done` are listed
-// as variants rather than as wrong: the standard keeps all three as distinct
-// jobs, so what matters here is which tools carry which, not a verdict.
+// jobs is the verb grammar this audit reports against. `add`, `remove` and
+// `done` are listed as variants rather than as wrong, because all three are
+// distinct jobs — what matters here is which tools carry which, not a verdict.
 var jobs = []Job{
 	{"show one", "show", []string{"view", "info", "cat", "read"}},
 	{"list set", "list", []string{"ls", "dir"}},
@@ -154,8 +154,8 @@ func inspect(t *clisurface.Tool, n *clisurface.Node) []Finding {
 	var out []Finding
 	cmd := strings.Join(n.Path, " ")
 
-	// cli-design.md § "The write verbs come in pairs" — a hyphenated verb-noun
-	// is a namespace wearing a hyphen. Checked first: a compound is already
+	// A hyphenated verb-noun is a namespace wearing a hyphen, so it is reported
+	// as a compound rather than as a noun. Checked first: a compound is already
 	// reported here, and reporting it again as a bare noun says the same thing
 	// twice with a worse fix attached.
 	if v, rest, ok := splitCompound(n.Name); ok {
@@ -167,8 +167,8 @@ func inspect(t *clisurface.Tool, n *clisurface.Node) []Finding {
 		return out
 	}
 
-	// cli-design.md § "A resource that could ever grow a second command is a
-	// namespace today" — a bare noun that acts.
+	// A resource that could ever grow a second command is a namespace today, so
+	// a bare noun that acts is reported.
 	if n.Leaf() && looksLikeNoun(n.Name) && !queryNames[n.Name] {
 		out = append(out, Finding{Kind: "bare-noun", Tool: t.Binary, Command: cmd})
 	}

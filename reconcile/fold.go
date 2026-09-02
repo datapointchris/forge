@@ -27,8 +27,8 @@ const (
 // Drift and Issue are different kinds, not degrees. Drift is expected and
 // benign — the repo differs from the standard, which is what apply is for. An
 // Issue is something wrong. Collapsing them is what makes an exit code
-// meaningless: dotfiles measured the cost as a scheduled unit sitting
-// permanently failed on a machine whose only fault was being a version behind.
+// meaningless: the measured cost was a scheduled unit sitting permanently
+// failed on a machine whose only fault was being a version behind.
 type Status string
 
 const (
@@ -126,7 +126,8 @@ func Refuse(repo, die, reason string) Result {
 	return Result{Repo: repo, Die: die, Status: Issue, Detail: reason, Refusal: reason}
 }
 
-// ExitCode is what a caller branches on. See cli-design.md § Machine contract.
+// ExitCode is what a caller branches on, and is this command's machine-readable
+// contract.
 type ExitCode int
 
 const (

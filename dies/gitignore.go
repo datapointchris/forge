@@ -55,7 +55,7 @@ type wanted struct {
 
 // universal applies whatever the repo holds.
 var universalIgnores = []wanted{
-	{".planning", "planning docs are local-only and synced by Syncthing, never committed"},
+	{".planning", "planning docs are local-only and synced out of band, never committed"},
 }
 
 // Deliberately omitted, because the tool that creates them writes a .gitignore

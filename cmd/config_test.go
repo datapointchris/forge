@@ -72,9 +72,9 @@ func TestTheConfigFlagDoesNotMoveTheConfigPath(t *testing.T) {
 	}
 }
 
-// stdout is data: the JSON has to be parseable with nothing else on the stream,
-// because a caller pipes it. cli-design.md § "stdout is data, stderr is
-// everything else" — a bare fmt.Println anywhere in the report breaks this.
+// stdout is data and stderr is everything else. The JSON has to be parseable
+// with nothing else on the stream, because a caller pipes it, so a bare
+// fmt.Println anywhere in the report breaks this.
 func TestJSONOutputIsTheOnlyThingOnStdout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", home)
@@ -267,7 +267,7 @@ func TestTheReportedReposPathIsExpanded(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(configHome, "forge"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configHome, "forge", "config.yml"), []byte("repos_registry: ~/dev/repos.json\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configHome, "forge", "config.yml"), []byte("repos_registry: ~/src/repos.json\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_CONFIG_HOME", configHome)

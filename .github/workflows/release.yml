@@ -63,9 +63,9 @@ jobs:
       # the previous version and exits 0, so the installer reports the machine
       # converged while leaving the old binary in place.
       #
-      # Measured 2026-08-14 on v1.37.0: the release assets were up, the proxy
-      # listed to v1.36.0, and `dotfiles packages apply --package forge` printed
-      # "forge installed" twice without moving it.
+      # Measured on a release whose assets were up while the proxy still listed
+      # the version before it: the installer printed "forge installed" twice
+      # without moving the binary.
       - name: Prime the module proxy
         env:
           VERSION: ${{ needs.semver.outputs.version }}

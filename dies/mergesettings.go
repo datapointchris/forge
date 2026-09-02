@@ -22,9 +22,9 @@ import (
 // branch is what shows an initiative as one piece of work. Neither is wanted,
 // so the merge commit had to stop being noise instead.
 //
-// Squash is off for that reason. `git-workflow.md` § "A PR lands as a merge
-// commit, not a squash or a rebase" already forbids pressing it, and a button
-// that must never be pressed is better removed than documented.
+// Squash is off for that reason. A PR lands as a merge commit rather than a
+// squash or a rebase, so the button must never be pressed — and a button that
+// must never be pressed is better removed than documented.
 //
 // Rebase is left enabled and is not asserted on. GitHub accepts merge alone —
 // `allow_squash_merge=false` and `allow_rebase_merge=false` together are a

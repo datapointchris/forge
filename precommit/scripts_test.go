@@ -21,7 +21,7 @@ func TestUntaggedPythonScript(t *testing.T) {
 		{"uv run with inline deps", "apps/common/prs", "#!/usr/bin/env -S uv run --with rich", true},
 		{"bare uv", "bin/thing", "#!/usr/bin/uv run --script", true},
 		{"env python is already tagged", "apps/common/_aws-profiles", "#!/usr/bin/env python3", false},
-		{"absolute python is already tagged", "deploy-homelab", "#!/usr/bin/python3", false},
+		{"absolute python is already tagged", "deploy-cluster", "#!/usr/bin/python3", false},
 		{"bash", "apps/common/notes", "#!/usr/bin/env bash", false},
 		{"sh", "install", "#!/bin/sh", false},
 		{"an extension is enough for identify", "tools/build.py", "#!/usr/bin/env -S uv run --script", false},

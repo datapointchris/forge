@@ -29,7 +29,7 @@ func (Planning) Description() string {
 }
 
 func (Planning) Tags() []string {
-	return []string{"planning", "symlink", "syncthing", "setup"}
+	return []string{"planning", "symlink", "sync", "setup"}
 }
 
 // syncedDir is one repo-relative directory and where it belongs.
@@ -62,7 +62,7 @@ func (s planningState) Summary() string {
 func (Planning) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// This die exists to carry a gitignored directory out to where a file-sync
 	// tool can see it. A target that git does not version is already there —
-	// and for ~/dev the sync base is inside the target, so the link would point
+	// and where the sync base is inside the target, the link would point
 	// from a synced folder into itself.
 	if !t.Versioned() {
 		return planningState{unversioned: true}, nil
@@ -73,9 +73,9 @@ func (Planning) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return nil, err
 	}
 
-	// The registry name, never the basename: basenames are neither unique (two
-	// `homelab` repos) nor always equal to the registry name
-	// (`zmk-config-corne42` lives at ~/code/zmk/corne42).
+	// The registry name, never the basename: basenames are neither unique — a
+	// reference clone can share a name with a portfolio repo — nor always equal
+	// to the registry name, which can differ from the directory it sits in.
 	repoBase := filepath.Join(base, t.Repo.Name)
 
 	wanted := []syncedDir{{rel: ".planning", target: filepath.Join(repoBase, "planning")}}
@@ -259,10 +259,10 @@ func (p Planning) Perform(t reconcile.Target, change reconcile.Change) (reconcil
 }
 
 func syncBase(t reconcile.Target) (string, error) {
-	if t.Config != nil {
-		return t.Config.ResolvedSyncBase()
+	if t.Config == nil {
+		return "", config.ErrNoSyncBase
 	}
-	return config.ExpandTilde(config.DefaultSyncBase)
+	return t.Config.ResolvedSyncBase()
 }
 
 // sameTree reports whether two paths hold identical content, recursively —

@@ -84,7 +84,7 @@ func testAssets(t *testing.T) reconcile.Assets {
 //
 // The sync base is a sibling of the repo inside the same temp directory, so a
 // die that writes outside the repo — planning links .planning into it — is
-// still contained, and a test never reads or writes the real ~/dev/repos.
+// still contained, and a test never reads or writes the real sync base.
 //
 // The .git directory is what makes this a repo rather than a directory, which
 // five dies now ask about. Not a real `git init`: nothing here runs a git

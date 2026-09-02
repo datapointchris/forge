@@ -19,9 +19,9 @@ import (
 
 // reconcileNoun is one kind of target and the four verbs over it.
 //
-// Two nouns, one implementation. cli-design.md § "Two front doors on one dataset
-// spell everything identically" is the rule, and a factory is how it stays true
-// without anyone checking: repos and directories cannot drift in flag names,
+// Two nouns, one implementation. Two front doors on one dataset have to spell
+// everything identically, and a factory is how that stays true without anyone
+// checking: repos and directories cannot drift in flag names,
 // exit codes or output shape, because there is one of each.
 //
 // Flags live on the value rather than in package globals. The four commands

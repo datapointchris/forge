@@ -49,7 +49,7 @@ With no arguments, the tools are the active repos in the registry whose binary
 is on PATH, resolved from what each repo already declares — a pyproject.toml
 [project.scripts] key, a goreleaser binary:, or the repo's own name. Repos whose
 binary could not be resolved are listed rather than dropped.`,
-	Example: "  forge cli spec\n  forge cli spec icb meso --json",
+	Example: "  forge cli spec\n  forge cli spec alpha beta --json",
 	RunE:    runCLISpec,
 }
 
@@ -64,7 +64,7 @@ namespaced or justified. And hyphenated verb-noun commands, which read as a
 namespace that was never created.
 
 Exits 0 whatever it finds.`,
-	Example: "  forge cli audit\n  forge cli audit --json\n  forge cli audit icb todoui",
+	Example: "  forge cli audit\n  forge cli audit --json\n  forge cli audit alpha beta",
 	RunE:    runCLIAudit,
 }
 

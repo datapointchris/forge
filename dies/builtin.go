@@ -12,8 +12,8 @@ import (
 //
 // A slice rather than a map so the order is the file's and not the runtime's:
 // a walk over several dies has to read the same way twice. The order is
-// presentation only — forge's dies are independent of one another, unlike the
-// dotfiles resource order, which is a real dependency chain.
+// presentation only — forge's dies are independent of one another, unlike a
+// resource order where each step depends on the one before.
 //
 // This is the registry. There is no registry.yml for a builtin die, because a
 // description in a side-file is a second place for the same fact to live and

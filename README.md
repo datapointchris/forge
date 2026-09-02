@@ -5,15 +5,16 @@ Run commands and reusable scripts across multiple git repositories.
 Forge reads a repo list from config and executes operations in each repo's working directory — either ad-hoc commands or managed scripts called **dies**.
 
 **Forge's unit of work is one repo.** Running an operation across the whole portfolio is machinery
-for reaching many repos, not a different kind of operation. Questions about the fleet as a whole
-belong to [fleet](https://github.com/datapointchris/fleet), whose unit is the fleet itself.
+for reaching many repos, not a different kind of operation. A question about the estate as a whole
+is a different tool's job, whatever answers it.
 
 The test is what a command operates on, not whether it writes: a per-repo read still belongs here,
-and a fleet-level question belongs in fleet even if answering it means writing something.
+and a question about the estate as a whole belongs elsewhere even if answering it means writing
+something.
 
-`status` and `brief` used to sit here on the wrong side of that line, both answering a question
-about the portfolio rather than operating on a repo. They are `fleet status` and `fleet info` now,
-and forge has no read side left. Do not add a third.
+Two read commands sat here on the wrong side of that line, both answering a question about the
+portfolio rather than operating on a repo. Both were moved out, and forge has no read side left.
+Do not add a third.
 
 ## Installation
 
@@ -56,8 +57,8 @@ Dies are Go, compiled into the binary, so a development build is the current die
   "host": "https://github.com",
   "search_paths": ["~/code"],
   "repos": [
-    {"name": "forge", "path": "~/tools/forge", "status": "active", "description": "Go CLI for cross-repo operations."},
-    {"name": "old-project", "path": "~/code/old", "status": "retired"}
+    {"name": "widget", "path": "~/src/widget", "status": "active", "description": "What this repo is."},
+    {"name": "old-project", "path": "~/src/old", "status": "retired"}
   ]
 }
 ```
@@ -88,7 +89,7 @@ maintained_directories:
   # An empty components list is not the same as none: it asks for the generic
   # blocks and nothing else, where omitting toolchain skips the directory.
   - name: notes
-    path: ~/notes
+    path: ~/documents/notes
     toolchain:
       components: []
 ```
@@ -111,7 +112,7 @@ forge repos check
 
 # What apply would change, writing nothing
 forge repos plan
-forge repos plan precommit -F forge,dotfiles
+forge repos plan precommit -F alpha,beta
 
 # Make it so. Naming a die applies that one; omitting it applies them all,
 # after a confirmation showing the count (--yes to skip, required off a TTY).
@@ -179,7 +180,7 @@ forge dies stats precommit
 
 ```bash
 forge test                     # every active repo's declared components
-forge test fleet forge         # just these
+forge test alpha beta          # just these
 forge test --failed            # print captured output for the failures
 forge test --json              # for a caller
 forge test -j 4                # repos at once; default is half the CPUs
@@ -197,11 +198,11 @@ lands there. `unknown` is a component that could not be measured at all — an a
 runner, missing `node_modules`, a vanished directory, a timeout — and it does not
 move the exit code, or a machine missing one runner reports a screen of failures.
 Nothing is installed to repair an `unknown`: that is a fact about the machine, and
-dotfiles is what converges a machine.
+converging a machine is a configuration manager's job.
 
-Repos run concurrently, never components within a repo — nomad, meso and learning
-each hold an api and a cli against the same database and ports. Half the CPUs rather
-than one per CPU, measured across the portfolio on 16 cores:
+Repos run concurrently, never components within a repo — a repo holding an api and
+a cli runs both against the same database and ports. Half the CPUs rather than one
+per CPU, measured on 16 cores:
 
 ```text
 jobs=1    195.2s elapsed, 195.2s of suite time
