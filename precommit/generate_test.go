@@ -142,8 +142,8 @@ func TestShouldIncludeBlock(t *testing.T) {
 	mustInclude("conventional-commits", true)
 }
 
-// A block in neither table used to read as generic, which silently shipped
-// cargo and stylua hooks to every Go and Python repo.
+// A block in neither table reading as generic silently ships cargo and stylua
+// hooks to every Go and Python repo.
 func TestShouldIncludeBlockRejectsUnclassified(t *testing.T) {
 	if _, err := ShouldIncludeBlock("brand-new-stack", nil); err == nil {
 		t.Error("an unclassified block should be an error, not a default")
@@ -362,8 +362,8 @@ func TestRoundtripPreservesCustom(t *testing.T) {
 	}
 }
 
-// A comment inside a hook is not the end of it — stripping used to stop there
-// and leave the hook's remaining keys behind as invalid YAML.
+// A comment inside a hook is not the end of it. Stripping that stops at one
+// leaves the hook's remaining keys behind as invalid YAML.
 func TestStripHooksKeepsCommentedHookWhole(t *testing.T) {
 	content := strings.Join([]string{
 		"  - repo: local",

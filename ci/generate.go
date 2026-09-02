@@ -23,8 +23,8 @@ import (
 )
 
 // WorkflowPath is where the generated workflow lands. Deliberately not ci.yml:
-// several repos hand-wrote a ci.yml long before this existed, and generating
-// over one would destroy work nothing could recover.
+// several repos carry a hand-written ci.yml, and generating over one would
+// destroy work nothing could recover.
 const WorkflowPath = ".github/workflows/validate.yml"
 
 // workflowsDir is read, never written apart from WorkflowPath — every other

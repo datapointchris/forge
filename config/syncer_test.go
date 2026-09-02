@@ -168,10 +168,9 @@ func TestToolchainStacksDeduplicates(t *testing.T) {
 }
 
 func TestEveryEntryDeclaringTheRegistrysOwnOwnerStaysInThePortfolio(t *testing.T) {
-	// The registry made owner required on every entry on 2026-08-12, meaning the
-	// GitHub owner rather than "somebody else's repo". Reading a present owner
-	// as a reference clone emptied every implicit sweep: `forge repos list`
-	// returned zero lines against a registry of 82.
+	// owner is required on every entry and means the GitHub owner, never
+	// "somebody else's repo". Reading a present owner as a reference clone
+	// empties every implicit sweep — `forge repos list` returns zero lines.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "repos.json")
 	body := `{

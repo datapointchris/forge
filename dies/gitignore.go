@@ -76,8 +76,8 @@ var pythonIgnores = []wanted{
 //
 // Unlike Python's .venv, target/ does not self-ignore — cargo puts the entry in
 // the repo's root .gitignore at `cargo new` time and writes nothing inside the
-// directory. Verified 2026-08-12. So a repo whose .gitignore was created any
-// other way has no entry at all.
+// directory. So a repo whose .gitignore was created any other way has no entry
+// at all.
 var rustIgnores = []wanted{
 	{"/target", "cargo build output"},
 }

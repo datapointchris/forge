@@ -26,9 +26,9 @@ const preCommitConfigPath = ".pre-commit-config.yaml"
 // whose frontend is in web/ or client/, and it cannot say which directory a
 // stack lives in.
 //
-// It no longer merges pyproject.toml. That is the `pyproject` die, split out
-// because coupling a cheap settings change to a whole toolchain rollout is why
-// the cheap change stopped being made.
+// It does not merge pyproject.toml. That is the `pyproject` die, kept separate
+// because coupling a cheap settings change to a whole toolchain rollout is what
+// stops the cheap change being made.
 //
 // Absorbs has-pre-commit, checks/pre-commit-config and `precommit check`. The
 // default_stages finding the last of those made is structural now: the

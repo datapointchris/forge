@@ -12,12 +12,11 @@ import (
 // LargeFiles reports a tracked file big enough that it probably was not meant
 // to be in git.
 //
-// One of four checks that moved here from the audit skill in 2026-08-12. They
-// are mechanical, per-repo and deterministic, and they fail
-// standards/README.md's *generalizes beyond one repo* test — which is what
-// makes them dies rather than a standard something grades against. A model
-// reading a repo to judge it against a guideline is the wrong instrument for
-// "is any file over a megabyte".
+// Mechanical, per-repo and deterministic, and it fails standards/README.md's
+// *generalizes beyond one repo* test — which is what makes it a die rather
+// than a standard something grades against. A model reading a repo to judge it
+// against a guideline is the wrong instrument for "is any file over a
+// megabyte".
 type LargeFiles struct{}
 
 func (LargeFiles) Name() string { return "large-files" }

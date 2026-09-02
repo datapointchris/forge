@@ -24,11 +24,11 @@ type Assets struct {
 
 // Target is one repo a die acts on, with what it needs to act.
 //
-// A die resolves every path through Path and never calls os.Chdir. The bash
-// dies this replaces got their working directory from the runner setting
-// cmd.Dir per process; in one Go process a chdir is global state that any
-// future concurrent walk would race on, so the working directory is a value
-// here instead of an ambient fact.
+// A die resolves every path through Path and never calls os.Chdir, which
+// TestNoDieChangesTheProcessWorkingDirectory is what pins. AssessAll is serial
+// today and is free to stop being — every die shares one process, so a chdir is
+// global state a parallel walk would race on. The working directory is a value
+// here rather than an ambient fact, which is what keeps that option open.
 type Target struct {
 	Repo   config.Repo
 	Assets Assets

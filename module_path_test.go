@@ -67,7 +67,7 @@ func TestLatestReleaseMajor(t *testing.T) {
 }
 
 // The failure this exists to catch, stated as a case: a v5 tag against a /v4
-// go.mod is exactly what shipped four times.
+// go.mod.
 func TestMismatchIsDetected(t *testing.T) {
 	declared := moduleMajor("module github.com/datapointchris/forge/v4\n")
 	released := latestReleaseMajor([]string{"v5.0.0"})
@@ -79,12 +79,10 @@ func TestMismatchIsDetected(t *testing.T) {
 // A major release tags vN.0.0, but nothing bumps go.mod's module path to match.
 // The proxy then refuses to serve the new major under the old path, so
 // `go install .../vN-1@latest` keeps resolving to the previous major and every
-// machine silently installs a stale binary — which is how v4.0.0 shipped while
-// the installed forge sat two releases back on v3.0.1.
+// machine silently installs a stale binary.
 //
-// Caught by hand at v2, v3, v4 and v5 before this test existed. It fires on the
-// first commit after a bad release rather than during it, because the tag does
-// not exist until the release job has already run.
+// It fires on the first commit after a bad release rather than during it,
+// because the tag does not exist until the release job has already run.
 func TestModulePathMatchesLatestReleaseTag(t *testing.T) {
 	goMod, err := os.ReadFile("go.mod")
 	if err != nil {

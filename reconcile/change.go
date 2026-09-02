@@ -12,14 +12,9 @@
 // because neither calls it. There is no branch inside a die asking whether it
 // is allowed to write, so there is no branch that can be wrong.
 //
-// That is the whole point of the package. What it replaces was a FORGE_CHECK
-// environment variable read just before each die's write, opted into per die
-// with `supports_check: true` and verified by nothing — so a die that ignored
-// the variable would write to every repo while the operator believed they were
-// previewing.
-//
-// Ported from a resource protocol that solved the same problem for one
-// machine's worth of state.
+// That is the whole point of the package. A die opting into preview, by
+// reading a flag just before its own write, is a die that can be wrong about
+// it — and nothing outside the die can tell whether it honored the flag.
 package reconcile
 
 // Verdict is what one item turned out to be.

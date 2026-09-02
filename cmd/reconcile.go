@@ -24,9 +24,9 @@ import (
 // checking: repos and directories cannot drift in flag names,
 // exit codes or output shape, because there is one of each.
 //
-// Flags live on the value rather than in package globals. The four commands
-// under one noun previously shared a single &reposFilterNames, which works while
-// there is one noun and silently crosses over the moment there are two.
+// Flags live on the value rather than in package globals. One package-level
+// &reposFilterNames shared by the four commands under a noun works while there
+// is one noun, and silently crosses over the moment there are two.
 type reconcileNoun struct {
 	// name is the word typed: `forge repos`, `forge directories`.
 	name string
@@ -109,9 +109,8 @@ structurally unreachable from here, whether or not a die was named.`,
 		Short: "List the " + n.many + " a verb would act on",
 		Long: `List the selected ` + n.many + `.
 
-This is what --dry-run used to answer on a die run. It is its own question —
-"which ` + n.many + `" — and it was never the same one as "what would change", which is
-` + "`plan`" + `.`,
+List is its own question — "which ` + n.many + `" — and not the same one as "what
+would change", which is ` + "`plan`" + `.`,
 		Args: cobra.NoArgs,
 		RunE: n.runList,
 	}

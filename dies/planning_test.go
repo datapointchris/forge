@@ -158,8 +158,8 @@ func TestPlanningRecreatesAMissingTarget(t *testing.T) {
 	}
 }
 
-// The one repo name the die used to hardcode is a registry field now, so
-// the tool carries the operation and the repo carries the fact.
+// Extra synced directories come from a registry field rather than from the
+// die, so the tool carries the operation and the repo carries the fact.
 func TestPlanningSyncsDeclaredExtraDirectories(t *testing.T) {
 	target := fixture(t, stacks("python"), map[string]string{"stats/data/rows.csv": "a,b\n"})
 	target.Repo.SyncedDirs = []config.SyncedDir{{Dir: "stats/data", As: "stats"}}

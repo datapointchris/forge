@@ -69,8 +69,8 @@ type Config struct {
 	// forge fleet-specific is a path compiled into it, never one it is told.
 	//
 	// The embedded copy cannot drift and cannot be changed without a release,
-	// which is the tradeoff. A bump used to mean cutting forge; naming a file
-	// means editing one line and sweeping. That is the point of the key.
+	// which is the tradeoff. Naming a file makes a version bump one line and a
+	// sweep rather than a forge release. That is the point of the key.
 	VersionsFile string `yaml:"versions_file,omitempty"`
 }
 

@@ -116,10 +116,10 @@ func requireActionlint(t *testing.T) {
 // The choice of config is what a public repo's safety rests on, and it has to
 // be assertable without running actionlint at all.
 //
-// Hoisting the config out of Observe's runner branch, so lintWorkflow always
-// received one, used to pass the entire suite: the only assertion was that
-// lintWorkflow honors the argument it is handed, never that Observe picks the
-// right one.
+// This is the only assertion that Observe picks the right one. Without it,
+// hoisting the config out of Observe's runner branch — so lintWorkflow always
+// receives one — passes the entire suite, because every other assertion is
+// that lintWorkflow honors the argument it is handed.
 func TestOnlyASelfHostedRepoIsOwedALintConfig(t *testing.T) {
 	if got := lintConfigFor(ci.Hosted, 18); got != "" {
 		t.Errorf("a public repo was offered a lint config: %q", got)
@@ -214,8 +214,8 @@ func TestPerformWritesTheFileTheChangeNames(t *testing.T) {
 
 // A repo that turns public keeps whatever forge wrote while it was private, so
 // the die has to observe a path it no longer writes to. Scoping that read to
-// the runner left a stale self-hosted declaration on disk with check, plan and
-// apply all reporting converged, because nothing was measuring it.
+// the runner leaves a stale self-hosted declaration on disk with check, plan
+// and apply all reporting converged, because nothing measures it.
 func TestARepoThatTurnsPublicHasItsLintConfigRemoved(t *testing.T) {
 	target := privateFixture(t, stacks("go"), nil)
 	applyAll(t, target, CI{})
