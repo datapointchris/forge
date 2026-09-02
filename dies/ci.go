@@ -19,9 +19,8 @@ import (
 // keep those as their own workflow files; this one is additive, and callable
 // via workflow_call so a release workflow can gate on it.
 //
-// validate.yml, deliberately not ci.yml: several repos hand-wrote a ci.yml long
-// before this existed, and generating over one would destroy work nothing could
-// recover.
+// validate.yml, deliberately not ci.yml: several repos carry a hand-written
+// ci.yml, and generating over one would destroy work nothing could recover.
 //
 // Absorbs the CI half of can-generate, which existed only because the generator
 // could not be run across the portfolio. It can now, so the pre-rollout gate is
@@ -182,10 +181,11 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 
 // lintConfigFor is the actionlint configuration a repo on this runner is owed.
 //
-// A value rather than a branch inside Observe, so a test can assert the choice
-// directly. Hoisting the write out of that branch used to pass the whole suite,
-// because the only assertion was that lintWorkflow honors the argument it is
-// handed rather than that Observe picks the right one.
+// A value rather than a branch inside Observe, so
+// TestOnlyASelfHostedRepoIsOwedALintConfig can assert the choice directly.
+// Without that test, hoisting the write out of the branch passes the whole
+// suite: every other assertion is that lintWorkflow honors the argument it is
+// handed, never that Observe picks the right one.
 func lintConfigFor(runner ci.Runner, stampVersion int) string {
 	if runner != ci.SelfHosted {
 		return ""

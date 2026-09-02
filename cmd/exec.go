@@ -18,9 +18,8 @@ var (
 	scriptFile      string
 )
 
-// execCmd is the escape hatch, and the reason dropping bash dies costs nothing:
-// a one-off sweep is still one command, it just no longer has to be registered
-// as a die to be run.
+// execCmd is the escape hatch, and the reason a die has to be Go: a one-off
+// sweep is one command here, with nothing to register.
 var execCmd = &cobra.Command{
 	Use:   "exec [-- command...]",
 	Short: "Run an arbitrary command in each repo",

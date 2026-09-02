@@ -39,9 +39,9 @@ func (f generatedFile) managed() bool { return f.rel != "" }
 //
 // Separate from managed because a die has to distinguish three states, not two:
 // the path is none of my business, the standard wants this content there, and
-// the standard has withdrawn a file it used to write. Collapsing the first and
-// third is what let a repo keep a generated file after it stopped qualifying
-// for one, with every verb reporting converged because nothing looked.
+// the standard has withdrawn a file it once wrote. Collapsing the first and
+// third lets a repo keep a generated file after it stops qualifying for one,
+// with every verb reporting converged because nothing looks.
 func (f generatedFile) wanted() bool { return f.rel != "" && f.want != "" }
 
 // retracting reports whether a file the standard no longer wants is still on

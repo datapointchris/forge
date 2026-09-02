@@ -159,9 +159,9 @@ func dieSummaries() map[string]dies.DieSummary {
 // recordRun appends what a reconcile run did, so `dies stats` answers which
 // operations are actually used and when each last ran.
 //
-// Verdicts rather than the old OK/SKIP/FAIL counts, which came from exit codes
-// no die produces any more. The field names stay so records written before this
-// still load.
+// The ok/skip/fail field names do not match the verdicts they count —
+// Converged, Drift and Issue. Renaming them orphans every record already in the
+// JSONL log, which has no migration step.
 func recordRun(dieName string, results []reconcile.Result) {
 	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
 	if err != nil {

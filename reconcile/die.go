@@ -24,11 +24,10 @@ type Assets struct {
 
 // Target is one repo a die acts on, with what it needs to act.
 //
-// A die resolves every path through Path and never calls os.Chdir. The bash
-// dies this replaces got their working directory from the runner setting
-// cmd.Dir per process; in one Go process a chdir is global state that any
-// future concurrent walk would race on, so the working directory is a value
-// here instead of an ambient fact.
+// A die resolves every path through Path and never calls os.Chdir. Every die
+// runs in one Go process, where a chdir is global state that any concurrent
+// walk would race on, so the working directory is a value here rather than an
+// ambient fact.
 type Target struct {
 	Repo   config.Repo
 	Assets Assets

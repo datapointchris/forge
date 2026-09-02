@@ -130,8 +130,8 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 			Gated,
 		},
 		{
-			// The shape every repo had before this: the release gated on a
-			// hand-written ci.yml, so validate.yml still needs its own push.
+			// A release gating on a hand-written ci.yml gates nothing this
+			// generator wrote, so validate.yml still needs its own push.
 			"release gates on a hand-written ci.yml",
 			map[string]string{"release.yml": "jobs:\n  validate:\n    uses: ./.github/workflows/ci.yml\n"},
 			Ungated,
