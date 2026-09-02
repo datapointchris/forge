@@ -139,7 +139,7 @@ func TestFindRepoByPath(t *testing.T) {
 }
 
 func TestToolchainStacksDeduplicates(t *testing.T) {
-	// nomad holds two Go modules; the stack list must report go once.
+	// A repo holding two Go modules must report go once in the stack list.
 	toolchain := &Toolchain{Components: []Component{
 		{Stack: "go", Dir: "api"},
 		{Stack: "go", Dir: "cli"},
@@ -163,7 +163,7 @@ func TestEveryEntryDeclaringTheRegistrysOwnOwnerStaysInThePortfolio(t *testing.T
 		"owner": "datapointchris",
 		"repos": [
 			{"name": "forge", "path": "~/tools/forge", "owner": "datapointchris"},
-			{"name": "fleet", "path": "~/tools/fleet", "owner": "DATAPOINTCHRIS"},
+			{"name": "shouty", "path": "~/tools/shouty", "owner": "DATAPOINTCHRIS"},
 			{"name": "httpx", "path": "~/code/refs/httpx", "owner": "encode"}
 		]
 	}`

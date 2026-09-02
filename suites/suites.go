@@ -86,12 +86,12 @@ func Run(repo config.Repo) []Result {
 // returns their results in registry order however they finished.
 //
 // The concurrency is **between** repos and never inside one. Components of a
-// single repo share more than a directory: nomad, meso and learning each hold an
-// api and a cli against the same declared database and the same ports, so
-// running them together would turn one repo's fixtures into another's flake.
-// Measured, that costs almost nothing — 29 of the 34 repos with suites have
-// exactly one testable component, so the floor is ichrisbirch's own two at ~61s
-// against a sequential 193s.
+// single repo share more than a directory: a repo holding an api and a cli
+// runs both against the same declared database and the same ports, so running
+// them together would turn one repo's fixtures into another's flake.
+// Measured, that costs almost nothing — nearly every repo with a suite has
+// exactly one testable component, so the floor is set by the few holding two
+// and it stays well under the sequential time.
 //
 // jobs of zero means half the CPUs, never one per CPU. Measured on 16 cores
 // against the whole portfolio:
@@ -271,9 +271,9 @@ var unresolvedImport = regexp.MustCompile(`Failed to resolve import "([^"]+)"`)
 // The distinction is the whole point and cannot be made from the error alone: an
 // unresolvable import that package.json declares means node_modules is behind,
 // while one it does not declare is a real bug and must stay a failure. Checking
-// only for a missing node_modules misses this entirely — learning/web has one,
-// installed before `marked` was added, and reported as a failing suite for
-// something no change to its code could fix.
+// only for a missing node_modules misses this entirely — a web component can
+// have one installed before a dependency was added, and then report a failing
+// suite for something no change to its code could fix.
 //
 // A relative path is never a dependency, so it drops out before the lookup.
 func unresolvedDeclaredImport(dir, output string) (string, bool) {

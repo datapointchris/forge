@@ -133,9 +133,9 @@ const (
 // this one as a job.
 //
 // Every workflow is scanned rather than release.yml alone, because the gating
-// workflow is named for the artifact it ships: learning and nomad release a
-// nested CLI from release-cli.yml, and matching one filename missed both. They
-// each ran the full suite twice per push for the whole of August as a result.
+// workflow is named for the artifact it ships. A repo releasing a nested CLI
+// gates from release-cli.yml, so matching release.yml alone missed every one of
+// them and they each ran the full suite twice per push for a month.
 //
 // Detected rather than declared, which is the opposite of how components work.
 // A registry flag would be a second place to remember, and the failure it
@@ -184,8 +184,8 @@ func ReleaseGatesOnValidate(root string) ReleaseGating {
 // Generate composes the workflow from the repo's declared components.
 //
 // Each component becomes its own job with a working-directory, because a repo
-// can hold several of the same stack in different places — nomad's api/ and
-// cli/ are both Go modules, deliberately isolated. One serial job would hide
+// can hold several of the same stack in different places — an api/ and a cli/
+// that are both Go modules, deliberately isolated. One serial job would hide
 // which one failed and force them to share a setup step.
 func Generate(
 	blocksFS fs.FS,
@@ -301,8 +301,8 @@ func Generate(
 //
 // That job is invisible on a private repo. GitHub refuses a hosted job before
 // any step runs, so it reports zero steps and no failing step, while the rest
-// of the workflow is green. homelab's pyinfra suite sat in exactly that state
-// and it gates what reaches every container's authorized_keys.
+// of the workflow is green. A provisioning suite sat in exactly that state,
+// and it gated what reaches every container's authorized_keys.
 func ForeignRunners(workflow string, runner Runner) []string {
 	var (
 		foreign []string

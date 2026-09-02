@@ -13,7 +13,7 @@ func TestPendingSummaryCountsChangesAndDistinctRepos(t *testing.T) {
 		{Repo: "dotfiles", Die: "gitignore", Pending: 3},
 		// Attention and unmeasured are not apply's to do, so neither counts.
 		{Repo: "refcheck", Die: "claude-md", Attention: 1},
-		{Repo: "nomad", Die: "merge-settings", Unmeasured: 1},
+		{Repo: "mimic", Die: "merge-settings", Unmeasured: 1},
 	}
 
 	changes, repos := pendingSummary(planned)

@@ -85,10 +85,10 @@ func (r Result) Label() string { return r.Repo + "/" + r.Die }
 
 // LabelWidth is the column the labels fit in.
 //
-// Measured rather than fixed: repo names run from `docs` to
-// `zmk-config-corne42` and die names to `branch-protection`, so any constant
-// wide enough for the longest is mostly padding, and any narrower one breaks
-// the alignment exactly on the rows that are hardest to read.
+// Measured rather than fixed: repo names run from four characters to twenty
+// and die names to `branch-protection`, so any constant wide enough for the
+// longest is mostly padding, and any narrower one breaks the alignment exactly
+// on the rows that are hardest to read.
 func LabelWidth(results []Result) int {
 	width := 0
 	for _, r := range results {

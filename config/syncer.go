@@ -40,9 +40,9 @@ type Repo struct {
 	Status      string `json:"status"      yaml:"status"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	// Owner is the GitHub owner, required on every entry because a bare name
-	// does not identify a repository — the registry holds a `typos` and a
-	// `docs`, both common upstream names, and pull-requests filtering on the
-	// name alone admitted crate-ci/typos under the same label as ~/code/typos.
+	// does not identify a repository — the registry holds entries whose names are
+	// also common upstream project names, and pull-requests filtering on the name
+	// alone admitted crate-ci/typos under the same label as ~/code/typos.
 	//
 	// It is not a marker that the repo is somebody else's. Reading it as one is
 	// what Reference below exists to replace.
@@ -107,9 +107,10 @@ type Toolchain struct {
 	//
 	// The shared config carries no disables and should not: they hid six real
 	// SC2155s per repo. But "never disable anything" is not a standard either —
-	// homelab's deploy scripts interpolate local variables into remote ssh
-	// commands 53 times, which is what those scripts are for, and SC2029 flags
-	// every one. The choice was between 53 inline suppressions and a lie, so
+	// a provisioning repo's deploy scripts interpolate local variables into
+	// remote ssh commands dozens of times, which is what those scripts are for,
+	// and SC2029 flags every one. The choice was between an inline suppression
+	// at every call site and a lie, so
 	// this is the third option: declared once, in the registry, with a reason
 	// attached, visible to anyone reading what the repo asks for.
 	ShellcheckDisable []ShellcheckException `json:"shellcheck_disable,omitempty" yaml:"shellcheck_disable,omitempty"`
@@ -144,7 +145,7 @@ type ShellcheckException struct {
 }
 
 // Component is one buildable unit: a stack and the directory it lives in.
-// A repo can hold several of the same stack — nomad's api/ and cli/ are both
+// A repo can hold several of the same stack — an api/ and a cli/ that are both
 // Go modules, deliberately isolated from each other.
 type Component struct {
 	Stack string `json:"stack" yaml:"stack"`

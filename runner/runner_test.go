@@ -37,8 +37,8 @@ func TestFilterRepos(t *testing.T) {
 // owner, so a fixture built as literals states it the way Load would.
 func TestOwnedRepos(t *testing.T) {
 	repos := []config.Repo{
-		{Name: "homelab", Path: "~/homelab"},
-		{Name: "homelab", Path: "~/code/refs/homelab", Owner: "khuedoan", Reference: true},
+		{Name: "mimic", Path: "~/mimic"},
+		{Name: "mimic", Path: "~/code/refs/mimic", Owner: "someoneelse", Reference: true},
 		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode", Reference: true},
 		{Name: "forge", Path: "~/tools/forge"},
 	}
@@ -52,9 +52,9 @@ func TestOwnedRepos(t *testing.T) {
 			t.Errorf("reference clone leaked through: %+v", r)
 		}
 	}
-	// The portfolio homelab must survive despite sharing a name with a clone.
-	if got[0].Path != "~/homelab" {
-		t.Errorf("got[0].Path = %q, want ~/homelab", got[0].Path)
+	// The portfolio repo must survive despite sharing a name with a clone.
+	if got[0].Path != "~/mimic" {
+		t.Errorf("got[0].Path = %q, want ~/mimic", got[0].Path)
 	}
 }
 

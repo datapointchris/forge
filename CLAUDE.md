@@ -54,7 +54,7 @@ The hook inventory is generated from the pinned-version declaration — `forge t
 - `config` — loads the repo registry, and forge's own config:
   - **Repo registry** (wherever `repos_registry` points; `repos-registry` prints it): defines repos with `name`, `path`, `status` (`active`/`dormant`/`retired`), and optional `description` and `owner`. `owner` is the GitHub owner and is required on every entry, because a bare name does not identify a repository. A reference clone — cloned for reading, never for cross-repo work — is an entry whose owner differs from the registry's own, derived by `LoadSyncerConfig` into `Repo.Reference`. Reading a *present* owner as the marker is what made every implicit sweep select nothing the day the field went universal.
   - **Machine config** (`$XDG_CONFIG_HOME/forge/config.yml`, YAML): `maintained_directories`, each reusing the `Repo` shape. This exists because the registry is *shared* — a key only forge can act on does not merely add a concept the other readers ignore, it changes what iterating the collection means for all of them at once. YAML because every entry needs its reason beside it, which is also why `Repo` and `Toolchain` carry both `json` and `yaml` tags: yaml.v3 lowercases the Go field name by default, so `sql_dialect` would arrive as nil rather than failing. `TestRepoParsesIdenticallyFromJSONAndYAML` is what keeps the two spellings one struct. Unknown keys are an error, because a misspelled key leaves a directory undeclared and an undeclared directory reads as a converged one.
-  - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: nomad's `api/` and `cli/` are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
+  - **`toolchain`** on a repo entry declares its build surface: `components` (a `stack` plus the `dir` it lives in) and `sql_dialect`. Declared, never detected — the portfolio has five conventions for where a Go service lives (`api/`, `cli/`, root, and two legacy shapes), and a fact like the SQL dialect is not derivable from a layout at any level of tidiness. A repo can hold several components of one stack: an `api/` and a `cli/` that are both Go modules, deliberately isolated. `config.FindRepoByPath` resolves a working directory to its entry, so a generator run anywhere inside a repo finds its declaration.
 
   - **`sync_base`** (top level) and **`synced_dirs`** (per repo) are what the planning die reads. Declared rather than compiled in: `~/dev/repos` is one fleet's Syncthing layout, and `stats/data` belongs to ichrisbirch. Both were hardcoded in the bash die, which is what `DefaultReposPath`'s own comment rules out.
   - The `-c` flag overrides the repos file path, and is declared on the commands that read the
@@ -173,7 +173,7 @@ unreadable one, a release gating on a hand-written `ci.yml` — answers false an
 the failure mode is the old duplicate run rather than an unvalidated main.
 
 **One job per declared component**, named `<stack>` at the root or `<stack>-<dir>` below it, each
-with a `working-directory`. nomad generates `go-api`, `go-cli`, and `vue-web` running in parallel —
+with a `working-directory`. A repo declaring three components generates `go-api`, `go-cli` and `vue-web` in parallel —
 a single serial job would hide which module failed and force them to share one setup step. A
 declared stack with no CI block is skipped rather than emitting an empty job, so the registry stays
 free to declare more than CI can build.
@@ -196,7 +196,7 @@ reports converged. The stamp is what authorises that delete, so a hand-written c
 spelling — `.yaml` or `.yml` — is reported and left alone.
 
 The output is **`validate.yml`, not `ci.yml`** — several repos hand-wrote a `ci.yml` long before this
-existed (nomad's is a multi-job pipeline with working directories and image env), and generating over
+existed (one is a multi-job pipeline with working directories and image env), and generating over
 one would destroy work nothing could recover. The `ci` die refuses any `validate.yml` lacking the
 `# forge-toolchain:` header for the same reason. Bespoke pipelines stay as separate workflow files;
 the generated one is additive.
@@ -211,9 +211,9 @@ command had taken away.
 The findings worth knowing are the ones no schema validator can reach. `defaults.run.working-directory`
 does not apply to action inputs, so any path in one needs `{{dir}}`. A valid workflow can still fail at
 runtime: the python block guards mypy behind a config check and tolerates pytest's exit 5 (no tests
-collected), because `docs`, `homelab` and `refcheck` would otherwise fail on a baseline they never
+collected), because a repo with no Python tests would otherwise fail on a baseline it never
 opted into. And a schema-valid pre-commit config can fail on first use, so the gate resolves every
-`npm run X` it emits against that component's `package.json` — which is how nomad's missing `typecheck`
+`npm run X` it emits against that component's `package.json` — which is how a missing `typecheck`
 script and the workspace repos' missing `lint:fix` surfaced. `${{ ... }}` is workflow syntax, not an
 unexpanded generator placeholder; the placeholder check has to exclude it.
 

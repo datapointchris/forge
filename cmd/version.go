@@ -69,7 +69,7 @@ func init() {
 	rootCmd.Version = buildVersion()
 	rootCmd.SetVersionTemplate("forge {{.Version}}\n")
 
-	// Free -v for a future --verbose flag, matching nomad and meso: cobra's
+	// Free -v for a future --verbose flag, matching the other CLIs here: cobra's
 	// auto version flag claims the shorthand, but the convention reserves -v
 	// for verbose and -V/--version for version.
 	rootCmd.InitDefaultVersionFlag()

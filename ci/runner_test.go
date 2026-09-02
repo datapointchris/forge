@@ -233,7 +233,7 @@ func isSelector(expr ast.Expr, pkg, name string) bool {
 	return ok && ident.Name == pkg
 }
 
-// The measured case. homelab's pyinfra suite lives in a custom section with its
+// The measured case. A provisioning suite lived in a custom section with its
 // own runs-on, which the generator preserves verbatim and never rewrites. It
 // stayed on the hosted image while the three generated jobs moved, and a
 // refused job reports zero steps rather than a failure — so the run read green

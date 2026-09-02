@@ -147,8 +147,9 @@ func ExecuteInRepo(repo config.Repo, opts Opts) Result {
 	}
 	c.Dir = repo.Path
 	// FORGE_REPO_NAME is the registry name, which a script cannot derive from its
-	// cwd: basenames are neither unique (two `homelab` repos) nor always equal to
-	// the registry name (`zmk-config-corne42` lives at ~/code/zmk/corne42).
+	// cwd: basenames are neither unique — a reference clone can share a name with
+	// a portfolio repo — nor always equal to the registry name, which can differ
+	// from the directory the repo sits in.
 	c.Env = append(os.Environ(), "FORGE_REPO_NAME="+repo.Name)
 	c.Env = append(c.Env, opts.Env...)
 

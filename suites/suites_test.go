@@ -193,8 +193,8 @@ func TestStacksWithNoSuitesAreSkippedEntirely(t *testing.T) {
 }
 
 func TestEveryTestableComponentGetsItsOwnRow(t *testing.T) {
-	// nomad, meso and learning each hold two Go modules deliberately isolated
-	// from each other, so one row per repo would hide half the fleet's tests.
+	// A repo can hold two Go modules deliberately isolated from each other, so
+	// one row per repo would hide half of its tests.
 	r := repo(t,
 		config.Component{Stack: "go", Dir: "api"},
 		config.Component{Stack: "go", Dir: "cli"},
@@ -353,9 +353,10 @@ func TestNoReposIsNotAHang(t *testing.T) {
 // A stale install versus a real broken import.
 
 func TestAnUnresolvableImportTheManifestDeclaresIsAStaleInstall(t *testing.T) {
-	// learning/web has node_modules, installed before `marked` was added to
-	// package.json, so it reported a failing suite for something no change to
-	// its code could fix. Checking only whether node_modules exists misses it.
+	// A web component can have node_modules installed before a dependency was
+	// added to package.json, so it reports a failing suite for something no
+	// change to its code could fix. Checking only whether node_modules exists
+	// misses it.
 	r := repo(t, config.Component{Stack: "vue", Dir: "."})
 	write(t, r.Path, "package.json", `{"scripts":{"test":"vitest run"},"dependencies":{"marked":"^15.0.12"}}`)
 	write(t, r.Path, "node_modules/.keep", "")

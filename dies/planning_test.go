@@ -194,9 +194,9 @@ func TestPlanningMergesDisjointFiles(t *testing.T) {
 	}
 }
 
-// Basenames are neither unique (two `homelab` repos) nor always equal to the
-// registry name (`zmk-config-corne42` lives at ~/code/zmk/corne42), so the
-// synced path is keyed on the registry name and never on the directory.
+// Basenames are neither unique — a reference clone can share a name with a
+// portfolio repo — nor always equal to the registry name, so the synced path is
+// keyed on the registry name and never on the directory.
 func TestPlanningKeysTheSyncedPathOnTheRegistryName(t *testing.T) {
 	target := fixture(t, stacks("go"), nil)
 	target.Repo.Name = "zmk-config-corne42"

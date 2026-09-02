@@ -199,9 +199,9 @@ move the exit code, or a machine missing one runner reports a screen of failures
 Nothing is installed to repair an `unknown`: that is a fact about the machine, and
 dotfiles is what converges a machine.
 
-Repos run concurrently, never components within a repo — nomad, meso and learning
-each hold an api and a cli against the same database and ports. Half the CPUs rather
-than one per CPU, measured across the portfolio on 16 cores:
+Repos run concurrently, never components within a repo — a repo holding an api and
+a cli runs both against the same database and ports. Half the CPUs rather than one
+per CPU, measured on 16 cores:
 
 ```text
 jobs=1    195.2s elapsed, 195.2s of suite time
