@@ -39,7 +39,7 @@ type PreCommit struct{}
 func (PreCommit) Name() string { return "precommit" }
 
 func (PreCommit) Description() string {
-	return "Generate .pre-commit-config.yaml from the standard blocks for the declared components, deploy the tool configs its hooks read, and install the git hooks for every stage it uses."
+	return "Generate .pre-commit-config.yaml from the standard blocks for the declared components, deploy the tool configs its hooks read, and — where the registry declares the repo — install the git hooks for every stage it uses."
 }
 
 func (PreCommit) Tags() []string {
@@ -81,8 +81,7 @@ var toolConfigs = []toolConfig{
 var hookStages = []string{"pre-commit", "commit-msg"}
 
 type preCommitState struct {
-	applicable   bool
-	reason       string
+	basis        maintenance
 	config       generatedFile
 	configs      []generatedFile
 	missingHooks []string
@@ -90,26 +89,80 @@ type preCommitState struct {
 }
 
 func (s preCommitState) Summary() string {
-	if !s.applicable {
-		return s.reason
+	if !s.basis.applicable() {
+		// The only blockers reachable here are the stranded tool configs, and
+		// the plain reason contradicts them: it says forge wrote nothing to
+		// maintain while three files it deploys are sitting there.
+		if len(s.blockers) > 0 {
+			return fmt.Sprintf("declares no toolchain, and %s forge deploys sit here with no stamped %s beside them",
+				plural(len(s.blockers), "file", "files"), preCommitConfigPath)
+		}
+		return s.basis.reason()
 	}
 	return fmt.Sprintf("pre-commit current (%s deployed)", plural(len(s.configs)+1, "file", "files"))
+}
+
+// maintenance is why this die has something to say about a repo, or why it has
+// nothing.
+//
+// One value rather than a run of bools. The answer it replaced returned two
+// adjacent bools distinguished only by position, so transposing them at a
+// return statement compiled clean and passed go vet.
+type maintenance int
+
+const (
+	// unmaintained: the registry declares nothing and forge has left no config
+	// here to keep right.
+	unmaintained maintenance = iota
+
+	// unstamped: a .pre-commit-config.yaml is here without forge's stamp, so
+	// forge did not write it and will not take it.
+	unstamped
+
+	// byDeclaration: the registry declares the repo's components. The answer
+	// for a repo somebody works in.
+	byDeclaration
+
+	// byStamp: forge wrote the config and stamped it, and the registry has gone
+	// quiet about the repo. Forge wrote the file, so forge owns keeping it
+	// right, and a registry silent about which stacks are there has not
+	// unwritten it.
+	byStamp
+)
+
+func (m maintenance) applicable() bool { return m == byDeclaration || m == byStamp }
+
+// reason is what the row says when this die has nothing to do.
+//
+// Two states, not one. Declaring the repo in the first deploys the standard
+// files; declaring it in the second deploys nothing and surfaces the unmarked
+// hooks instead, so one sentence covering both sends half the readers at the
+// wrong remedy.
+func (m maintenance) reason() string {
+	switch m {
+	case unmaintained:
+		return "declares no toolchain, and forge has written nothing here to maintain"
+	case unstamped:
+		return "declares no toolchain, and the " + preCommitConfigPath + " here carries no " +
+			toolchainStamp + " stamp, so forge did not write it"
+	case byDeclaration, byStamp:
+	}
+	return ""
 }
 
 // maintained decides whether this die has anything to say about a repo, and
 // what it should generate if so.
 //
-// A declaration is the answer for a repo somebody works in. The stamp is the
-// answer for one nobody does: forge wrote the file, so forge owns keeping it
-// right, and a registry silent about which stacks are there has not unwritten
-// it. Asking the declaration alone would strand every repo forge has written to
-// but does not track, holding whatever it last generated, with every verb
-// reporting converged because nothing looked.
+// Asking the declaration alone would strand every repo forge has written to but
+// does not track, holding whatever it last generated, with every verb reporting
+// converged because nothing looked.
 //
 // An undeclared repo is generated as if it declared no components, which is the
-// existing spelling for "the generic blocks and nothing else" and is what those
-// files already are. Nothing new is written, and a stack the registry stopped
-// naming is not guessed at from what happens to be on disk.
+// existing spelling a declaration of no components already has. That is not the
+// same as "the generic blocks only": Generate seeds the git block from
+// versioned and the python-scripts block from the shebang scan, neither of
+// which is gated on a component. A stack the registry stopped naming is not
+// guessed at from what happens to be on disk.
 //
 // First deployment is untouched. Without a stamp there is no file, so a repo
 // forge has never written to stays untouched however it is reached — which is
@@ -118,15 +171,60 @@ func (s preCommitState) Summary() string {
 // byStamp is what the caller narrows on. A stamp says forge wrote these files;
 // it says nothing about hooks forge never installed, and installing them would
 // put a commit gate on a repo nobody works in and build every hook environment
-// its nine-version-old config names.
-func maintained(declared *config.Toolchain, existing string) (resolved *config.Toolchain, byStamp bool, applicable bool, reason string) {
+// the config forge last wrote there names.
+func maintained(declared *config.Toolchain, existing string) (*config.Toolchain, maintenance) {
 	if declared != nil {
-		return declared, false, true, ""
+		return declared, byDeclaration
+	}
+	if existing == "" {
+		return nil, unmaintained
 	}
 	if !strings.HasPrefix(existing, toolchainStamp) {
-		return nil, false, false, "declares no toolchain"
+		return nil, unstamped
 	}
-	return &config.Toolchain{}, true, true, ""
+	return &config.Toolchain{}, byStamp
+}
+
+// strandedToolConfigs reports the generic tool configs left behind when the one
+// file carrying forge's stamp is gone.
+//
+// The stamp authorizing maintenance of four files lives in only one of them.
+// Delete .pre-commit-config.yaml and the other three return to exactly what
+// this die exists to end: forge wrote them, no verb can reach them, and every
+// one reports converged because nothing looked.
+//
+// All three present or nothing, which is what makes this affordable with no
+// stamp to read. Forge deploys the three together, so a repo holding the whole
+// set is one forge wrote to, while a repo keeping its own .editorconfig alone
+// is not. That evidence is weaker than a stamp and is allowed to be, because
+// what it authorizes is a report — the finding is ByHand, so apply cannot reach
+// it and nothing here is written, overwritten or removed.
+func strandedToolConfigs(root string, basis maintenance) []reconcile.Change {
+	// Only where no config is present at all. An unstamped one means the repo
+	// has a pre-commit setup of its own, and these files are plausibly part of
+	// it rather than forge's leftovers.
+	if basis != unmaintained {
+		return nil
+	}
+
+	var generic []string
+	for _, tool := range toolConfigs {
+		if tool.category != "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, tool.rel)); err != nil {
+			return nil
+		}
+		generic = append(generic, tool.rel)
+	}
+
+	var changes []reconcile.Change
+	for _, rel := range generic {
+		changes = append(changes, blocker(rel, "forge deploys this beside "+preCommitConfigPath+
+			", and that file is gone, so nothing left here carries the "+toolchainStamp+
+			" stamp that says whether forge wrote it — declare the repo's toolchain to have forge maintain it again, or remove it"))
+	}
+	return changes
 }
 
 func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -141,9 +239,9 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		existing = string(data)
 	}
 
-	declared, byStamp, applicable, reason := maintained(t.Repo.Toolchain, existing)
-	if !applicable {
-		return preCommitState{reason: reason}, nil
+	declared, basis := maintained(t.Repo.Toolchain, existing)
+	if !basis.applicable() {
+		return preCommitState{basis: basis, blockers: strandedToolConfigs(root, basis)}, nil
 	}
 
 	customSections := precommit.ExtractCustomSections(existing)
@@ -155,7 +253,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return nil, err
 	}
 
-	state := preCommitState{applicable: true, config: readGenerated(root, preCommitConfigPath, wanted)}
+	state := preCommitState{basis: basis, config: readGenerated(root, preCommitConfigPath, wanted)}
 
 	// Unmarked hooks abort a real sync rather than being destroyed. Surfacing
 	// them is the whole point: the fix is adding markers, not letting the sync
@@ -188,9 +286,13 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		state.configs = append(state.configs, readGenerated(root, tool.rel, want))
 	}
 
-	if !byStamp {
-		state.missingHooks = uninstalledHooks(root, wanted)
-	}
+	// Measured whatever the basis is. A stamp does not authorize installing a
+	// hook forge never installed, and it does not make an uninstalled stage
+	// stop mattering either: the config names the stage, so the hooks it names
+	// silently never run. Not measuring it let apply write that config and plan
+	// then report converged over the state hookStages above defines as broken.
+	// Diff decides who may fix it; this decides whether anyone is told.
+	state.missingHooks = uninstalledHooks(root, wanted)
 
 	// A schema-valid config can still fail on the first commit, which is the
 	// check `pre-commit validate-config` cannot make.
@@ -317,8 +419,8 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 	if !ok {
 		return nil, fmt.Errorf("precommit: unexpected observation %T", observed)
 	}
-	if !state.applicable {
-		return nil, nil
+	if !state.basis.applicable() {
+		return state.blockers, nil
 	}
 
 	changes := state.blockers
@@ -338,13 +440,23 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 		}
 	}
 
+	// Missing either way, because the hook is genuinely absent. Who may fix it
+	// is what the basis decides: a declaration authorizes the install, a stamp
+	// authorizes correcting what forge wrote and nothing more. ByHand keeps it
+	// out of plan and unreachable from Apply while check still names it.
 	for _, stage := range state.missingHooks {
-		changes = append(changes, reconcile.Change{
+		change := reconcile.Change{
 			Item:    ".git/hooks/" + stage,
 			Verdict: reconcile.Missing,
 			Repair:  reconcile.Automatic,
 			Detail:  "the config uses this stage, so without the hook those checks silently never run",
-		})
+		}
+		if state.basis == byStamp {
+			change.Repair = reconcile.ByHand
+			change.Detail = "the config forge maintains here uses this stage and the hook is absent, so those checks silently never run" +
+				" — declare the repo's toolchain to have forge install it, or run `pre-commit install -t " + stage + "` here"
+		}
+		changes = append(changes, change)
 	}
 
 	return changes, nil

@@ -217,10 +217,9 @@ func TestPreCommitPerformRefusesAnItemNoLongerInTheStandard(t *testing.T) {
 	}
 }
 
-// The stamp is `# forge-toolchain: 11` because that is what every repo in this
-// population actually carries — forge wrote them, then stopped being told what
-// they hold, and they froze there. A synthetic stamp would prove the branch
-// runs and nothing about the files it exists to reach.
+// The `# forge-toolchain:` prefix is the whole of what this fixture pins,
+// because it is the whole of what maintained reads. The digit after it is inert
+// — any number leaves every test in this file passing.
 const strandedStamp = "# forge-toolchain: 11\nfail_fast: true\ndefault_stages: [pre-commit]\nrepos: []\n"
 
 func TestPrecommitMaintainsARepoItStampedButDoesNotTrack(t *testing.T) {
@@ -261,8 +260,25 @@ func TestPrecommitLeavesARepoItNeverWroteTo(t *testing.T) {
 	if len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none for a repo forge has never written to", measured.Changes)
 	}
-	if measured.Summary != "declares no toolchain" {
+	if measured.Summary != unmaintained.reason() {
 		t.Errorf("summary = %q, want it to say why", measured.Summary)
+	}
+}
+
+// The two not-applicable states have opposite remedies, so they cannot share a
+// sentence. Declaring the first repo deploys the standard files. Declaring the
+// second deploys nothing and surfaces its unmarked hooks instead.
+func TestPrecommitSaysWhichOfTheTwoReasonsItIs(t *testing.T) {
+	never := reconcile.Assess(fixture(t, nil, nil), PreCommit{})
+	unstamped := reconcile.Assess(
+		fixture(t, nil, map[string]string{preCommitConfigPath: "repos:\n  - repo: local\n    hooks: []\n"}),
+		PreCommit{})
+
+	if never.Summary == unstamped.Summary {
+		t.Fatalf("both states report %q, so a reader cannot tell which remedy applies", never.Summary)
+	}
+	if !strings.Contains(unstamped.Summary, toolchainStamp) {
+		t.Errorf("summary = %q, want it to name the missing stamp", unstamped.Summary)
 	}
 }
 
@@ -293,12 +309,13 @@ func TestPrecommitDoesNotInstallHooksInARepoItOnlyStamped(t *testing.T) {
 
 	measured := reconcile.Assess(target, PreCommit{})
 
-	// The positive half: the die did run, so "no hook change" is not "no run".
+	// The positive half: the die did run, so "no install offered" is not "no
+	// run".
 	if len(measured.Changes) == 0 {
 		t.Fatalf("the die reported nothing at all: %q", measured.Summary)
 	}
 	for _, c := range measured.Changes {
-		if strings.HasPrefix(c.Item, ".git/hooks/") {
+		if strings.HasPrefix(c.Item, ".git/hooks/") && c.Actionable() {
 			t.Errorf("would install %s into a repo it only stamped", c.Item)
 		}
 	}
@@ -324,5 +341,105 @@ func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T
 	}
 	if hooks == 0 {
 		t.Errorf("a declared repo lost its hook installation: %v", measured.Changes)
+	}
+}
+
+// A stamped repo's config names hook stages, and forge does not install them
+// there. Dropping the finding as well let apply write that config and plan then
+// report converged over a state the die's own hookStages comment defines as
+// broken — a commit gate declared in the config and absent from .git/hooks.
+func TestPrecommitReportsUninstalledHooksItMayNotInstallInAStampedRepo(t *testing.T) {
+	target := fixture(t, nil, map[string]string{preCommitConfigPath: strandedStamp})
+	for _, stage := range hookStages {
+		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
+			t.Fatalf("remove hook %s: %s", stage, err)
+		}
+	}
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var reported []string
+	for _, c := range measured.Changes {
+		if !strings.HasPrefix(c.Item, ".git/hooks/") {
+			continue
+		}
+		reported = append(reported, c.Item)
+		if c.Actionable() {
+			t.Errorf("%s is actionable, so apply would install a hook the stamp does not authorize", c.Item)
+		}
+		if c.Repair != reconcile.ByHand {
+			t.Errorf("%s repair = %q, want by_hand", c.Item, c.Repair)
+		}
+	}
+	if len(reported) == 0 {
+		t.Fatalf("no uninstalled hook was reported at all: %v", measured.Changes)
+	}
+
+	// check is the verb that has to carry it. plan must stay silent, because
+	// apply has nothing it can do here.
+	if got := measured.Fold(reconcile.LensCheck).Changes; len(got) == 0 {
+		t.Error("check reported nothing, so the state is invisible at exit 3")
+	}
+	for _, c := range measured.Fold(reconcile.LensPlan).Changes {
+		if strings.HasPrefix(c.Item, ".git/hooks/") {
+			t.Errorf("plan offers to install %s", c.Item)
+		}
+	}
+}
+
+// The stamp authorizing four files lives in one of them. Deleting that one
+// returned the other three to unreachable-and-converged, which is the state this
+// die exists to end.
+func TestPrecommitReportsToolConfigsStrandedByADeletedConfig(t *testing.T) {
+	generic := map[string]string{
+		".editorconfig":      "root = true\n",
+		".shellcheckrc":      "disable=SC1091\n",
+		".markdownlint.json": "{}\n",
+	}
+	target := fixture(t, nil, generic)
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	reported := map[string]reconcile.Change{}
+	for _, c := range measured.Changes {
+		reported[c.Item] = c
+	}
+	for rel := range generic {
+		change, ok := reported[rel]
+		if !ok {
+			t.Errorf("%s sits stale and unreported: %v", rel, measured.Changes)
+			continue
+		}
+		if change.Actionable() {
+			t.Errorf("%s is actionable, so apply would take a file forge cannot prove it wrote", rel)
+		}
+	}
+
+	// check is where it has to land, and apply must still have nothing to do.
+	if len(measured.Fold(reconcile.LensCheck).Changes) == 0 {
+		t.Error("check reported nothing, so the state stays invisible at exit 3")
+	}
+	if got := measured.Fold(reconcile.LensPlan).Changes; len(got) != 0 {
+		t.Errorf("plan offers %v, but forge may not touch these", got)
+	}
+
+	// Nothing was written, and nothing was removed.
+	for rel, want := range generic {
+		data, err := os.ReadFile(target.Path(rel))
+		if err != nil || string(data) != want {
+			t.Errorf("%s was modified or removed by a read verb", rel)
+		}
+	}
+}
+
+// A repo keeping its own .editorconfig is not one forge deployed to. All three
+// or nothing is the discriminator, so a partial set says nothing.
+func TestPrecommitStaysQuietAboutAnEditorconfigItDidNotDeploy(t *testing.T) {
+	target := fixture(t, nil, map[string]string{".editorconfig": "root = true\n"})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	if len(measured.Changes) != 0 {
+		t.Errorf("changes = %v, want none for one file forge cannot claim", measured.Changes)
 	}
 }

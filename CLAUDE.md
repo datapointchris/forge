@@ -74,7 +74,9 @@ The hook inventory is generated from the pinned-version declaration — `forge t
 
 **Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach.
 
-**Selection is not the only gate, and the second one decides what a die may do.** Reaching a repo is `SelectRepos`; acting on it is each die's own applicability test, and for `precommit` that test is `maintained`. A declaration answers for a repo somebody works in. Forge's own `# forge-toolchain:` stamp answers for one nobody does: forge wrote those files, so it owns keeping them right, and a registry silent about the repo's stacks has not unwritten them. A stamped repo with no declaration generates as if it declared no components — the generic blocks and the three tool configs, which is what those files already are. **The stamp authorises correcting what forge wrote and nothing else**: first deployment still needs a declaration, and git hooks forge never installed are not installed by it. Without both gates, every repo forge has written to but does not track holds whatever it last generated, and every verb reports converged because nothing looked.
+**Selection is not the only gate, and the second one decides what a die may do.** Reaching a repo is `SelectRepos`; acting on it is each die's own applicability test, and for `precommit` that test is `maintained`. A declaration answers for a repo somebody works in. Forge's own `# forge-toolchain:` stamp answers for one nobody does: forge wrote those files, so it owns keeping them right, and a registry silent about the repo's stacks has not unwritten them. A stamped repo with no declaration generates as if it declared no components, which is the spelling a declaration of no components already has. That is not the same as "the generic blocks only": `Generate` seeds `git` from the target being versioned and `python-scripts` from the shebang scan, and neither is gated on a component. **The stamp authorises correcting what forge wrote and nothing else**: first deployment still needs a declaration, and git hooks forge never installed are not installed by it. Those hooks are still *measured* there and reported `ByHand`, because a stage the config names with no hook installed is broken whether or not forge may fix it. Without both gates, every repo forge has written to but does not track holds whatever it last generated, and every verb reports converged because nothing looked.
+
+**The stamp that authorises those four files lives in only one of them**, so deleting `.pre-commit-config.yaml` returns the other three to exactly that unreachable state. `strandedToolConfigs` is what closes it: with no declaration and no config at all, the three generic tool configs are reported `ByHand` when **all three** are present. Forge deploys them together, so the full set is evidence forge wrote there and a lone `.editorconfig` is not. That evidence is weaker than a stamp and can afford to be, because what it authorises is a report — nothing is written, overwritten or removed, and a stamp is still what would be needed to touch them.
 
 **Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' "$(repos-registry)" | sort | uniq -c` — the registry lives outside forge's data directory, which is the whole point of the `repos_registry` config key below). None of it takes another release, so a maintenance die run across it is churn: a config every repo "should" have is worth nothing in one that will never run the tool. An entry with **no** status counts as active — repos.json is hand-edited, and the opposite default drops a repo out of every maintenance operation without a word.
 
@@ -289,11 +291,15 @@ so `forge repos plan pyproject` shows a template edit as it will land across eve
 the only way to preview a retraction. `uv run --no-project` is passed because without it uv builds the
 repo being edited just to run a stdlib script.
 
-**The `precommit` die** generates the config, deploys the tool configs its hooks read, and installs the
-git hooks for **every stage the config declares** — an uninstalled stage means those hooks silently
-never run. Stages are parsed from the `stages:` lists rather than substring-matched, because
-`commit-msg` is a substring of `prepare-commit-msg`. Running it across the portfolio found 41 repos
-declaring both those stages with neither hook installed.
+**The `precommit` die** generates the config, deploys the tool configs its hooks read, and — where the
+registry declares the repo — installs the git hooks for **every stage the config declares**. An
+uninstalled stage means those hooks silently never run. Where the repo is maintained on the stamp
+alone, the same stages are still measured and reported `ByHand` rather than installed: the stamp does
+not authorise installing a hook forge never installed, and dropping the measurement instead let
+`apply` write the config and `plan` report converged over that state. Stages are parsed from the
+`stages:` lists rather than substring-matched, because `commit-msg` is a substring of
+`prepare-commit-msg`. Running it across the portfolio found 41 repos declaring both those stages with
+neither hook installed.
 
 ## Testing
 
