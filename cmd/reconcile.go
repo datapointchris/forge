@@ -109,8 +109,8 @@ structurally unreachable from here, whether or not a die was named.`,
 		Short: "List the " + n.many + " a verb would act on",
 		Long: `List the selected ` + n.many + `.
 
-Its own question — "which ` + n.many + `" — and not the same one as "what would
-change", which is ` + "`plan`" + `.`,
+List is its own question — "which ` + n.many + `" — and not the same one as "what
+would change", which is ` + "`plan`" + `.`,
 		Args: cobra.NoArgs,
 		RunE: n.runList,
 	}

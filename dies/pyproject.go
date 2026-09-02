@@ -15,9 +15,9 @@ import (
 // pyproject.toml.
 //
 // Split from the pre-commit die on purpose, and it stays split. Adopting one
-// better ruff setting through the full sync means also fanning out whatever
-// toolchain.yml currently pins, to every Python repo at once — coupling the
-// cheap change to the expensive one is what stops it being made.
+// better ruff setting through the full sync means also fanning out whatever the
+// declaration currently pins, to every Python repo at once — coupling the cheap
+// change to the expensive one is what stops it being made.
 //
 // The merge itself stays Python. tomlkit is the only thing in either ecosystem
 // that edits TOML losslessly, and rewriting a repo's pyproject through a

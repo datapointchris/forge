@@ -264,7 +264,8 @@ reading it needs the module proxy and a die that reaches the network to decide o
 that fails offline. The refusal is `ByHand`, so it surfaces in `check` and `apply` cannot reach it.
 
 **A floor moves in either direction.** Lowering one is safe for every consumer; raising one excludes
-them. Every module takes the declaration's floor, so the floor is uniform with no exceptions.
+them. No module is floored above the declaration, so nothing in the portfolio is stricter than the
+fleet. The declaration carries its own exceptions below the floor, and a retired repo is not drift.
 
 A module already floored at or above the toolchain pin gets no toolchain line, since it would be a
 second copy of the same fact — and an existing one there is reported `Undeclared` rather than
