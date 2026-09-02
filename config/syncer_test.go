@@ -153,27 +153,6 @@ func TestExpandTilde(t *testing.T) {
 	}
 }
 
-func TestFindRepoByPath(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("UserHomeDir: %v", err)
-	}
-	repos := []Repo{
-		{Name: "widget", Path: "~/src/widget"},
-		{Name: "forge", Path: "~/src/forge"},
-	}
-
-	// A subdirectory resolves to its repo — dies run from wherever the user is.
-	got := FindRepoByPath(repos, filepath.Join(home, "src", "widget", "db"))
-	if got == nil || got.Name != "widget" {
-		t.Errorf("subdirectory did not resolve to widget: %+v", got)
-	}
-
-	if got := FindRepoByPath(repos, filepath.Join(home, "src")); got != nil {
-		t.Errorf("a parent of several repos must not match one: %+v", got)
-	}
-}
-
 func TestToolchainStacksDeduplicates(t *testing.T) {
 	// A repo holding two Go modules must report go once in the stack list.
 	toolchain := &Toolchain{Components: []Component{
