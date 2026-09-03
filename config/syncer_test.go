@@ -254,7 +254,7 @@ func TestVisibilityIsReadFromTheRegistryAndDefaultsToPublic(t *testing.T) {
 
 // A wrong-cased or misspelled value must land on the public side, because the
 // other side runs a fork's code on a machine inside a private network.
-func TestAnUnrecognisedVisibilityIsNotTreatedAsPrivate(t *testing.T) {
+func TestAnUnrecognizedVisibilityIsNotTreatedAsPrivate(t *testing.T) {
 	for _, value := range []string{"", "Private", "PRIVATE", "internal", "priv", "public"} {
 		if (Repo{Visibility: value}).IsPrivate() {
 			t.Errorf("visibility %q was read as private", value)

@@ -139,7 +139,7 @@ func TestGitignoreIsIdempotent(t *testing.T) {
 }
 
 // A downloaded gitignore is drift only a person can settle: pruning one is a
-// judgement about what the repo actually builds.
+// judgment about what the repo actually builds.
 func TestGitignoreReportsAGeneratedFileAsByHand(t *testing.T) {
 	target := fixture(t, stacks("go"), map[string]string{
 		".gitignore": "# Created by https://www.toptal.com/developers/gitignore\n.planning\n",

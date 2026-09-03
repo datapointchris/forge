@@ -10,7 +10,7 @@ import (
 
 // generatedMarker is the giveaway left by a gitignore.io / toptal download.
 // Those files run to hundreds of lines of every language the site knows about,
-// and pruning one is a judgement about what the repo actually builds — so it is
+// and pruning one is a judgment about what the repo actually builds — so it is
 // reported, never rewritten.
 const generatedMarker = "toptal.com/developers/gitignore"
 

@@ -145,7 +145,7 @@ func (ConflictMarkers) Diff(_ reconcile.Target, observed reconcile.Observation) 
 }
 
 // Perform is unreachable: nothing this die reports is Actionable. Which side of
-// a conflict was wanted is exactly the judgement a machine cannot make.
+// a conflict was wanted is exactly the judgment a machine cannot make.
 func (ConflictMarkers) Perform(_ reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	return reconcile.Outcome{
 		Change:  change,

@@ -142,7 +142,7 @@ def plain(value):
 
     Most comparisons would survive without this: an Array is a `list` subclass,
     a String is a `str` subclass, and `Container.__getitem__` hands back a bare
-    `bool` for a boolean rather than an item at all. Normalising anyway keeps
+    `bool` for a boolean rather than an item at all. Normalizing anyway keeps
     the comparison from depending on which of those tomlkit chooses to do.
     """
     return value.unwrap() if isinstance(value, Item) else value
@@ -272,7 +272,7 @@ def main(argv):
     # The record table carries a trailing blank line so it does not abut the next
     # header. When it lands at EOF there is no next header, and end-of-file-fixer
     # strips the blank on commit — leaving the sync and the hook to undo each
-    # other on every run. Normalising here settles it in the sync's favour.
+    # other on every run. Normalizing here settles it in the sync's favor.
     merged = tomlkit.dumps(target).rstrip('\n') + '\n'
 
     changed = merged != original
