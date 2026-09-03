@@ -22,7 +22,16 @@
         # dot-named tracked file. A dot-named *directory* was always read, so
         # `.github/**` never needed it. pre-commit passes tracked paths, so the
         # flag widens what is read rather than reaching untracked files.
-        args: ['-H', '--builtin', 'clear,rare,en-GB_to_en-US']
+        #
+        # `--uri-ignore-words-list=*` stops the check inside a URL, for the
+        # reason the go.mod note below gives: an address is a third party's
+        # name, and respelling one breaks the link rather than fixing a typo.
+        # The word is still checked everywhere outside a URL in the same file,
+        # so this narrows the context rather than switching the word off. The
+        # case that forced it is a security scanner's output captured as a test
+        # fixture, where the finding sits in a vendor's advisory URL and no edit
+        # is available to whoever hits it.
+        args: ['-H', '--builtin', 'clear,rare,en-GB_to_en-US', '--uri-ignore-words-list=*']
         # The second alternation is sops output. Ciphertext is base64, so it
         # produces the same false hits a lock file's hashes do. The plain
         # `secrets.yaml` name is covered alongside the *.enc.env convention.

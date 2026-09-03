@@ -67,8 +67,14 @@ check-filenames = true
 # to it, so `clear,rare` — codespell's own default — is restated beside the
 # third. The two carry different corrections, a typo and a spelling, so a run
 # with one list says nothing about what the other would find.
+#
+# `uri-ignore-words-list` because an address is a third party's name, so
+# respelling one breaks the link rather than fixing a typo. The word is still
+# checked everywhere outside a URL in the same file, which narrows the context
+# rather than switching the word off.
 check-hidden = true
 builtin = "clear,rare,en-GB_to_en-US"
+uri-ignore-words-list = "*"
 
 [tool.pytest.ini_options]
 # Assertion detail and test-list length are two different questions, and -vv
