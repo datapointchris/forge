@@ -51,6 +51,24 @@ analyzeUnannotatedFunctions = true  # or pylance stops analyzing in vscode
 
 [tool.codespell]
 check-filenames = true
+# These two restate what the pre-commit hook passes as args, and the repetition
+# is the point: the hook's args reach the hook alone, while `codespell <path>`
+# typed at a terminal reads this file instead. A hand-run is how every manual
+# check in a repo is made, so without these it runs a different check from the
+# gate and reports a different set.
+#
+# `check-hidden` because codespell skips any file whose basename starts with a
+# dot and exits 0 rather than saying it read nothing. It skips one named
+# explicitly on the command line too, so an exact path is no defense. Measured
+# against a dot-named file carrying a known finding: silent without it, reported
+# with it.
+#
+# `builtin` because naming any dictionary replaces the list rather than adding
+# to it, so `clear,rare` — codespell's own default — is restated beside the
+# third. The two carry different corrections, a typo and a spelling, so a run
+# with one list says nothing about what the other would find.
+check-hidden = true
+builtin = "clear,rare,en-GB_to_en-US"
 
 [tool.pytest.ini_options]
 # Assertion detail and test-list length are two different questions, and -vv
