@@ -64,16 +64,22 @@ check-filenames = true
 # with it.
 #
 # `builtin` because naming any dictionary replaces the list rather than adding
-# to it, so `clear,rare` — codespell's own default — is restated beside the
-# third. The two carry different corrections, a typo and a spelling, so a run
-# with one list says nothing about what the other would find.
+# to it, so `clear,rare` — codespell's own default — is restated rather than
+# assumed.
+#
+# Dialect is deliberately not a dictionary here. A commit is the wrong place to
+# catch a British spelling: by then the word is written, and the only move left
+# is a sweep of text that already exists. The `british-spelling` validator in
+# `~/.claude/validators/rules/` reports it on the line as it is typed, which
+# reaches every repo rather than only the ones with pre-commit, and reaches an
+# identifier — which codespell cannot, since it matches whole tokens.
 #
 # `uri-ignore-words-list` because an address is a third party's name, so
 # respelling one breaks the link rather than fixing a typo. The word is still
 # checked everywhere outside a URL in the same file, which narrows the context
 # rather than switching the word off.
 check-hidden = true
-builtin = "clear,rare,en-GB_to_en-US"
+builtin = "clear,rare"
 uri-ignore-words-list = "*"
 
 [tool.pytest.ini_options]
