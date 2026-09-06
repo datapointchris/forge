@@ -33,6 +33,7 @@ func Builtin() []reconcile.Die {
 		GoMod{},
 		PreCommit{},
 		CI{},
+		Release{},
 	}
 }
 
