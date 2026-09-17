@@ -54,6 +54,13 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 	if !strings.Contains(workflow, `go-version-file: "api/go.mod"`) {
 		t.Errorf("{{dir}} not expanded in an action input:\n%s", workflow)
 	}
+	// setup-go looks for the cache key's file at the workspace root unless told
+	// otherwise, and finds none for a module below it.
+	for _, dir := range []string{"api", "cli"} {
+		if !strings.Contains(workflow, `cache-dependency-path: "`+dir+`/go.sum"`) {
+			t.Errorf("go-%s restores its cache from no dependency file:\n%s", dir, workflow)
+		}
+	}
 	if strings.Contains(workflow, "{{dir}}") {
 		t.Error("unexpanded {{dir}} placeholder left in output")
 	}
