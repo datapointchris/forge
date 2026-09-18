@@ -24,17 +24,17 @@ var (
 )
 
 // requireSubcommand is the RunE for a command that only groups others: bare
-// shows help and exits 0, an unknown subcommand is a usage error and exits 2.
+// shows help and exits 0, an unknown subcommand is a usage error naming the
+// subcommands near it and exits 2.
 //
 // Without it cobra treats the unknown word as an argument, prints the group's
 // help, and exits 0 — so `forge dies nope` reported success and no caller could
-// tell that from a real run. Matches the spelling the data CLIs already use.
+// tell that from a real run.
 func requireSubcommand(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
 	}
-	return goclikit.UsageError(fmt.Errorf("unknown command %q for %q\nRun '%s --help' for usage",
-		args[0], cmd.CommandPath(), cmd.CommandPath()))
+	return goclikit.UnknownCommand(cmd, args[0])
 }
 
 // SetEmbeddedAssets stores the embedded filesystems for use by subcommands.
