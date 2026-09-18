@@ -117,8 +117,8 @@ func TestPyprojectKeepsTheProjectsOwnSettings(t *testing.T) {
 
 // The key is `mypy.ignore_missing_imports` because the real template sets it.
 // A synthetic key would prove the conflict machinery runs and nothing about the
-// standard this die actually deploys — testing.md § "A gate over a
-// configuration probes a member of the population it selects".
+// standard this die actually deploys. A gate over a configuration has to probe
+// a member of the population that configuration selects.
 //
 // Built from lambda-durable-functions, which sets it to false under a comment
 // explaining that an unresolved SDK import turns every decorated handler into
