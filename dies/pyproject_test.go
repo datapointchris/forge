@@ -232,3 +232,31 @@ func TestParseMergeOutputRefusesAMalformedConflict(t *testing.T) {
 		t.Fatal("a two-field conflict parsed without error, so the key reads as converged")
 	}
 }
+
+// A kind the script grows later, or a conflict written with a space where the
+// tab goes, reaches neither arm. Skipped, it is the same converged reading.
+func TestParseMergeOutputRefusesARecordOfAnUnknownKind(t *testing.T) {
+	for _, line := range []string{"  renamed ruff.lint.select", "  conflict mypy.strict false true"} {
+		if _, _, _, _, err := parseMergeOutput("would-update\n" + line + "\n"); err == nil {
+			t.Errorf("%q parsed without error, so the record it carries was dropped", line)
+		}
+	}
+}
+
+func TestParseMergeOutputRefusesARetractionNamingNoKey(t *testing.T) {
+	if _, _, _, _, err := parseMergeOutput("updated\n  retracted \n"); err == nil {
+		t.Fatal("a retraction naming no key parsed, and would print as a real one")
+	}
+}
+
+// The script ends its last record with a newline, and a caller that does not
+// trim hands the parser the empty line after it.
+func TestParseMergeOutputReadsTheNewlineEndingTheLastRecord(t *testing.T) {
+	_, _, retracted, _, err := parseMergeOutput("current\n  retracted ruff.lint.select\n")
+	if err != nil {
+		t.Fatalf("parseMergeOutput: %v", err)
+	}
+	if len(retracted) != 1 || retracted[0] != "ruff.lint.select" {
+		t.Errorf("retracted = %v", retracted)
+	}
+}

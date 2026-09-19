@@ -80,9 +80,10 @@ func (s pyprojectState) Summary() string {
 // pyproject's own lines travel inside that diff and one of them could carry any
 // prefix this looks for.
 //
-// A conflict record that does not split into three fields is an error rather
-// than a line to skip. Dropping it would leave `conflicts` empty and the die
-// would report the key converged, which turns "I could not read this" into "I
+// A record it cannot read is an error rather than a line to skip: a conflict
+// that does not split into three fields, a retraction naming no key, or a line
+// of a kind the script does not print. Dropping one would leave the die
+// reporting the key converged, which turns "I could not read this" into "I
 // measured this and it was fine".
 func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict, retracted []string, patch string, err error) {
 	lines := strings.Split(out, "\n")
@@ -90,6 +91,7 @@ func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict,
 
 	for i, line := range lines[1:] {
 		if strings.HasPrefix(line, "--- ") {
+			// i counts from lines[1:], so lines[i+1] is this header line.
 			patch = strings.Join(lines[i+1:], "\n")
 			break
 		}
@@ -104,7 +106,15 @@ func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict,
 			}
 			conflicts = append(conflicts, pyprojectConflict{path: fields[0], project: fields[1], standard: fields[2]})
 		case strings.HasPrefix(line, "  retracted "):
-			retracted = append(retracted, strings.TrimPrefix(line, "  retracted "))
+			path := strings.TrimPrefix(line, "  retracted ")
+			if path == "" {
+				return "", nil, nil, "", fmt.Errorf("merge reported a retraction naming no key: %q", line)
+			}
+			retracted = append(retracted, path)
+		case line == "":
+			// The newline ending the script's last record.
+		default:
+			return "", nil, nil, "", fmt.Errorf("merge reported a record this does not read: %q", line)
 		}
 	}
 	return status, conflicts, retracted, patch, nil
