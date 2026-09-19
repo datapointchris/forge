@@ -27,6 +27,16 @@ jobs:
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
           echo "FORGE_REQUIRE_ACTIONLINT=1" >> "$GITHUB_ENV"
 
+      # uv, which runs the pyproject die's merge script. Without it every test
+      # that runs the real script skips here, and the report the script prints
+      # and the die decodes is checked only on a desk. FORGE_REQUIRE_UV turns a
+      # later disappearance into a failure. The script's own suite runs beside it.
+      - uses: astral-sh/setup-uv@v7
+      - name: Require uv, and run the pre-commit script tests
+        run: |
+          echo "FORGE_REQUIRE_UV=1" >> "$GITHUB_ENV"
+          pre-commit/scripts/run_tests.sh
+
       # generated:go
       - uses: actions/setup-go@v7
         with:

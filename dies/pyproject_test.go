@@ -1,18 +1,27 @@
 package dies
 
 import (
+	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/datapointchris/forge/reconcile"
 )
 
+// requireUV skips only where uv genuinely cannot be run, and fails where it is
+// expected. FORGE_REQUIRE_UV is set in the go job, so an absent uv there is a
+// broken gate rather than a machine without a tool.
 func requireUV(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("uv"); err != nil {
-		t.Skip("uv is not installed")
+	if _, err := exec.LookPath("uv"); err == nil {
+		return
 	}
+	if os.Getenv("FORGE_REQUIRE_UV") != "" {
+		t.Fatal("uv is absent where the gate declares it present — every real-script test would pass by skipping")
+	}
+	t.Skip("uv is not installed")
 }
 
 func TestPyprojectIgnoresARepoDeclaringNoPython(t *testing.T) {
@@ -188,47 +197,97 @@ func TestPyprojectApplyLeavesADisagreedValueAlone(t *testing.T) {
 	}
 }
 
-// The diff carries a repo's own pyproject lines, and one of them can begin with
-// anything. Scanning the whole output for the conflict prefix would read a line
-// of somebody's file as a finding.
-func TestParseMergeOutputStopsScanningAtTheDiff(t *testing.T) {
-	out := strings.Join([]string{
-		"would-update",
-		"  conflict\tmypy.ignore_missing_imports\tfalse\ttrue",
-		"  retracted ruff.lint.select",
-		"--- pyproject.toml (current)",
-		"+++ pyproject.toml (synced)",
-		"   conflict\tnot.a.finding\tx\ty",
-	}, "\n")
-
-	status, conflicts, retracted, patch, err := parseMergeOutput(out)
-	if err != nil {
-		t.Fatalf("parseMergeOutput: %v", err)
-	}
-	if status != "would-update" {
-		t.Errorf("status = %q", status)
-	}
-	if len(conflicts) != 1 || conflicts[0].path != "mypy.ignore_missing_imports" {
-		t.Fatalf("conflicts = %v, want exactly the one above the diff", conflicts)
-	}
-	if conflicts[0].project != "false" || conflicts[0].standard != "true" {
-		t.Errorf("conflict values = %q/%q, want false/true", conflicts[0].project, conflicts[0].standard)
-	}
-	if len(retracted) != 1 || retracted[0] != "ruff.lint.select" {
-		t.Errorf("retracted = %v", retracted)
-	}
-	if !strings.HasPrefix(patch, "--- pyproject.toml (current)") {
-		t.Errorf("patch does not start at the diff header:\n%s", patch)
+// Skipping a part it cannot read would leave the die reporting the key
+// converged — the reading that turns "I could not measure this" into "I
+// measured it and it was fine". A field it does not know is a kind of record
+// the script grew and the die did not.
+func TestDecodeMergeReportRefusesWhatItCannotRead(t *testing.T) {
+	for name, out := range map[string]string{
+		"an unknown field":          `{"status":"current","conflicts":[],"retracted":[],"patch":"","renamed":["ruff.x"]}`,
+		"an unknown conflict field": `{"status":"current","conflicts":[{"key":"a","project":"1","standard":"2","why":"x"}],"retracted":[],"patch":""}`,
+		"a status the script lacks": `{"status":"merged","conflicts":[],"retracted":[],"patch":""}`,
+		"conflicts left out":        `{"status":"current","retracted":[],"patch":""}`,
+		"retracted as null":         `{"status":"current","conflicts":[],"retracted":null,"patch":""}`,
+		"a second object after it":  `{"status":"current","conflicts":[],"retracted":[],"patch":""} {}`,
+		"a line after it":           "{\"status\":\"current\",\"conflicts\":[],\"retracted\":[],\"patch\":\"\"}\ndebug: done",
+		"a report that is not JSON": "current\n  conflict\tmypy.strict\tfalse\ttrue",
+	} {
+		if _, err := decodeMergeReport(out); err == nil {
+			t.Errorf("%s: decoded without error", name)
+		}
 	}
 }
 
-// Skipping a record it cannot read would leave conflicts empty, and the die
-// would then report the key converged — the reading that turns "I could not
-// measure this" into "I measured it and it was fine".
-func TestParseMergeOutputRefusesAMalformedConflict(t *testing.T) {
-	out := "would-update\n  conflict\tmypy.strict\tfalse\n"
+// The one case that runs without uv, so a field renamed on the die's side fails
+// on any machine. Written as the script prints it.
+func TestDecodeMergeReportReadsEveryPart(t *testing.T) {
+	report, err := decodeMergeReport(`{"status": "would-update", "conflicts": [{"key": "mypy.strict", "project": "false", "standard": "true"}], "retracted": ["ruff.gone"], "patch": "--- pyproject.toml (current)\n"}`)
+	if err != nil {
+		t.Fatalf("decodeMergeReport: %v", err)
+	}
+	want := mergeReport{
+		Status:    "would-update",
+		Conflicts: []pyprojectConflict{{Key: "mypy.strict", Project: "false", Standard: "true"}},
+		Retracted: []string{"ruff.gone"},
+		Patch:     "--- pyproject.toml (current)\n",
+	}
+	if report.Status != want.Status || report.Patch != want.Patch ||
+		!slices.Equal(report.Conflicts, want.Conflicts) || !slices.Equal(report.Retracted, want.Retracted) {
+		t.Errorf("decoded %+v, want %+v", report, want)
+	}
+}
 
-	if _, _, _, _, err := parseMergeOutput(out); err == nil {
-		t.Fatal("a two-field conflict parsed without error, so the key reads as converged")
+// The script writes a retraction as a real run of it does, and the die reads it
+// back on both verbs. Only a run of the real script crosses the two languages,
+// so a spelling that drifts on either side fails here rather than in a plan.
+func TestPyprojectPlansAndAppliesARetraction(t *testing.T) {
+	requireUV(t)
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n" +
+			"[tool.ruff]\ngone = 1\n\n[tool.forge]\nmanaged = [[\"ruff\", \"gone\"]]\n",
+	})
+
+	measured := reconcile.Assess(target, Pyproject{})
+	if measured.Refusal != "" {
+		t.Fatalf("plan refused the repo: %s", measured.Refusal)
+	}
+	if len(measured.Changes) != 1 || !strings.Contains(measured.Changes[0].Patch, "-gone = 1") {
+		t.Fatalf("want one automatic change whose patch removes the retracted key, got %+v", measured.Changes)
+	}
+
+	outcomes := reconcile.Apply(measured)
+	if len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
+		t.Fatalf("outcomes = %+v, want one done", outcomes)
+	}
+	if !strings.Contains(outcomes[0].Message, "retracted ruff.gone") {
+		t.Errorf("apply's message does not name the retracted key: %q", outcomes[0].Message)
+	}
+}
+
+// A table where the standard wants a scalar is one value the project chose.
+// Written in TOML's block form it spans lines, and it is reported as one
+// conflict beside the merge rather than refusing the whole repo.
+func TestPyprojectReportsATableValueAsOneConflict(t *testing.T) {
+	requireUV(t)
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n" +
+			"[tool.ruff.line-length]\nmax = 140\n",
+	})
+
+	measured := reconcile.Assess(target, Pyproject{})
+	if measured.Refusal != "" {
+		t.Fatalf("plan refused the repo: %s", measured.Refusal)
+	}
+	var conflict *reconcile.Change
+	for i, change := range measured.Changes {
+		if change.Item == "pyproject.toml ruff.line-length" {
+			conflict = &measured.Changes[i]
+		}
+	}
+	if conflict == nil {
+		t.Fatalf("no change names ruff.line-length: %+v", measured.Changes)
+	}
+	if conflict.Repair != reconcile.ByHand || conflict.Observed != "{max = 140}" {
+		t.Errorf("repair %q observed %q, want by_hand and the table inline", conflict.Repair, conflict.Observed)
 	}
 }

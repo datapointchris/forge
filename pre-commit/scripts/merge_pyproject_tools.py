@@ -20,12 +20,11 @@ can detect that prose, so not writing the value is the only thing that keeps it
 true. Once the record claims a key the hazard is gone, because the record is
 proof forge chose the value that is sitting there.
 
-This replaced a hand-maintained REPLACE_SECTIONS set naming whole sections to
-overwrite wholesale. Owning a section and setting a floor under one are
-different jobs, and a single verb doing both deleted config three times: a
-repo's ruff `exclude`, then a FastAPI repo's bugbear exemptions, its pydantic
-mypy plugin and an alembic per-file-ignore. Ownership recorded per key rather
-than declared per section cannot express that mistake.
+Ownership is recorded per key, never declared per section. Owning a section
+and setting a floor under one are different jobs, and a single verb doing both
+deleted config three times: a repo's ruff `exclude`, then a FastAPI repo's
+bugbear exemptions, its pydantic mypy plugin and an alembic per-file-ignore.
+Ownership recorded per key cannot express that mistake.
 
 Paths are recorded as arrays rather than dotted strings because a segment can
 itself contain a dot (`per-file-ignores."__init__.py"`). This is the record
@@ -33,21 +32,26 @@ that authorizes deletion; it does not get to depend on quoting being right.
 
 Usage: merge_pyproject_tools.py [--check] <standard.toml> <target-pyproject.toml>
 
-The first line of output is a status word — `current`, `updated`, or
-`would-update` under --check. Under it come the conflicts, then the retracted
-keys, then the diff when checking.
+stdout is one JSON object, and forge's pyproject die is its reader:
 
-A conflict line is tab-separated so a caller can split it without guessing where
-a value ends:
+    {"status": "would-update",
+     "conflicts": [{"key": "mypy.ignore_missing_imports", "project": "false", "standard": "true"}],
+     "retracted": ["ruff.lint.select"],
+     "patch": "--- pyproject.toml (current)\\n+++ ..."}
 
-    conflict<TAB>mypy.ignore_missing_imports<TAB>false<TAB>true
+`status` is `current`, `updated`, or `would-update` under --check. `key` is the
+path as TOML spells a dotted key, and each value is spelled as TOML spells it
+inline. `patch` is the unified diff under --check, and empty otherwise. The die
+decodes the object refusing any field it does not know, so a field added here
+lands in the die in the same change.
 
 `current` and a conflict list appear together when the only thing to say about a
 repo is a key it disagrees on. Nothing would be written there, and something is
-still wrong, so the status word alone cannot carry it.
+still wrong, so the status alone cannot carry it.
 """
 
 import difflib
+import json
 import sys
 from pathlib import Path
 
@@ -229,21 +233,40 @@ def apply_standard(standard_tool, target_tool):
 
 
 def format_path(path):
-    return '.'.join(f'"{segment}"' if '.' in segment else segment for segment in path)
+    """A recorded path spelled as TOML spells a dotted key.
+
+    tomlkit owns the quoting, so a segment holding a dot and the empty key both
+    come back as a key a reader could paste into the file.
+    """
+    return tomlkit.key(list(path)).as_string()
 
 
 def format_value(value):
-    """A value spelled as TOML spells it, so a conflict reads like the file.
+    """A value spelled as TOML spells it inline, so a conflict reads like the file.
 
     tomlkit owns the spelling. Hand-writing it gets a string holding a quote or
-    a tab wrong, and the escaping is load-bearing twice over: the record below
-    is tab-separated and line-oriented, so a raw tab or newline reaching it
-    would split a field or a row.
+    a tab wrong. Tables are written inline at every depth, including the tables
+    inside an array, because TOML's block forms span lines and print an array of
+    tables as its members' bodies alone.
 
     Never truncated. A conflict on a long list is where a reader most needs to
     see which entries differ.
     """
-    return tomlkit.item(value).as_string()
+    return tomlkit.item(inline(value)).as_string()
+
+
+def inline(value):
+    """The value rebuilt from inline tables and arrays, so it renders on one line."""
+    if isinstance(value, dict):
+        table = tomlkit.inline_table()
+        for key, member in value.items():
+            table[key] = inline(member)
+        return table
+    if isinstance(value, list):
+        array = tomlkit.array()
+        array.extend(inline(member) for member in value)
+        return array
+    return value
 
 
 def main(argv):
@@ -251,7 +274,7 @@ def main(argv):
     positional = [arg for arg in argv if arg != '--check']
 
     if len(positional) != 2:
-        print(f'usage: {sys.argv[0]} [--check] <standard.toml> <target.toml>')
+        print(f'usage: {sys.argv[0]} [--check] <standard.toml> <target.toml>', file=sys.stderr)
         return 1
 
     standard_file, target_file = Path(positional[0]), Path(positional[1])
@@ -261,7 +284,7 @@ def main(argv):
     target = tomlkit.parse(original)
 
     if 'tool' not in standard:
-        print(f'no [tool] section in {standard_file}')
+        print(f'no [tool] section in {standard_file}', file=sys.stderr)
         return 1
 
     if 'tool' not in target:
@@ -276,21 +299,9 @@ def main(argv):
     merged = tomlkit.dumps(target).rstrip('\n') + '\n'
 
     changed = merged != original
-    print(('would-update' if check else 'updated') if changed else 'current')
-
-    # Conflicts are reported whether or not anything else moved. A repo whose
-    # only finding is a key it disagrees on writes nothing, and saying `current`
-    # and stopping there would report it converged.
-    for path, project_value, standard_value in conflicts:
-        print(f'  conflict\t{format_path(path)}\t{format_value(project_value)}\t{format_value(standard_value)}')
-    for path in retracted:
-        print(f'  retracted {format_path(path)}')
-
-    if not changed:
-        return 0
-
-    if check:
-        sys.stdout.writelines(
+    patch = ''
+    if changed and check:
+        patch = ''.join(
             difflib.unified_diff(
                 original.splitlines(keepends=True),
                 merged.splitlines(keepends=True),
@@ -298,9 +309,22 @@ def main(argv):
                 tofile=f'{target_file} (synced)',
             )
         )
-        return 0
+    elif changed:
+        target_file.write_text(merged)
 
-    target_file.write_text(merged)
+    # Conflicts are reported whether or not anything else moved. A repo whose
+    # only finding is a key it disagrees on writes nothing, and saying `current`
+    # and stopping there would report it converged.
+    report = {
+        'status': ('would-update' if check else 'updated') if changed else 'current',
+        'conflicts': [
+            {'key': format_path(path), 'project': format_value(project), 'standard': format_value(wanted)}
+            for path, project, wanted in conflicts
+        ],
+        'retracted': [format_path(path) for path in retracted],
+        'patch': patch,
+    }
+    print(json.dumps(report))
     return 0
 
 

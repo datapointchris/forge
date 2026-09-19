@@ -244,9 +244,9 @@ one `go.mod` arrives after the first settled it and reports `Skipped`.
 **The `pyproject` die is separate from `precommit`, and stays that way.** Adopting one better setting
 through the full sync means also fanning out whatever the declaration currently pins, to every Python
 repo at once. Coupling a cheap change to an expensive one is what stops the cheap change being made.
-Its `Observe` is the merge script's own `--check`, whose unified diff becomes the `Change`'s `Patch`,
-so `forge repos plan pyproject` is the only way to preview a retraction. `uv run --no-project` stops
-uv building the repo being edited just to run a stdlib script.
+Its `Observe` is the merge script's own `--check`, whose JSON report carries the unified diff that
+becomes the `Change`'s `Patch`, so `forge repos plan pyproject` is the only way to preview a
+retraction. `uv run --no-project` stops uv building the repo being edited just to run the script.
 
 **The `precommit` die installs the git hooks for every stage the config declares**, where the registry
 declares the repo; an uninstalled stage means those hooks silently never run. On a repo maintained by
