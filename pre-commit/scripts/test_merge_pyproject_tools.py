@@ -2,11 +2,12 @@
 """Tests for merge_pyproject_tools.py."""
 
 import io
+import json
 import tempfile
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from merge_pyproject_tools import apply_standard, flatten, main, read_managed_paths
+from merge_pyproject_tools import apply_standard, flatten, format_path, main, read_managed_paths
 
 import tomlkit
 
@@ -268,14 +269,51 @@ def test_a_conflict_alone_is_reported_under_current():
         assert main([str(standard_path), str(target_path)]) == 0
         settled = target_path.read_text()
 
-        captured = io.StringIO()
-        with redirect_stdout(captured):
-            assert main([str(standard_path), str(target_path)]) == 0
-
-        lines = captured.getvalue().splitlines()
-        assert lines[0] == 'current'
-        assert lines[1] == '  conflict\tmypy.ignore_missing_imports\tfalse\ttrue'
+        report = run_main([str(standard_path), str(target_path)])
+        assert report['status'] == 'current'
+        assert report['conflicts'] == [{'key': 'mypy.ignore_missing_imports', 'project': 'false', 'standard': 'true'}]
         assert target_path.read_text() == settled
+
+
+def run_main(argv):
+    """Run main and decode the one JSON object it prints."""
+    captured = io.StringIO()
+    with redirect_stdout(captured):
+        assert main(argv) == 0
+    return json.loads(captured.getvalue())
+
+
+def test_the_report_names_a_retraction_and_carries_the_patch():
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.ruff]\nline-length = 140\n')
+        target_path.write_text('[tool.ruff]\nline-length = 140\ngone = 1\n\n[tool.forge]\nmanaged = [["ruff", "gone"]]\n')
+
+        report = run_main(['--check', str(standard_path), str(target_path)])
+
+        assert report['status'] == 'would-update'
+        assert report['retracted'] == ['ruff.gone']
+        assert report['patch'].startswith(f'--- {target_path} (current)')
+        assert '-gone = 1' in report['patch']
+
+
+def test_a_table_value_is_one_inline_conflict():
+    """A table the project set where the standard wants a scalar reads as one value."""
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.ruff]\nline-length = 140\n')
+        target_path.write_text('[tool.ruff.line-length]\nmax = 140\n')
+
+        report = run_main(['--check', str(standard_path), str(target_path)])
+
+        assert report['conflicts'] == [{'key': 'ruff.line-length', 'project': '{max = 140}', 'standard': '140'}]
+
+
+def test_a_key_is_spelled_as_toml_spells_it():
+    assert format_path(('ruff', 'lint', 'per-file-ignores', '__init__.py')) == 'ruff.lint.per-file-ignores."__init__.py"'
+    assert format_path(('',)) == '""'
 
 
 def test_full_pyproject_roundtrip():
@@ -317,5 +355,8 @@ if __name__ == '__main__':
     test_leaves_exactly_one_newline_at_eof()
     test_check_reports_without_writing()
     test_a_conflict_alone_is_reported_under_current()
+    test_the_report_names_a_retraction_and_carries_the_patch()
+    test_a_table_value_is_one_inline_conflict()
+    test_a_key_is_spelled_as_toml_spells_it()
     test_full_pyproject_roundtrip()
     print('all tests passed')

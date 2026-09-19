@@ -1,7 +1,9 @@
 package dies
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -51,10 +53,21 @@ func (Pyproject) Tags() []string {
 // pyprojectConflict is one key the project sets, the standard disagrees with,
 // and the record does not claim. Only a person can settle which value wins.
 type pyprojectConflict struct {
-	path     string
-	project  string
-	standard string
+	Key      string `json:"key"`
+	Project  string `json:"project"`
+	Standard string `json:"standard"`
 }
+
+// mergeReport is the one JSON object merge_pyproject_tools.py prints.
+type mergeReport struct {
+	Status    string              `json:"status"`
+	Conflicts []pyprojectConflict `json:"conflicts"`
+	Retracted []string            `json:"retracted"`
+	Patch     string              `json:"patch"`
+}
+
+// mergeStatuses is every status the script prints, for the refusal to name.
+var mergeStatuses = []string{"current", "updated", "would-update"}
 
 type pyprojectState struct {
 	applicable bool
@@ -74,50 +87,26 @@ func (s pyprojectState) Summary() string {
 	return "pyproject current"
 }
 
-// parseMergeOutput splits the script's report into its three parts.
+// decodeMergeReport reads the script's one JSON object.
 //
-// The scan stops at the diff rather than filtering the whole output, because a
-// pyproject's own lines travel inside that diff and one of them could carry any
-// prefix this looks for.
-//
-// A record it cannot read is an error rather than a line to skip: a conflict
-// that does not split into three fields, a retraction naming no key, or a line
-// of a kind the script does not print. Dropping one would leave the die
-// reporting the key converged, which turns "I could not read this" into "I
-// measured this and it was fine".
-func parseMergeOutput(out string) (status string, conflicts []pyprojectConflict, retracted []string, patch string, err error) {
-	lines := strings.Split(out, "\n")
-	status = lines[0]
-
-	for i, line := range lines[1:] {
-		if strings.HasPrefix(line, "--- ") {
-			// i counts from lines[1:], so lines[i+1] is this header line.
-			patch = strings.Join(lines[i+1:], "\n")
-			break
-		}
-		switch {
-		case strings.HasPrefix(line, "  conflict\t"):
-			// path, project value, standard value — tab-separated so a value
-			// holding a space still arrives whole. tomlkit escapes a tab and a
-			// newline, so a rendered value cannot split a field or a row.
-			fields := strings.Split(strings.TrimPrefix(line, "  conflict\t"), "\t")
-			if len(fields) != 3 {
-				return "", nil, nil, "", fmt.Errorf("merge reported a conflict in %d fields, want 3: %q", len(fields), line)
-			}
-			conflicts = append(conflicts, pyprojectConflict{path: fields[0], project: fields[1], standard: fields[2]})
-		case strings.HasPrefix(line, "  retracted "):
-			path := strings.TrimPrefix(line, "  retracted ")
-			if path == "" {
-				return "", nil, nil, "", fmt.Errorf("merge reported a retraction naming no key: %q", line)
-			}
-			retracted = append(retracted, path)
-		case line == "":
-			// The newline ending the script's last record.
-		default:
-			return "", nil, nil, "", fmt.Errorf("merge reported a record this does not read: %q", line)
-		}
+// Anything it cannot read is an error rather than a part to skip: a field it
+// does not know, a status outside the three the script prints, or bytes after
+// the object. Skipping one would leave the die reporting the key converged,
+// which turns "I could not read this" into "I measured this and it was fine".
+func decodeMergeReport(out string) (mergeReport, error) {
+	dec := json.NewDecoder(strings.NewReader(out))
+	dec.DisallowUnknownFields()
+	var report mergeReport
+	if err := dec.Decode(&report); err != nil {
+		return mergeReport{}, fmt.Errorf("merge printed a report this does not read (want one object of status, conflicts, retracted and patch): %w", err)
 	}
-	return status, conflicts, retracted, patch, nil
+	if err := dec.Decode(&json.RawMessage{}); err != io.EOF {
+		return mergeReport{}, fmt.Errorf("merge printed more than one report object")
+	}
+	if !slices.Contains(mergeStatuses, report.Status) {
+		return mergeReport{}, fmt.Errorf("merge reported status %q, want one of %s", report.Status, strings.Join(mergeStatuses, ", "))
+	}
+	return report, nil
 }
 
 func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -130,24 +119,24 @@ func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return nil, err
 	}
 
-	// --check is the read. The script prints its status word on the first line
-	// and the unified diff below it, and writes nothing.
+	// --check is the read. The script reports what it would write, with the
+	// unified diff as the patch, and writes nothing.
 	out, err := runMergeScript(t, "--check")
 	if err != nil {
 		return nil, err
 	}
 
-	status, conflicts, _, patch, err := parseMergeOutput(out)
+	report, err := decodeMergeReport(out)
 	if err != nil {
 		return nil, err
 	}
-	switch status {
+	switch report.Status {
 	case "current":
-		return pyprojectState{applicable: true, conflicts: conflicts}, nil
+		return pyprojectState{applicable: true, conflicts: report.Conflicts}, nil
 	case "would-update":
-		return pyprojectState{applicable: true, drifted: true, patch: patch, conflicts: conflicts}, nil
+		return pyprojectState{applicable: true, drifted: true, patch: report.Patch, conflicts: report.Conflicts}, nil
 	default:
-		return nil, fmt.Errorf("unexpected merge output: %q", status)
+		return nil, fmt.Errorf("merge reported %q to a --check, want current or would-update", report.Status)
 	}
 }
 
@@ -175,11 +164,11 @@ func (Pyproject) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 	// comment explaining that value would survive to contradict the new one.
 	for _, c := range state.conflicts {
 		changes = append(changes, reconcile.Change{
-			Item:     "pyproject.toml " + c.path,
+			Item:     "pyproject.toml " + c.Key,
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.ByHand,
-			Detail:   "the project sets this; the standard wants " + c.standard,
-			Observed: c.project,
+			Detail:   "the project sets this; the standard wants " + c.Standard,
+			Observed: c.Project,
 		})
 	}
 	return changes, nil
@@ -195,23 +184,23 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 
-	status, conflicts, retracted, _, err := parseMergeOutput(out)
+	report, err := decodeMergeReport(out)
 	if err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
-	switch status {
+	switch report.Status {
 	case "current":
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
 	case "updated":
 		// Neither a retraction nor a conflict is ever silent. The first names
 		// what was removed; the second names a key this run deliberately left
 		// alone, which would otherwise read as merged.
-		notes := make([]string, 0, len(retracted)+len(conflicts))
-		for _, path := range retracted {
-			notes = append(notes, "retracted "+path)
+		notes := make([]string, 0, len(report.Retracted)+len(report.Conflicts))
+		for _, key := range report.Retracted {
+			notes = append(notes, "retracted "+key)
 		}
-		for _, c := range conflicts {
-			notes = append(notes, "left "+c.path+" at "+c.project)
+		for _, c := range report.Conflicts {
+			notes = append(notes, "left "+c.Key+" at "+c.Project)
 		}
 		message := "merged"
 		if len(notes) > 0 {
@@ -219,7 +208,7 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		}
 		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: message}, nil
 	default:
-		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: "unexpected merge output: " + status}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: fmt.Sprintf("merge reported %q to a write, want current or updated", report.Status)}, nil
 	}
 }
 
