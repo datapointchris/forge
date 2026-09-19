@@ -3,7 +3,6 @@ package dies
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -90,18 +89,26 @@ func (s pyprojectState) Summary() string {
 // decodeMergeReport reads the script's one JSON object.
 //
 // Anything it cannot read is an error rather than a part to skip: a field it
-// does not know, a status outside the three the script prints, or bytes after
-// the object. Skipping one would leave the die reporting the key converged,
-// which turns "I could not read this" into "I measured this and it was fine".
+// does not know, a field it needs left out, a status outside the three the
+// script prints, or bytes after the object. Skipping one would leave the die
+// reporting the key converged, which turns "I could not read this" into "I
+// measured this and it was fine". Each refusal quotes what the script printed,
+// because the likeliest cause is a line the script was never meant to print.
 func decodeMergeReport(out string) (mergeReport, error) {
 	dec := json.NewDecoder(strings.NewReader(out))
 	dec.DisallowUnknownFields()
 	var report mergeReport
 	if err := dec.Decode(&report); err != nil {
-		return mergeReport{}, fmt.Errorf("merge printed a report this does not read (want one object of status, conflicts, retracted and patch): %w", err)
+		opening, _, _ := strings.Cut(out, "\n")
+		return mergeReport{}, fmt.Errorf("merge printed %q, want one JSON object of status, conflicts, retracted and patch: %w", opening, err)
 	}
-	if err := dec.Decode(&json.RawMessage{}); err != io.EOF {
-		return mergeReport{}, fmt.Errorf("merge printed more than one report object")
+	if rest := strings.TrimSpace(out[dec.InputOffset():]); rest != "" {
+		return mergeReport{}, fmt.Errorf("merge printed %q after its report, want nothing", rest)
+	}
+	// An absent or null list decodes as an empty one, and an empty conflicts
+	// list is the converged reading. The script writes both lists on every run.
+	if report.Conflicts == nil || report.Retracted == nil {
+		return mergeReport{}, fmt.Errorf("merge printed a report without its conflicts or retracted list, want both, empty where there are none")
 	}
 	if !slices.Contains(mergeStatuses, report.Status) {
 		return mergeReport{}, fmt.Errorf("merge reported status %q, want one of %s", report.Status, strings.Join(mergeStatuses, ", "))
@@ -215,9 +222,9 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 // runMergeScript materializes the script and the template and runs them.
 //
 // Extraction survives here and nowhere else. `uv run --no-project` is passed
-// because without it uv builds the repo being edited just to run a stdlib
-// script, and the build chatter on stderr is long enough to swallow the one
-// word the caller reads back.
+// because without it uv builds the repo being edited just to run the merge
+// script, and the build chatter on stderr buries the error runIn reports from a
+// failed run.
 func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 	dir, err := os.MkdirTemp("", "forge-pyproject-")
 	if err != nil {

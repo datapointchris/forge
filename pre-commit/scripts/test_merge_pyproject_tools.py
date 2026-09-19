@@ -7,7 +7,7 @@ import tempfile
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from merge_pyproject_tools import apply_standard, flatten, format_path, main, read_managed_paths
+from merge_pyproject_tools import apply_standard, flatten, format_path, format_value, main, read_managed_paths
 
 import tomlkit
 
@@ -311,6 +311,19 @@ def test_a_table_value_is_one_inline_conflict():
         assert report['conflicts'] == [{'key': 'ruff.line-length', 'project': '{max = 140}', 'standard': '140'}]
 
 
+def test_every_value_shape_is_written_on_one_line():
+    """An array of tables loses its brackets in block form, one shape over from a table."""
+    doc = tomlkit.parse(
+        '[t]\nscalar = true\nstrings = ["E", "F"]\nnested = [[1, 2], [3]]\n'
+        '[t.table]\nmax = 140\n[[t.tables]]\nselect = ["E"]\n[[t.tables]]\nselect = ["F"]\n'
+    )['t']
+    assert format_value(doc['scalar']) == 'true'
+    assert format_value(doc['strings']) == '["E", "F"]'
+    assert format_value(doc['nested']) == '[[1, 2], [3]]'
+    assert format_value(doc['table']) == '{max = 140}'
+    assert format_value(doc['tables']) == '[{select = ["E"]}, {select = ["F"]}]'
+
+
 def test_a_key_is_spelled_as_toml_spells_it():
     assert format_path(('ruff', 'lint', 'per-file-ignores', '__init__.py')) == 'ruff.lint.per-file-ignores."__init__.py"'
     assert format_path(('',)) == '""'
@@ -357,6 +370,7 @@ if __name__ == '__main__':
     test_a_conflict_alone_is_reported_under_current()
     test_the_report_names_a_retraction_and_carries_the_patch()
     test_a_table_value_is_one_inline_conflict()
+    test_every_value_shape_is_written_on_one_line()
     test_a_key_is_spelled_as_toml_spells_it()
     test_full_pyproject_roundtrip()
     print('all tests passed')

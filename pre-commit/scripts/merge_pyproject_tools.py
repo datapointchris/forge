@@ -20,12 +20,11 @@ can detect that prose, so not writing the value is the only thing that keeps it
 true. Once the record claims a key the hazard is gone, because the record is
 proof forge chose the value that is sitting there.
 
-This replaced a hand-maintained REPLACE_SECTIONS set naming whole sections to
-overwrite wholesale. Owning a section and setting a floor under one are
-different jobs, and a single verb doing both deleted config three times: a
-repo's ruff `exclude`, then a FastAPI repo's bugbear exemptions, its pydantic
-mypy plugin and an alembic per-file-ignore. Ownership recorded per key rather
-than declared per section cannot express that mistake.
+Ownership is recorded per key, never declared per section. Owning a section
+and setting a floor under one are different jobs, and a single verb doing both
+deleted config three times: a repo's ruff `exclude`, then a FastAPI repo's
+bugbear exemptions, its pydantic mypy plugin and an alembic per-file-ignore.
+Ownership recorded per key cannot express that mistake.
 
 Paths are recorded as arrays rather than dotted strings because a segment can
 itself contain a dot (`per-file-ignores."__init__.py"`). This is the record
@@ -246,17 +245,28 @@ def format_value(value):
     """A value spelled as TOML spells it inline, so a conflict reads like the file.
 
     tomlkit owns the spelling. Hand-writing it gets a string holding a quote or
-    a tab wrong. A table is written inline, because the standard block form
-    spans lines and a conflict is read as one.
+    a tab wrong. Tables are written inline at every depth, including the tables
+    inside an array, because TOML's block forms span lines and print an array of
+    tables as its members' bodies alone.
 
     Never truncated. A conflict on a long list is where a reader most needs to
     see which entries differ.
     """
+    return tomlkit.item(inline(value)).as_string()
+
+
+def inline(value):
+    """The value rebuilt from inline tables and arrays, so it renders on one line."""
     if isinstance(value, dict):
         table = tomlkit.inline_table()
-        table.update(value)
-        return table.as_string()
-    return tomlkit.item(value).as_string()
+        for key, member in value.items():
+            table[key] = inline(member)
+        return table
+    if isinstance(value, list):
+        array = tomlkit.array()
+        array.extend(inline(member) for member in value)
+        return array
+    return value
 
 
 def main(argv):

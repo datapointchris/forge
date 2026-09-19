@@ -1,18 +1,27 @@
 package dies
 
 import (
+	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/datapointchris/forge/reconcile"
 )
 
+// requireUV skips only where uv genuinely cannot be run, and fails where it is
+// expected. FORGE_REQUIRE_UV is set in the go job, so an absent uv there is a
+// broken gate rather than a machine without a tool.
 func requireUV(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("uv"); err != nil {
-		t.Skip("uv is not installed")
+	if _, err := exec.LookPath("uv"); err == nil {
+		return
 	}
+	if os.Getenv("FORGE_REQUIRE_UV") != "" {
+		t.Fatal("uv is absent where the gate declares it present — every real-script test would pass by skipping")
+	}
+	t.Skip("uv is not installed")
 }
 
 func TestPyprojectIgnoresARepoDeclaringNoPython(t *testing.T) {
@@ -194,15 +203,37 @@ func TestPyprojectApplyLeavesADisagreedValueAlone(t *testing.T) {
 // the script grew and the die did not.
 func TestDecodeMergeReportRefusesWhatItCannotRead(t *testing.T) {
 	for name, out := range map[string]string{
-		"an unknown field":            `{"status":"current","conflicts":[],"retracted":[],"patch":"","renamed":["ruff.x"]}`,
-		"an unknown conflict field":   `{"status":"current","conflicts":[{"key":"a","project":"1","standard":"2","why":"x"}],"retracted":[],"patch":""}`,
-		"a status the script lacks":   `{"status":"merged","conflicts":[],"retracted":[],"patch":""}`,
-		"a second object after it":    `{"status":"current","conflicts":[],"retracted":[],"patch":""} {}`,
-		"the line report it replaced": "current\n  conflict\tmypy.strict\tfalse\ttrue",
+		"an unknown field":          `{"status":"current","conflicts":[],"retracted":[],"patch":"","renamed":["ruff.x"]}`,
+		"an unknown conflict field": `{"status":"current","conflicts":[{"key":"a","project":"1","standard":"2","why":"x"}],"retracted":[],"patch":""}`,
+		"a status the script lacks": `{"status":"merged","conflicts":[],"retracted":[],"patch":""}`,
+		"conflicts left out":        `{"status":"current","retracted":[],"patch":""}`,
+		"retracted as null":         `{"status":"current","conflicts":[],"retracted":null,"patch":""}`,
+		"a second object after it":  `{"status":"current","conflicts":[],"retracted":[],"patch":""} {}`,
+		"a line after it":           "{\"status\":\"current\",\"conflicts\":[],\"retracted\":[],\"patch\":\"\"}\ndebug: done",
+		"a report that is not JSON": "current\n  conflict\tmypy.strict\tfalse\ttrue",
 	} {
 		if _, err := decodeMergeReport(out); err == nil {
 			t.Errorf("%s: decoded without error", name)
 		}
+	}
+}
+
+// The one case that runs without uv, so a field renamed on the die's side fails
+// on any machine. Written as the script prints it.
+func TestDecodeMergeReportReadsEveryPart(t *testing.T) {
+	report, err := decodeMergeReport(`{"status": "would-update", "conflicts": [{"key": "mypy.strict", "project": "false", "standard": "true"}], "retracted": ["ruff.gone"], "patch": "--- pyproject.toml (current)\n"}`)
+	if err != nil {
+		t.Fatalf("decodeMergeReport: %v", err)
+	}
+	want := mergeReport{
+		Status:    "would-update",
+		Conflicts: []pyprojectConflict{{Key: "mypy.strict", Project: "false", Standard: "true"}},
+		Retracted: []string{"ruff.gone"},
+		Patch:     "--- pyproject.toml (current)\n",
+	}
+	if report.Status != want.Status || report.Patch != want.Patch ||
+		!slices.Equal(report.Conflicts, want.Conflicts) || !slices.Equal(report.Retracted, want.Retracted) {
+		t.Errorf("decoded %+v, want %+v", report, want)
 	}
 }
 
