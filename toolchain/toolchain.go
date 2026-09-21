@@ -43,6 +43,7 @@ var hookPinnedTools = map[string]string{
 	"ruff":       "https://github.com/astral-sh/ruff-pre-commit",
 	"shellcheck": "https://github.com/koalaman/shellcheck-precommit",
 	"shfmt":      "https://github.com/scop/pre-commit-shfmt",
+	"stylua":     "https://github.com/JohnnyMorganz/StyLua",
 	"uv":         "https://github.com/astral-sh/uv-pre-commit",
 }
 

@@ -20,9 +20,11 @@ func loadManifest(t *testing.T) *Toolchain {
 
 // A version written into a block is a copy of the pin that generation throws
 // away, and the one a reader of the block believes. Every line a substitution
-// rewrites must carry Pin instead.
+// rewrites must carry Pin instead. A release number in any other shape, such
+// as an action's version input, is a copy no substitution updates at all.
 func TestBlocksNameNoVersion(t *testing.T) {
-	versioned := []*regexp.Regexp{revLineRE, usesLineRE, goInstallRE, runtimeLineRE, binaryLineRE, uvxLineRE}
+	literal := regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
+	versioned := []*regexp.Regexp{revLineRE, usesLineRE, goInstallRE, runtimeLineRE, binaryLineRE, uvxLineRE, literal}
 	for _, dir := range []string{"../pre-commit/blocks", "../ci/blocks"} {
 		err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {

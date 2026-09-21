@@ -57,8 +57,6 @@ actions:
     version: fixture-setup-python
   - uses: astral-sh/setup-uv
     version: fixture-setup-uv
-  - uses: JohnnyMorganz/stylua-action
-    version: fixture-stylua-action
   - uses: hashicorp/setup-terraform
     version: fixture-setup-terraform
 
