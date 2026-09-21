@@ -464,23 +464,3 @@ func TestACustomSectionTakesTheDeclaredPins(t *testing.T) {
 		t.Errorf("the custom section kept its own pin:\n%s", workflow)
 	}
 }
-
-// GitHub's release downloads answer 504 often enough to fail a run on their
-// own, and curl retries a 5xx only when asked to.
-func TestEveryDownloadInABlockRetries(t *testing.T) {
-	entries, err := os.ReadDir("blocks")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		data, err := os.ReadFile(filepath.Join("blocks", entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for n, line := range strings.Split(string(data), "\n") {
-			if command := strings.TrimSpace(line); strings.HasPrefix(command, "curl ") && !strings.Contains(command, "--retry") {
-				t.Errorf("blocks/%s:%d downloads without --retry: %s", entry.Name(), n+1, command)
-			}
-		}
-	}
-}

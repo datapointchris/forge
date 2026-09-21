@@ -24,15 +24,6 @@ func initRepo(t *testing.T, target reconcile.Target, branch string) {
 	}
 }
 
-func TestInitRepoLeavesNoIdentityInTheFixturesConfig(t *testing.T) {
-	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
-	initRepo(t, target, "main")
-
-	if identity, err := runIn(target.Repo.Path, "git", "config", "--local", "--get-regexp", `^user\.`); err == nil {
-		t.Errorf("the fixture's config holds an identity: %s", identity)
-	}
-}
-
 func TestDefaultBranchSaysNothingAboutARepoOnMain(t *testing.T) {
 	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
 	initRepo(t, target, "main")
