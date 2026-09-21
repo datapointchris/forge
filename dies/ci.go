@@ -80,8 +80,7 @@ func (s ciState) Summary() string {
 func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// Checked first, because a maintained directory declares components too.
 	// Without this, a directory declaring python and shell grows a
-	// .github/workflows/validate.yml that nothing will ever run — the one guard
-	// here that prevents a write rather than a wasted read.
+	// .github/workflows/validate.yml that nothing will ever run.
 	if !t.Versioned() {
 		return ciState{reason: "not a git repo, so no workflow would run"}, nil
 	}

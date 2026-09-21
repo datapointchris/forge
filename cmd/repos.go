@@ -94,9 +94,9 @@ func loadAssets() (reconcile.Assets, error) {
 
 // loadVersions reads the declaration this machine names.
 //
-// One source, always. forge ships no pins of its own, so a machine naming no
-// declaration has nothing to generate from and is half-provisioned rather than
-// defaulted. Naming the file is what makes a version bump one edit and a sweep.
+// forge ships no pins of its own, so a machine naming no versions file gets
+// errNoVersionDeclaration, never a default. A version bump is then one edit to
+// that file and one `repos apply`.
 func loadVersions() (*toolchain.Toolchain, error) {
 	path := config.VersionsPath()
 	if path == "" {

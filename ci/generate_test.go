@@ -448,8 +448,8 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobIsClearedFirst(t *testing.T) {
 	}
 }
 
-// A custom section naming a declared action went stale at every bump, because
-// regeneration carried it across as written.
+// Regeneration carries a custom section across as written, so one naming a
+// declared action would keep its old version through every bump.
 func TestACustomSectionTakesTheDeclaredPins(t *testing.T) {
 	custom := map[string]string{
 		"after:go": "      # > custom:after:go - release check\n" +

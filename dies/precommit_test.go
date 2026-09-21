@@ -761,8 +761,8 @@ func TestPrecommitReportsASupersededSpellingThatDiffers(t *testing.T) {
 	}
 }
 
-// One repo's copy pinned refcheck two majors behind the declared one, and every
-// verb reported that repo converged.
+// The custom hook keeps its own rev whatever the declared one is, and without
+// the report every verb calls the repo converged.
 func TestACustomHookReplacingAStandardOneIsReportedAndTheConfigStillRegenerates(t *testing.T) {
 	custom := "# > custom:after:all - our refcheck\n" +
 		"  - repo: https://github.com/datapointchris/refcheck\n    rev: v0.2.1\n    hooks:\n      - id: refcheck\n"
@@ -801,7 +801,7 @@ func TestACustomHookOfItsOwnIdIsNotReported(t *testing.T) {
 
 // standardMarkdownlintAsJSON is the deployed markdownlint config in the JSON
 // spelling it supersedes, read from the asset so a new rule cannot leave the
-// fixture describing a config forge no longer deploys.
+// fixture describing a config forge does not deploy.
 func standardMarkdownlintAsJSON(t *testing.T) string {
 	t.Helper()
 	data, err := fs.ReadFile(testAssets(t).PreCommit, "configs/markdownlint.yml")

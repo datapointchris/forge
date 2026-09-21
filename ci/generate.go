@@ -196,8 +196,9 @@ func ReleaseGatesOnValidate(root string) ReleaseGating {
 // that are both Go modules, deliberately isolated. One serial job would hide
 // which one failed and force them to share a setup step.
 //
-// preCommitConfig is the config the repo is owed, or "" where forge maintains
-// none. Its hooks that no stack job covers become one more job, HooksJob.
+// preCommitConfig is the repo's committed pre-commit config, or "" where forge
+// maintains none. Its hooks that no stack job covers become one more job,
+// HooksJob.
 func Generate(
 	blocksFS fs.FS,
 	manifest *toolchain.Toolchain,
