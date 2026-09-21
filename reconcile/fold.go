@@ -103,6 +103,11 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 	}
 
 	switch {
+	// A die writes its summary for a repo with nothing to change, so under check
+	// it would call a pending repair current.
+	case len(kept) == 0 && len(pending) > 0:
+		result.Status = Converged
+		result.Detail = fmt.Sprintf("%d item(s) differ from the standard, and apply repairs them%s", len(pending), gap)
 	case len(kept) == 0:
 		result.Status = Converged
 		result.Detail = summary + gap

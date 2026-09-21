@@ -82,6 +82,19 @@ func TestConvergedRowUsesTheObservationSummary(t *testing.T) {
 	}
 }
 
+func TestCheckNeverPrintsTheSummaryOverAPendingRepair(t *testing.T) {
+	changes := []Change{{Item: "main", Verdict: Missing, Repair: Automatic, Detail: "unprotected"}}
+
+	result := Fold("font", "branch-protection", changes, "branch protection current on main", LensCheck)
+
+	if result.Status != Converged {
+		t.Fatalf("status = %q, want converged: apply can fix it, so check has nothing to report", result.Status)
+	}
+	if result.Detail != "1 item(s) differ from the standard, and apply repairs them" {
+		t.Errorf("detail = %q, want the pending repair named rather than the die's converged sentence", result.Detail)
+	}
+}
+
 func TestIssueOutranksDrift(t *testing.T) {
 	results := []Result{
 		{Repo: "a", Status: Drift},
