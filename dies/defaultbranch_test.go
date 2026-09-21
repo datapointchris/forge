@@ -7,19 +7,29 @@ import (
 )
 
 // initRepo makes the fixture a real git repo with one commit on the named branch.
+//
+// The identity rides on the commit rather than in `git config`. A config write
+// that escapes the fixture signs every later commit in the repo it lands in.
 func initRepo(t *testing.T, target reconcile.Target, branch string) {
 	t.Helper()
 	dir := target.Repo.Path
 	for _, args := range [][]string{
 		{"init", "-q", "-b", branch},
-		{"config", "user.email", "test@example.com"},
-		{"config", "user.name", "test"},
 		{"add", "-A"},
-		{"commit", "-qm", "initial"},
+		{"-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "initial"},
 	} {
 		if _, err := runIn(dir, "git", args...); err != nil {
 			t.Fatalf("git %v: %s", args, err)
 		}
+	}
+}
+
+func TestInitRepoLeavesNoIdentityInTheFixturesConfig(t *testing.T) {
+	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
+	initRepo(t, target, "main")
+
+	if identity, err := runIn(target.Repo.Path, "git", "config", "--local", "--get-regexp", `^user\.`); err == nil {
+		t.Errorf("the fixture's config holds an identity: %s", identity)
 	}
 }
 
