@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -192,10 +193,14 @@ func ReleaseGatesOnValidate(root string) ReleaseGating {
 // can hold several of the same stack in different places — an api/ and a cli/
 // that are both Go modules, deliberately isolated. One serial job would hide
 // which one failed and force them to share a setup step.
+//
+// preCommitConfig is the config the repo is owed, or "" where forge maintains
+// none. Its hooks that no stack job covers become one more job, HooksJob.
 func Generate(
 	blocksFS fs.FS,
 	manifest *toolchain.Toolchain,
 	components []config.Component,
+	preCommitConfig string,
 	customSections map[string]string,
 	releaseGated ReleaseGating,
 	runner Runner,
@@ -250,6 +255,7 @@ func Generate(
 	)
 
 	jobs := 0
+	covered := make(map[string]bool)
 	for _, component := range components {
 		block, err := loadBlock(blocksFS, component.Stack)
 		if err != nil {
@@ -262,27 +268,22 @@ func Generate(
 			continue
 		}
 		jobs++
+		covered[precommit.StackToCategory(component.Stack)] = true
+		job := workflowJob{name: JobName(component), dir: component.Dir, checkout: shared, block: block}
+		lines = append(lines, job.render(manifest, customSections, runner)...)
+	}
 
-		name := JobName(component)
-		lines = append(lines, "", fmt.Sprintf("  %s:", name), fmt.Sprintf("    runs-on: %s", runner))
-		if component.Dir != "" && component.Dir != "." {
-			lines = append(lines, "    defaults:", "      run:", fmt.Sprintf("        working-directory: %s", component.Dir))
+	if hooks := HooksToRun(preCommitConfig, covered); len(hooks) > 0 {
+		block, err := loadBlock(blocksFS, HooksJob)
+		if err != nil {
+			return "", err
 		}
-		lines = append(lines, "    steps:")
-
-		// Checkout comes first, then before:<stack>. "Before" means before the
-		// stack's own steps, not before the repo exists: a repo can decrypt
-		// its test secrets out of secrets/ in one of these, which cannot work
-		// against a workspace that has not been checked out. Nothing has wanted
-		// to run ahead of checkout.
-		lines = append(lines, "", applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(shared))), component.Dir, runner))
-		if section, ok := customSections["before:"+name]; ok {
-			lines = append(lines, "", section)
+		if block == "" {
+			return "", fmt.Errorf("no %s block to run %s in", HooksJob, strings.Join(hooks, ", "))
 		}
-		lines = append(lines, "", fmt.Sprintf("      # generated:%s", name), applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(block))), component.Dir, runner))
-		if section, ok := customSections["after:"+name]; ok {
-			lines = append(lines, "", section)
-		}
+		jobs++
+		job := workflowJob{name: HooksJob, checkout: shared, block: applyHooks(block, hooks)}
+		lines = append(lines, job.render(manifest, customSections, runner)...)
 	}
 
 	if jobs == 0 {
@@ -332,6 +333,80 @@ func ForeignRunners(workflow string, runner Runner) []string {
 		foreign = append(foreign, job+" on "+strings.TrimSpace(value))
 	}
 	return foreign
+}
+
+// workflowJob is one job's worth of workflow: the shared checkout, then a block.
+type workflowJob struct {
+	name     string
+	dir      string
+	checkout string
+	block    string
+}
+
+// render is the job's lines, custom sections included.
+func (j workflowJob) render(manifest *toolchain.Toolchain, customSections map[string]string, runner Runner) []string {
+	lines := []string{"", fmt.Sprintf("  %s:", j.name), fmt.Sprintf("    runs-on: %s", runner)}
+	if j.dir != "" && j.dir != "." {
+		lines = append(lines, "    defaults:", "      run:", fmt.Sprintf("        working-directory: %s", j.dir))
+	}
+	lines = append(lines, "    steps:")
+
+	// Checkout comes first, then before:<job>. "Before" means before the job's
+	// own steps, not before the repo exists: a repo can decrypt its test
+	// secrets out of secrets/ in one of these, which cannot work against a
+	// workspace that has not been checked out. Nothing has wanted to run ahead
+	// of checkout.
+	lines = append(lines, "", applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(j.checkout))), j.dir, runner))
+	if section, ok := customSections["before:"+j.name]; ok {
+		lines = append(lines, "", section)
+	}
+	lines = append(lines, "", fmt.Sprintf("      # generated:%s", j.name), applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(j.block))), j.dir, runner))
+	if section, ok := customSections["after:"+j.name]; ok {
+		lines = append(lines, "", section)
+	}
+	return lines
+}
+
+// HooksJob names the job running the pre-commit hooks no stack job covers, and
+// the block it is built from.
+const HooksJob = "hooks"
+
+// HooksToRun lists what the hooks job runs: every hook a standard block put in
+// the config, less three kinds.
+//
+//   - A local hook calls a tool the runner has only where a stack job
+//     installed it, in another job.
+//   - A hook off the pre-commit stage grades something a pushed tree does not
+//     carry, such as a commit message.
+//   - A hook whose block belongs to a stack with a job here runs there already,
+//     as that stack's own tools.
+func HooksToRun(preCommitConfig string, covered map[string]bool) []string {
+	var hooks []string
+	for _, hook := range precommit.GeneratedHooks(preCommitConfig) {
+		if hook.Repo == "local" || hook.Repo == "meta" {
+			continue
+		}
+		if len(hook.Stages) > 0 && !slices.Contains(hook.Stages, "pre-commit") {
+			continue
+		}
+		if covered[precommit.BlockCategory(hook.Block)] {
+			continue
+		}
+		if !slices.Contains(hooks, hook.ID) {
+			hooks = append(hooks, hook.ID)
+		}
+	}
+	return hooks
+}
+
+// hooksLineRE is the line in the hooks block that becomes one line per hook.
+var hooksLineRE = regexp.MustCompile(`(?m)^([ \t]*)\{\{hooks\}\}$`)
+
+func applyHooks(block string, hooks []string) string {
+	return hooksLineRE.ReplaceAllStringFunc(block, func(line string) string {
+		indent := hooksLineRE.FindStringSubmatch(line)[1]
+		return indent + strings.Join(hooks, "\n"+indent)
+	})
 }
 
 // JobName is the workflow job id for a component: the stack, plus the directory

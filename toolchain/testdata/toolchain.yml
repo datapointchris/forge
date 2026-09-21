@@ -45,6 +45,8 @@ hooks:
     rev: fixture-pre-commit-terraform
 
 actions:
+  - uses: actions/cache
+    version: fixture-cache
   - uses: actions/checkout
     version: fixture-checkout
   - uses: actions/setup-go

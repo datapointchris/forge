@@ -98,8 +98,13 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		existing = string(data)
 	}
 
+	preCommit, err := preCommitOwed(t)
+	if err != nil {
+		return nil, err
+	}
+
 	runner := ci.RunnerFor(t.Repo.IsPrivate())
-	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain.Components,
+	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain.Components, preCommit.wanted,
 		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root), runner)
 	if errors.Is(err, ci.ErrNoJobs) {
 		return ciState{reason: "no components with a CI block"}, nil

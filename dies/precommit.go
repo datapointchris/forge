@@ -392,39 +392,63 @@ func sameConfig(a, b []byte) (bool, error) {
 	return reflect.DeepEqual(left, right), nil
 }
 
-func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
-	root := t.Repo.Path
+// owedPreCommit is the config the precommit die would write to a repo, with
+// what it read to decide.
+type owedPreCommit struct {
+	blocksFS       fs.FS
+	existing       string
+	declared       *config.Toolchain
+	basis          maintenance
+	customSections map[string]string
+	// wanted is "" where the basis is not applicable.
+	wanted string
+}
+
+// preCommitOwed is read by the ci die too, which runs this config's hooks. Two
+// dies computing it apart could disagree about which hooks exist, and a hooks
+// job naming one the config lacks fails every run.
+func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 	blocksFS, err := fs.Sub(t.Assets.PreCommit, "blocks")
 	if err != nil {
-		return nil, err
+		return owedPreCommit{}, err
+	}
+	owed := owedPreCommit{blocksFS: blocksFS}
+	if data, err := os.ReadFile(filepath.Join(t.Repo.Path, preCommitConfigPath)); err == nil {
+		owed.existing = string(data)
 	}
 
-	var existing string
-	if data, err := os.ReadFile(filepath.Join(root, preCommitConfigPath)); err == nil {
-		existing = string(data)
+	owed.declared, owed.basis = maintained(t.Repo.Toolchain, owed.existing)
+	if !owed.basis.applicable() {
+		return owed, nil
 	}
 
-	declared, basis := maintained(t.Repo.Toolchain, existing)
-	if !basis.applicable() {
-		return preCommitState{basis: basis, blockers: strandedToolConfigs(root, basis)}, nil
+	owed.customSections = precommit.ExtractCustomSections(owed.existing)
+	scripts := shebangScripts(t.Repo.Path, t.Versioned())
+	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, t.Versioned(), scripts)
+	if err != nil {
+		return owedPreCommit{}, err
 	}
+	return owed, nil
+}
 
-	customSections := precommit.ExtractCustomSections(existing)
-
-	scripts := shebangScripts(root, t.Versioned())
-
-	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, declared, customSections, t.Versioned(), scripts)
+func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
+	root := t.Repo.Path
+	owed, err := preCommitOwed(t)
 	if err != nil {
 		return nil, err
 	}
+	declared, wanted := owed.declared, owed.wanted
+	if !owed.basis.applicable() {
+		return preCommitState{basis: owed.basis, blockers: strandedToolConfigs(root, owed.basis)}, nil
+	}
 
-	state := preCommitState{basis: basis, config: readGenerated(root, preCommitConfigPath, wanted)}
+	state := preCommitState{basis: owed.basis, config: readGenerated(root, preCommitConfigPath, wanted)}
 
 	// Unmarked hooks abort a real sync rather than being destroyed. Surfacing
 	// them is the whole point: the fix is adding markers, not letting the sync
 	// take them.
-	if existing != "" {
-		unknown, err := precommit.SafetyCheck(existing, blocksFS, declared, customSections)
+	if owed.existing != "" {
+		unknown, err := precommit.SafetyCheck(owed.existing, owed.blocksFS, declared, owed.customSections)
 		if err != nil {
 			return nil, err
 		}

@@ -180,6 +180,18 @@ parallel so a failure names its module. A declared stack with no CI block is ski
 emitting an empty job. That is why docker has no block: a Dockerfile is built by the deploy, not by
 validation.
 
+**One more job, `hooks`, runs the pre-commit hooks no stack job covers.** `ci.HooksToRun` reads them
+from the config the precommit die would write, through the `preCommitOwed` both dies call, so the
+job never names a hook the config lacks. It drops three kinds: a local hook, whose tool only a stack
+job installs; a hook off the `pre-commit` stage; and a hook whose block belongs to a stack with a
+job here. The shell block is why the last is decided per repo. Every config carries it, and only a
+repo declaring a shell component has a job running it.
+
+**The hooks job checks what the push or pull request changed, never every file.** That is what the
+hooks saw at commit time, so a finding in a file nobody touched cannot fail a push. The checkout
+stays one commit deep and the job fetches only the base commit. pre-commit falls back to a two-dot
+diff where two commits share no history on disk, and refcheck's `--moves` reads the range as one.
+
 **`runs-on` follows the repo's declared visibility, through `ci.RunnerFor`.** A private repo takes the
 self-hosted pool, because GitHub bills hosted minutes on private repos only. Anything not positively
 declared private takes `ubuntu-latest`, and that direction is the safety property: a fork's pull

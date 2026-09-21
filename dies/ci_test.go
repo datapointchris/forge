@@ -81,7 +81,7 @@ func TestTheDiesOwnLintRejectsThePoolLabelWithoutTheConfigAndAcceptsItWithOne(t 
 
 	assets := testAssets(t)
 	workflow, err := ci.Generate(assets.CI, assets.Manifest,
-		[]config.Component{{Stack: "go", Dir: "."}}, nil, ci.Ungated, ci.SelfHosted)
+		[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, ci.SelfHosted)
 	if err != nil {
 		t.Fatalf("Generate: %s", err)
 	}
