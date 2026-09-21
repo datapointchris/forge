@@ -215,10 +215,10 @@ func committedPreCommit(t reconcile.Target) string {
 // repinnedWorkflows is every workflow forge did not write, each with the
 // declared pins applied.
 //
-// A version bump reached the generated workflow and none of these, so a
-// release job kept an action three majors behind the validation it gates on.
-// Only the pin lines change: the rest of the file is the repo's own, which is
-// why a hand-written workflow is otherwise never touched.
+// A version bump has to reach these too, or a release job runs an older action
+// than the validation it gates on. Only the pin lines change: the rest of the
+// file is the repo's own, which is why a hand-written workflow is otherwise
+// never touched.
 func repinnedWorkflows(root string, manifest *toolchain.Toolchain) []generatedFile {
 	dir := filepath.Dir(ci.WorkflowPath)
 	entries, err := os.ReadDir(filepath.Join(root, dir))

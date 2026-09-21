@@ -182,8 +182,8 @@ func TestALocalHookCallingUVRunsInTheHooksJob(t *testing.T) {
 	}
 }
 
-// Docker has no CI block, so its repo was owed no workflow at all until the
-// hooks job gave it one.
+// Docker has no CI block, so the hooks job is the only job a docker-only repo
+// gets.
 func TestAStackWithNoCIBlockStillGetsItsHooksRun(t *testing.T) {
 	components := comps("docker", ".")
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), components, owedConfig(t, components), nil, Ungated, Hosted)
