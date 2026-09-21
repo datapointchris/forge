@@ -15,7 +15,8 @@
 
       # Over what the push or pull request changed, which is what the hooks
       # would have seen at commit time. --all-files would fail a push on every
-      # finding in a file it never touched.
+      # finding in a file it never touched, so it is the scope only where no
+      # earlier commit can be fetched, as on a repo's first push.
       #
       # The checkout is one commit deep, and diffing needs one more. pre-commit
       # falls back to a two-dot diff where the two commits share no history on
@@ -32,6 +33,7 @@
             echo "::notice::this event names no base commit, so only the head commit's change is checked"
             scope=(--from-ref HEAD~1 --to-ref HEAD)
           else
+            echo "::notice::no earlier commit to diff against, so every file is checked"
             scope=(--all-files)
           fi
           hooks=(

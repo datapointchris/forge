@@ -193,10 +193,11 @@ job here. The shell block is why the last is decided per repo. Every config carr
 repo declaring a shell component has a job running it. A repo declaring no components gets a workflow
 holding this job alone, wherever forge maintains its pre-commit config.
 
-**The hooks job checks what the push or pull request changed, never every file.** That is what the
-hooks saw at commit time, so a finding in a file nobody touched cannot fail a push. The checkout
-stays one commit deep and the job fetches only the base commit. pre-commit falls back to a two-dot
-diff where two commits share no history on disk, and refcheck's `--moves` reads the range as one.
+**The hooks job checks what the push or pull request changed.** That is what the hooks saw at commit
+time, so a finding in a file nobody touched cannot fail a push. The checkout stays one commit deep
+and the job fetches only the base commit. pre-commit falls back to a two-dot diff where two commits
+share no history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit
+can be fetched, as on a repo's first push, the job checks every file and says so in a notice.
 
 **`runs-on` follows the repo's declared visibility, through `ci.RunnerFor`.** A private repo takes the
 self-hosted pool, because GitHub bills hosted minutes on private repos only. Anything not positively
