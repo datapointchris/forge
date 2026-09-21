@@ -69,10 +69,10 @@ check-filenames = true
 #
 # Dialect is deliberately not a dictionary here. A commit is the wrong place to
 # catch a British spelling: by then the word is written, and the only move left
-# is a sweep of text that already exists. The `british-spelling` validator in
-# `~/.claude/validators/rules/` reports it on the line as it is typed, which
-# reaches every repo rather than only the ones with pre-commit, and reaches an
-# identifier — which codespell cannot, since it matches whole tokens.
+# is a sweep of text that already exists. The `british-spelling` rule reports it
+# on the line as it is typed, which reaches every repo rather than only the ones
+# with pre-commit, and reaches an identifier — which codespell cannot, since it
+# matches whole tokens.
 #
 # `uri-ignore-words-list` because an address is a third party's name, so
 # respelling one breaks the link rather than fixing a typo. The word is still
