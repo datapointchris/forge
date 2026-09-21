@@ -3,6 +3,7 @@ package dies
 import (
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -308,6 +309,7 @@ func TestTheLintDeclarationIsWrittenBeforeTheWorkflowThatNamesIt(t *testing.T) {
 func TestAStampedRepoWithNoComponentsGetsTheHooksJob(t *testing.T) {
 	target := fixture(t, nil, map[string]string{".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos: []\n"})
 
+	applyAll(t, target, PreCommit{})
 	applyAll(t, target, CI{})
 
 	workflow, err := os.ReadFile(target.Path(ci.WorkflowPath))
@@ -316,6 +318,33 @@ func TestAStampedRepoWithNoComponentsGetsTheHooksJob(t *testing.T) {
 	}
 	if !strings.Contains(string(workflow), "\n  "+ci.HooksJob+":\n") {
 		t.Errorf("no hooks job:\n%s", workflow)
+	}
+}
+
+// The precommit die would add every generic block's hooks to this config, and
+// is not asked to. A job listing them would fail on each one this file lacks.
+func TestTheHooksJobRunsTheHooksTheCommittedConfigHolds(t *testing.T) {
+	committed := "# forge-toolchain: 1\n" +
+		"repos:\n" +
+		"  # generated:codespell\n" +
+		"  - repo: https://github.com/codespell-project/codespell\n" +
+		"    rev: v2.4.1\n" +
+		"    hooks:\n" +
+		"      - id: codespell\n"
+	target := fixture(t, nil, map[string]string{".pre-commit-config.yaml": committed})
+
+	applyAll(t, target, CI{})
+
+	workflow, err := os.ReadFile(target.Path(ci.WorkflowPath))
+	if err != nil {
+		t.Fatalf("read the workflow: %s", err)
+	}
+	listed := regexp.MustCompile(`(?s)hooks=\(\n(.*?)\n\s*\)`).FindStringSubmatch(string(workflow))
+	if listed == nil {
+		t.Fatalf("no hook list:\n%s", workflow)
+	}
+	if got := strings.Fields(listed[1]); !slices.Equal(got, []string{"codespell"}) {
+		t.Errorf("hooks job runs %v, want the committed config's [codespell]", got)
 	}
 }
 

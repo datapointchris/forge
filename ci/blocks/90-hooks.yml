@@ -1,6 +1,6 @@
 # Pre-commit hooks
       # The hooks no other job in this workflow runs, which forge lists below
-      # from the repo's generated config. A push from a checkout that never ran
+      # from the repo's committed config. A push from a checkout that never ran
       # `pre-commit install`, or a merge in the web UI, passes every hook by not
       # running it, and this is the gate that catches both.
       - uses: astral-sh/setup-uv@{{pin}}

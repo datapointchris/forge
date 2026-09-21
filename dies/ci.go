@@ -89,10 +89,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// A repo declaring no components still has hooks when forge maintains its
 	// pre-commit config, and those are owed the hooks job like anyone's.
 	// Generate answers ErrNoJobs where there is neither.
-	preCommit, err := preCommitOwed(t)
-	if err != nil {
-		return nil, err
-	}
+	preCommitConfig := committedPreCommit(t)
 	var components []config.Component
 	if t.Repo.Toolchain != nil {
 		components = t.Repo.Toolchain.Components
@@ -112,7 +109,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	runner := ci.RunnerFor(t.Repo.IsPrivate())
-	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommit.wanted,
+	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommitConfig,
 		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root), runner)
 	if errors.Is(err, ci.ErrNoJobs) {
 		return ciState{reason: "no component has a CI block, and no hook is left for the hooks job"}, nil
@@ -196,6 +193,23 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	return state, nil
+}
+
+// committedPreCommit is the pre-commit config a repo carries where forge
+// maintains it, and "" elsewhere.
+//
+// The hooks job runs this file rather than the config the precommit die would
+// write. The two differ wherever that die is blocked or not yet applied, and a
+// job naming a hook the file lacks fails every run with "No hook with id".
+func committedPreCommit(t reconcile.Target) string {
+	data, err := os.ReadFile(filepath.Join(t.Repo.Path, preCommitConfigPath))
+	if err != nil {
+		return ""
+	}
+	if _, basis := maintained(t.Repo.Toolchain, string(data)); !basis.applicable() {
+		return ""
+	}
+	return string(data)
 }
 
 // repinnedWorkflows is every workflow forge did not write, each with the

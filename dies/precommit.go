@@ -405,9 +405,6 @@ type owedPreCommit struct {
 	wanted string
 }
 
-// preCommitOwed is read by the ci die too, which runs this config's hooks. Two
-// dies computing it apart could disagree about which hooks exist, and a hooks
-// job naming one the config lacks fails every run.
 func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 	blocksFS, err := fs.Sub(t.Assets.PreCommit, "blocks")
 	if err != nil {
