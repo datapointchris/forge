@@ -453,7 +453,7 @@ func Generate(
 		// Insert custom hooks that go BEFORE this block
 		if section, ok := customSections["before:"+b.Name]; ok {
 			lines = append(lines, "")
-			lines = append(lines, section)
+			lines = append(lines, manifest.ApplyRevs(section))
 		}
 
 		// Strip leading description comment (it's moved to the generated: header)
@@ -476,14 +476,16 @@ func Generate(
 		// Insert custom hooks that go AFTER this block
 		if section, ok := customSections["after:"+b.Name]; ok {
 			lines = append(lines, "")
-			lines = append(lines, section)
+			lines = append(lines, manifest.ApplyRevs(section))
 		}
 	}
 
-	// Custom hooks after everything
+	// Custom hooks after everything. Every section is the repo's own apart from
+	// the revs of repos the manifest declares, which a bump would otherwise
+	// leave behind in it.
 	if section, ok := customSections["after:all"]; ok {
 		lines = append(lines, "")
-		lines = append(lines, section)
+		lines = append(lines, manifest.ApplyRevs(section))
 	}
 
 	lines = append(lines, "")

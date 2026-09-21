@@ -1033,3 +1033,23 @@ func writeConfig(t *testing.T, content string) {
 		t.Fatalf("writing config: %v", err)
 	}
 }
+
+// A custom section naming a declared repo would keep its own rev through
+// every bump, a second copy of the pin nothing reads.
+func TestACustomSectionTakesTheDeclaredRev(t *testing.T) {
+	manifest := &toolchain.Toolchain{Version: 1, Hooks: []toolchain.Hook{{Repo: "https://example.com/ruff", Rev: "v9"}}}
+	custom := map[string]string{"after:all": "# > custom:after:all - scripts in tools/\n" +
+		"  - repo: https://example.com/ruff\n" +
+		"    rev: v1\n" +
+		"    hooks:\n" +
+		"      - id: ruff-check\n" +
+		"        alias: ruff-check-tools\n"}
+
+	config, err := Generate(makeTestBlocks(), manifest, &config.Toolchain{}, custom, false, nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(config, "rev: v9") || strings.Contains(config, "rev: v1") {
+		t.Errorf("the custom section kept its own rev:\n%s", config)
+	}
+}
