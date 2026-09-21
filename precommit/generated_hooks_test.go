@@ -28,10 +28,17 @@ repos:
       - id: ruff-format
         alias: ruff-format-scripts
         stages: [pre-commit, "pre-push"]
+  - repo: local
+    hooks:
+      - id: mypy-scripts
+        name: mypy (uv run scripts)
+        entry: 'uv run mypy --scripts-are-modules'
+        language: system
 `
 	want := []GeneratedHook{
 		{Block: "file-checks", Repo: "https://example.com/hooks", ID: "check-yaml"},
 		{Block: "python-scripts", Repo: "https://example.com/ruff", ID: "ruff-format", Alias: "ruff-format-scripts", Stages: []string{"pre-commit", "pre-push"}},
+		{Block: "python-scripts", Repo: "local", ID: "mypy-scripts", Entry: "uv run mypy --scripts-are-modules"},
 	}
 	if got := GeneratedHooks(config); !reflect.DeepEqual(got, want) {
 		t.Errorf("GeneratedHooks =\n%+v\nwant\n%+v", got, want)

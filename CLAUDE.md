@@ -196,7 +196,8 @@ is its `# covers:` line, which names hooks rather than a stack because a stack j
 checks written into it. `TestAStackJobRunsEveryHookItsStackCarries` holds each stack block to every
 hook its stack's pre-commit blocks carry, so a hook added to one needs a step in the other. The job
 also drops a hook off the `pre-commit` stage, and a local hook, whose tool only a stack job installs.
-The shell block is why coverage is decided per repo. Every config carries it, and only a repo declaring a shell component
+A local hook calling uv is the exception, because this job sets uv up. The shell block is why
+coverage is decided per repo. Every config carries it, and only a repo declaring a shell component
 has a job running it.
 
 **The hooks job checks what the push or pull request changed.** That is what the hooks saw at commit

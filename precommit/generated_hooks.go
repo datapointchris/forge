@@ -8,6 +8,7 @@ import (
 
 var (
 	hookAliasRE  = regexp.MustCompile(`^\s+alias:\s*(\S+)`)
+	hookEntryRE  = regexp.MustCompile(`^\s+entry:\s*(.+)$`)
 	hookStagesRE = regexp.MustCompile(`^\s+stages:\s*\[([^\]]*)\]`)
 )
 
@@ -19,6 +20,9 @@ type GeneratedHook struct {
 	Repo  string
 	ID    string
 	Alias string
+	// Entry is the command a local hook runs, and empty for a remote hook,
+	// whose entry is in its own repo.
+	Entry string
 	// Stages is empty where the hook takes the config's default_stages.
 	Stages []string
 }
@@ -68,6 +72,10 @@ func GeneratedHooks(config string) []GeneratedHook {
 		last := &hooks[len(hooks)-1]
 		if m := hookAliasRE.FindStringSubmatch(line); m != nil {
 			last.Alias = m[1]
+			continue
+		}
+		if m := hookEntryRE.FindStringSubmatch(line); m != nil {
+			last.Entry = strings.Trim(strings.TrimSpace(m[1]), `"'`)
 			continue
 		}
 		if m := hookStagesRE.FindStringSubmatch(line); m != nil {

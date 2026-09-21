@@ -101,6 +101,30 @@ func TestAStackJobRunsEveryHookItsStackCarries(t *testing.T) {
 	}
 }
 
+func TestTheHooksJobRunsEveryHookNoStackJobCarries(t *testing.T) {
+	stacks := make(map[string]bool)
+	for _, stack := range stackBlocks(t) {
+		stacks[precommit.StackToCategory(stack)] = true
+	}
+	for category, hooks := range preCommitHooks(t) {
+		if stacks[category] {
+			continue
+		}
+		for _, hook := range hooks {
+			config := "# generated:" + hook.Block + "\n  - repo: " + hook.Repo + "\n    hooks:\n      - id: " + hook.ID + "\n"
+			if hook.Alias != "" {
+				config += "        alias: " + hook.Alias + "\n"
+			}
+			if hook.Entry != "" {
+				config += "        entry: " + hook.Entry + "\n"
+			}
+			if got := HooksToRun(config, nil); !slices.Equal(got, []string{hook.Selector()}) {
+				t.Errorf("%s from the %s block runs in no job", hook.Selector(), hook.Block)
+			}
+		}
+	}
+}
+
 func TestACoversLineStaysOutOfTheWorkflow(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, Hosted)
 	if err != nil {
@@ -146,6 +170,15 @@ func TestAScriptsHookIsRunByItsAlias(t *testing.T) {
 	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"), coveredBy(t, "python"))
 	if !slices.Contains(got, "ruff-format-scripts") || slices.Contains(got, "ruff-format") {
 		t.Errorf("hooks = %v, want ruff-format-scripts and not ruff-format", got)
+	}
+}
+
+// The python job's mypy never sees a uv script, and uv is the one tool the
+// hooks job sets up.
+func TestALocalHookCallingUVRunsInTheHooksJob(t *testing.T) {
+	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"), coveredBy(t, "python"))
+	if !slices.Contains(got, "mypy-scripts") {
+		t.Errorf("mypy-scripts is not run: %v", got)
 	}
 }
 

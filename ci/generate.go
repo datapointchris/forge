@@ -384,7 +384,8 @@ const HooksJob = "hooks"
 //   - A hook a stack job here runs the check of, as its block's covers line
 //     names it. covered is keyed by Selector.
 //   - A local hook calls a tool the runner has only where a stack job
-//     installed it, in another job.
+//     installed it, in another job. uv is the exception, because this job
+//     sets it up.
 //   - A hook off the pre-commit stage grades something a pushed tree does not
 //     carry, such as a commit message.
 func HooksToRun(preCommitConfig string, covered map[string]bool) []string {
@@ -393,7 +394,7 @@ func HooksToRun(preCommitConfig string, covered map[string]bool) []string {
 		if covered[hook.Selector()] {
 			continue
 		}
-		if hook.Repo == "local" || hook.Repo == "meta" {
+		if hook.Repo == "meta" || (hook.Repo == "local" && !strings.HasPrefix(hook.Entry, "uv ")) {
 			continue
 		}
 		if len(hook.Stages) > 0 && !slices.Contains(hook.Stages, "pre-commit") {
