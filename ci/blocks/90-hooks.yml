@@ -37,6 +37,10 @@
           hooks=(
             {{hooks}}
           )
+          # Every hook runs whatever the one before it found, so one push
+          # reports every failing hook rather than the first.
+          status=0
           for hook in "${hooks[@]}"; do
-            uvx pre-commit run "$hook" "${scope[@]}" --show-diff-on-failure
+            uvx pre-commit run "$hook" "${scope[@]}" --show-diff-on-failure || status=1
           done
+          exit "$status"
