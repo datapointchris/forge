@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -75,7 +77,7 @@ func GeneratedHooks(config string) []GeneratedHook {
 			continue
 		}
 		if m := hookEntryRE.FindStringSubmatch(line); m != nil {
-			last.Entry = strings.Trim(strings.TrimSpace(m[1]), `"'`)
+			last.Entry = scalar(m[1])
 			continue
 		}
 		if m := hookStagesRE.FindStringSubmatch(line); m != nil {
@@ -116,4 +118,14 @@ func BlockCategory(block string) string {
 		return category
 	}
 	return block
+}
+
+// scalar is one line's value as YAML decodes it. A quoted entry loses its
+// quotes and `bash -c '...'` keeps the ones the shell needs.
+func scalar(raw string) string {
+	var value string
+	if err := yaml.Unmarshal([]byte(raw), &value); err != nil {
+		return strings.TrimSpace(raw)
+	}
+	return value
 }

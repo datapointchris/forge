@@ -34,11 +34,14 @@ repos:
         name: mypy (uv run scripts)
         entry: 'uv run mypy --scripts-are-modules'
         language: system
+      - id: bats
+        entry: bash -c 'compgen -G "tests/*.bats" > /dev/null || exit 0; exec bats tests/'
 `
 	want := []GeneratedHook{
 		{Block: "file-checks", Repo: "https://example.com/hooks", ID: "check-yaml"},
 		{Block: "python-scripts", Repo: "https://example.com/ruff", ID: "ruff-format", Alias: "ruff-format-scripts", Stages: []string{"pre-commit", "pre-push"}},
 		{Block: "python-scripts", Repo: "local", ID: "mypy-scripts", Entry: "uv run mypy --scripts-are-modules"},
+		{Block: "python-scripts", Repo: "local", ID: "bats", Entry: `bash -c 'compgen -G "tests/*.bats" > /dev/null || exit 0; exec bats tests/'`},
 	}
 	if got := GeneratedHooks(config); !reflect.DeepEqual(got, want) {
 		t.Errorf("GeneratedHooks =\n%+v\nwant\n%+v", got, want)
