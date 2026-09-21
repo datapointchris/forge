@@ -31,7 +31,7 @@ repos:
 `
 	want := []GeneratedHook{
 		{Block: "file-checks", Repo: "https://example.com/hooks", ID: "check-yaml"},
-		{Block: "python-scripts", Repo: "https://example.com/ruff", ID: "ruff-format-scripts", Stages: []string{"pre-commit", "pre-push"}},
+		{Block: "python-scripts", Repo: "https://example.com/ruff", ID: "ruff-format", Alias: "ruff-format-scripts", Stages: []string{"pre-commit", "pre-push"}},
 	}
 	if got := GeneratedHooks(config); !reflect.DeepEqual(got, want) {
 		t.Errorf("GeneratedHooks =\n%+v\nwant\n%+v", got, want)
@@ -43,5 +43,23 @@ func TestAGenericBlockIsItsOwnCategory(t *testing.T) {
 		if got := BlockCategory(block); got != want {
 			t.Errorf("BlockCategory(%q) = %q, want %q", block, got, want)
 		}
+	}
+}
+
+func TestShadowedNamesTheStandardHookACustomSectionReplaces(t *testing.T) {
+	standard := "# generated:refcheck - Reference checking\n" +
+		"  - repo: https://example.com/refcheck\n" +
+		"    rev: v2\n" +
+		"    hooks:\n" +
+		"      - id: refcheck\n"
+	custom := map[string]string{"after:all": "# > custom:after:all - ours\n" +
+		"  - repo: https://example.com/refcheck\n" +
+		"    rev: v0\n" +
+		"    hooks:\n" +
+		"      - id: refcheck\n" +
+		"      - id: our-own\n"}
+
+	if got := Shadowed(standard, custom); !reflect.DeepEqual(got, []string{"refcheck"}) {
+		t.Errorf("Shadowed = %v, want [refcheck]", got)
 	}
 }

@@ -396,8 +396,8 @@ func HooksToRun(preCommitConfig string, covered map[string]bool) []string {
 		if covered[precommit.BlockCategory(hook.Block)] {
 			continue
 		}
-		if !slices.Contains(hooks, hook.ID) {
-			hooks = append(hooks, hook.ID)
+		if !slices.Contains(hooks, hook.Selector()) {
+			hooks = append(hooks, hook.Selector())
 		}
 	}
 	return hooks

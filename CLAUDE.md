@@ -163,6 +163,9 @@ Per-key ownership recorded at write time replaced whole-section overwrites, whic
 
 The generator preserves these across re-runs. A safety check aborts if unrecognized hooks exist without markers.
 
+A custom hook sharing a standard hook's id replaces that hook whole, so the declared rev and args never
+reach it. `check` reports each one as `ByHand` under its own item, and the config still regenerates.
+
 ## CI Standardization System
 
 `ci/blocks/` fragments compose into `.github/workflows/validate.yml`, triggered on `pull_request` and

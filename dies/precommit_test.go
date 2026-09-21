@@ -759,3 +759,41 @@ func TestPrecommitReportsASupersededSpellingThatDiffers(t *testing.T) {
 		t.Error("apply removed a superseded config it was supposed to report")
 	}
 }
+
+// One repo's copy pinned refcheck two majors behind the declared one, and every
+// verb reported that repo converged.
+func TestACustomHookReplacingAStandardOneIsReportedAndTheConfigStillRegenerates(t *testing.T) {
+	custom := "# > custom:after:all - our refcheck\n" +
+		"  - repo: https://github.com/datapointchris/refcheck\n    rev: v0.2.1\n    hooks:\n      - id: refcheck\n"
+	target := fixture(t, stacks("go"), map[string]string{
+		".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos:\n" + custom,
+	})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var reported bool
+	for _, change := range measured.Fold(reconcile.LensCheck).Changes {
+		reported = reported || (change.Item == "custom hook refcheck" && change.Repair == reconcile.ByHand)
+	}
+	if !reported {
+		t.Errorf("the shadowed refcheck went unreported: %v", measured.Fold(reconcile.LensCheck).Changes)
+	}
+	if !slices.Contains(plannedItems(measured), preCommitConfigPath) {
+		t.Error("the finding stopped the config regenerating")
+	}
+}
+
+func TestACustomHookOfItsOwnIdIsNotReported(t *testing.T) {
+	custom := "# > custom:after:all - our own check\n" +
+		"  - repo: local\n    hooks:\n      - id: my-bespoke-check\n" +
+		"        name: my bespoke check\n        entry: ./check.sh\n        language: system\n"
+	target := fixture(t, stacks("go"), map[string]string{
+		".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos:\n" + custom,
+	})
+
+	for _, change := range reconcile.Assess(target, PreCommit{}).Fold(reconcile.LensCheck).Changes {
+		if strings.HasPrefix(change.Item, "custom hook ") {
+			t.Errorf("a hook no standard block defines was reported: %+v", change)
+		}
+	}
+}
