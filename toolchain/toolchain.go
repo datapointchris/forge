@@ -43,6 +43,7 @@ var hookPinnedTools = map[string]string{
 	"ruff":       "https://github.com/astral-sh/ruff-pre-commit",
 	"shellcheck": "https://github.com/koalaman/shellcheck-precommit",
 	"shfmt":      "https://github.com/scop/pre-commit-shfmt",
+	"uv":         "https://github.com/astral-sh/uv-pre-commit",
 }
 
 // hookRevisionSuffix is the counter a wrapper repo appends when it re-tags one

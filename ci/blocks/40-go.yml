@@ -7,6 +7,16 @@
           cache: {{gocache}}
           cache-dependency-path: "{{dir}}/go.sum"
 
+      - run: go mod tidy -diff
+
+      # gofumpt runs as itself, not as a golangci-lint formatter. That copy has
+      # no module path, so it files a module's own imports with the standard
+      # library's. -d prints the rewrite and exits 1 on any.
+      - name: Formatting
+        run: |
+          go install mvdan.cc/gofumpt@{{pin}}
+          gofumpt -d .
+
       - run: go build ./...
 
       - run: go vet ./...

@@ -3,6 +3,10 @@
         with:
           enable-cache: true
 
+      # Before the sync, which would rewrite a stale lock rather than fail on
+      # it. uvx, so the uv is the one the uv-lock hook pins.
+      - run: uvx uv@{{pin}} lock --check
+
       - run: uv sync --all-extras --dev
 
       # uvx, not `uv run` — the latter resolves ruff from the repo's own

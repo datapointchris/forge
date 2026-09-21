@@ -14,3 +14,38 @@
       # Unconditional: with no .tftest.hcl files this exits 0 reporting
       # "0 passed, 0 failed", so a repo without tests is unaffected.
       - run: terraform test
+
+      # The hook runs whichever tflint a workstation has, so the pin is the
+      # versions file's own. --init installs the plugins a .tflint.hcl names,
+      # from GitHub, which rate-limits a runner that does not authenticate.
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint_version="{{pin}}"
+          curl -fsSL -o "$RUNNER_TEMP/tflint.zip" \
+            "https://github.com/terraform-linters/tflint/releases/download/v${tflint_version}/tflint_linux_amd64.zip"
+          unzip -o -q "$RUNNER_TEMP/tflint.zip" -d "$RUNNER_TEMP/tflint"
+          tflint_bin="$RUNNER_TEMP/tflint/tflint"
+          "$tflint_bin" --version
+          "$tflint_bin" --init
+          "$tflint_bin" --recursive
+
+      # The terraform_docs hook writes only into a README.md already holding
+      # its begin marker, so only those are checked. md, --anchor=false and
+      # --html=false are the formatter and arguments the hook passes.
+      - name: terraform-docs
+        run: |
+          terraform_docs_version="{{pin}}"
+          curl -fsSL "https://github.com/terraform-docs/terraform-docs/releases/download/v${terraform_docs_version}/terraform-docs-v${terraform_docs_version}-linux-amd64.tar.gz" \
+            | tar -xzf - -C "$RUNNER_TEMP" terraform-docs
+          terraform_docs_bin="$RUNNER_TEMP/terraform-docs"
+          "$terraform_docs_bin" --version
+
+          status=0
+          for readme in $(git ls-files README.md '*/README.md'); do
+            grep -q '<!-- BEGIN_TF_DOCS -->' "$readme" || continue
+            "$terraform_docs_bin" md --output-file README.md --output-mode inject --output-check \
+              --anchor=false --html=false "$(dirname "$readme")" || status=1
+          done
+          exit "$status"

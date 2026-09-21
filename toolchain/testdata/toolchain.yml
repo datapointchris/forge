@@ -67,12 +67,18 @@ tools:
     version: fixture-golangci-lint
   - module: golang.org/x/vuln/cmd/govulncheck
     version: fixture-govulncheck
+  - module: mvdan.cc/gofumpt
+    version: fixture-gofumpt
 
 # shellcheck and shfmt are absent on purpose: their CI version is the release
 # their hook pin wraps, and Load refuses a binaries entry for either.
 binaries:
   - name: bats
     version: fixture-bats
+  - name: tflint
+    version: fixture-tflint
+  - name: terraform_docs
+    version: fixture-terraform-docs
   - name: bats_support
     version: fixture-bats-support
   - name: bats_assert
