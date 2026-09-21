@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -8,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/datapointchris/forge/reconcile"
 )
@@ -635,8 +638,7 @@ func TestPrecommitStillDeploysAToolConfigThatIsNotThereYet(t *testing.T) {
 // leaving one behind would keep it in force and forge's file unread. It is
 // removable because the same content lands at the new path in the same run.
 func TestPrecommitRemovesASupersededSpellingCarryingTheSameConfig(t *testing.T) {
-	sameContent := `{"default": true, "MD013": false, "MD024": {"siblings_only": true},
-	  "MD033": false, "MD036": false, "MD038": false, "MD046": false}`
+	sameContent := standardMarkdownlintAsJSON(t)
 	target := fixture(t, stacks("shell"), map[string]string{".markdownlint.json": sameContent})
 
 	applyAll(t, target, PreCommit{})
@@ -653,8 +655,7 @@ func TestPrecommitRemovesASupersededSpellingCarryingTheSameConfig(t *testing.T) 
 // the same run. apply continues past a failed change, so a write that failed
 // and a removal that succeeded would leave the repo with no config at all.
 func TestPrecommitKeepsTheSupersededSpellingWhenTheReplacementIsNotThere(t *testing.T) {
-	sameContent := `{"default": true, "MD013": false, "MD024": {"siblings_only": true},
-	  "MD033": false, "MD036": false, "MD038": false, "MD046": false}`
+	sameContent := standardMarkdownlintAsJSON(t)
 	target := fixture(t, stacks("shell"), map[string]string{".markdownlint.json": sameContent})
 
 	// A directory at the new path is what a failed write leaves behind.
@@ -796,4 +797,24 @@ func TestACustomHookOfItsOwnIdIsNotReported(t *testing.T) {
 			t.Errorf("a hook no standard block defines was reported: %+v", change)
 		}
 	}
+}
+
+// standardMarkdownlintAsJSON is the deployed markdownlint config in the JSON
+// spelling it supersedes, read from the asset so a new rule cannot leave the
+// fixture describing a config forge no longer deploys.
+func standardMarkdownlintAsJSON(t *testing.T) string {
+	t.Helper()
+	data, err := fs.ReadFile(testAssets(t).PreCommit, "configs/markdownlint.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := yaml.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	out, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
