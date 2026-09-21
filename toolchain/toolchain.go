@@ -33,13 +33,19 @@ var (
 	uvxLineRE    = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
 )
 
-// uvxHookRepos maps a tool a CI block runs as `uvx <tool>@<version>` to the
-// pre-commit repo pinning it. The version is derived from that hook's rev
-// rather than declared a second time, so CI and the local hook cannot disagree
-// about a finding — a second entry could drift, a derived one cannot.
-var uvxHookRepos = map[string]string{
-	"ruff": "https://github.com/astral-sh/ruff-pre-commit",
+// hookPinnedTools maps a tool generated CI runs to the pre-commit repo whose rev
+// pins it. CI takes the hook's release rather than a version of its own, so the
+// two cannot disagree about a finding: a second entry could drift, and a derived
+// one cannot.
+var hookPinnedTools = map[string]string{
+	"ruff":       "https://github.com/astral-sh/ruff-pre-commit",
+	"shellcheck": "https://github.com/koalaman/shellcheck-precommit",
+	"shfmt":      "https://github.com/scop/pre-commit-shfmt",
 }
+
+// hookRevisionSuffix is the counter a wrapper repo appends when it re-tags one
+// upstream release: pre-commit-shfmt's v3.13.1-1 wraps shfmt 3.13.1.
+var hookRevisionSuffix = regexp.MustCompile(`-\d+$`)
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
 // config. Blocks carry Pin where a version goes, so a version is declared in
@@ -111,7 +117,22 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 	if manifest.Version < 1 {
 		return nil, fmt.Errorf("%s: version must be >= 1, got %d", File, manifest.Version)
 	}
+	if err := manifest.refuseDerivedBinaries(); err != nil {
+		return nil, fmt.Errorf("%s: %w", File, err)
+	}
 	return &manifest, nil
+}
+
+// refuseDerivedBinaries rejects a binaries entry for a tool whose CI version
+// comes from its hook pin. The entry would be a second copy of that version,
+// and ApplyBinaryVersions would never read it.
+func (t *Toolchain) refuseDerivedBinaries() error {
+	for _, binary := range t.Binaries {
+		if repo, derived := hookPinnedTools[binary.Name]; derived {
+			return fmt.Errorf("binaries pins %s, whose CI version is the release its hook pin %s wraps — remove the binaries entry", binary.Name, repo)
+		}
+	}
+	return nil
 }
 
 // Unpinned names each Pin that survived rendering, as the repo for a hook's rev
@@ -252,8 +273,8 @@ func (t *Toolchain) ApplyRuntimeVersions(content string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ApplyUvxVersions rewrites `uvx <tool>@<version>` to the version pinned for
-// that tool's pre-commit hook. A tool with no mapping is left alone.
+// ApplyUvxVersions rewrites `uvx <tool>@<version>` to the release that tool's
+// pre-commit hook pins. A tool with no hook in hookPinnedTools is left alone.
 //
 // CI runs these through uvx rather than `uv run` because `uv run ruff` resolves
 // ruff from the repo's own dependencies, and a repo that treats ruff as a fleet
@@ -267,12 +288,8 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 		if len(m) < 5 {
 			continue
 		}
-		repo, mapped := uvxHookRepos[m[2]]
-		if !mapped {
-			continue
-		}
-		if rev, managed := t.RevFor(repo); managed {
-			lines[i] = m[1] + m[2] + "@" + strings.TrimPrefix(rev, "v") + m[4]
+		if version, derived := t.hookPinnedVersion(m[2]); derived {
+			lines[i] = m[1] + m[2] + "@" + version + m[4]
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -283,9 +300,26 @@ func (t *Toolchain) ApplyAll(content string) string {
 	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content))))))
 }
 
+// hookPinnedVersion is the upstream release a tool's hook rev wraps, and whether
+// the tool's version comes from a hook at all.
+func (t *Toolchain) hookPinnedVersion(tool string) (string, bool) {
+	repo, derived := hookPinnedTools[tool]
+	if !derived {
+		return "", false
+	}
+	rev, managed := t.RevFor(repo)
+	if !managed {
+		return "", false
+	}
+	return hookRevisionSuffix.ReplaceAllString(strings.TrimPrefix(rev, "v"), ""), true
+}
+
 // BinaryVersion returns the pinned version for a released binary, and whether
-// it is managed.
+// it is managed. A tool with a hook takes the release that hook pins.
 func (t *Toolchain) BinaryVersion(name string) (string, bool) {
+	if version, derived := t.hookPinnedVersion(name); derived {
+		return version, true
+	}
 	for _, binary := range t.Binaries {
 		if binary.Name == name {
 			return binary.Version, true

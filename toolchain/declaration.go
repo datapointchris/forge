@@ -106,6 +106,9 @@ func LoadFile(path string) (*Toolchain, error) {
 		}
 	}
 	sortRuntimes(manifest.Runtimes)
+	if err := manifest.refuseDerivedBinaries(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return manifest, nil
 }
 

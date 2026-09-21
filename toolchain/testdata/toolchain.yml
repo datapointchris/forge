@@ -18,9 +18,11 @@ hooks:
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: fixture-markdownlint-cli
   - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: fixture-shellcheck-precommit
+    rev: v0.0.1
+  # Tagged like the real wrapper, so the derived shfmt release is tested
+  # stripping the wrapper's counter.
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: fixture-pre-commit-shfmt
+    rev: v0.0.2-1
   - repo: https://github.com/codespell-project/codespell
     rev: fixture-codespell
   - repo: https://github.com/datapointchris/refcheck
@@ -64,11 +66,9 @@ tools:
   - module: golang.org/x/vuln/cmd/govulncheck
     version: fixture-govulncheck
 
+# shellcheck and shfmt are absent on purpose: their CI version is the release
+# their hook pin wraps, and Load refuses a binaries entry for either.
 binaries:
-  - name: shellcheck
-    version: fixture-shellcheck
-  - name: shfmt
-    version: fixture-shfmt
   - name: bats
     version: fixture-bats
   - name: bats_support

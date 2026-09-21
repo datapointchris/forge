@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func loadManifest(t *testing.T) *Toolchain {
@@ -78,6 +79,26 @@ func TestUnpinnedNamesTheRepoARevBelongsTo(t *testing.T) {
 	}
 }
 
+// pre-commit-shfmt tags v3.13.1-1 for shfmt 3.13.1, and CI downloads shfmt by
+// its own release number. Keeping the counter asks for a release that does not
+// exist.
+func TestShfmtTakesTheReleaseItsHookWraps(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: hookPinnedTools["shfmt"], Rev: "v3.13.1-1"}}}
+
+	got := manifest.ApplyBinaryVersions("          shfmt_version=\"" + Pin + "\"\n")
+
+	if !strings.Contains(got, `shfmt_version="3.13.1"`) {
+		t.Errorf("shfmt not derived from its hook: %q", got)
+	}
+}
+
+func TestLoadRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nbinaries:\n  - name: shellcheck\n    version: \"0.10.0\"\n")}}
+	if _, err := Load(fixture); err == nil {
+		t.Error("a second copy of shellcheck's version loaded without complaint")
+	}
+}
+
 // The manifest overrides whatever rev a block declares — that override is the
 // whole point, so verify it actually rewrites rather than passing through.
 func TestApplyRevsOverridesBlockRev(t *testing.T) {
@@ -114,12 +135,12 @@ func TestApplyToolVersionsOverridesGoInstall(t *testing.T) {
 func TestApplyBinaryVersionsOverridesBlockPin(t *testing.T) {
 	manifest := &Toolchain{
 		Version:  9,
-		Binaries: []Binary{{Name: "shellcheck", Version: "9.9.9"}},
+		Binaries: []Binary{{Name: "bats", Version: "9.9.9"}},
 	}
 
-	got := manifest.ApplyBinaryVersions("          shellcheck_version=\"0.0.1\"\n")
+	got := manifest.ApplyBinaryVersions("          bats_version=\"0.0.1\"\n")
 
-	if !strings.Contains(got, `shellcheck_version="9.9.9"`) {
+	if !strings.Contains(got, `bats_version="9.9.9"`) {
 		t.Errorf("manifest binary version not applied: %q", got)
 	}
 	if strings.Contains(got, "0.0.1") {
@@ -146,7 +167,7 @@ func TestApplyBinaryVersionsHandlesUnderscoredName(t *testing.T) {
 // A block may pin a version the manifest does not own; only managed names are
 // rewritten, so an unrelated assignment of the same shape is left intact.
 func TestApplyBinaryVersionsLeavesUnmanagedNameAlone(t *testing.T) {
-	manifest := &Toolchain{Version: 9, Binaries: []Binary{{Name: "shellcheck", Version: "9.9.9"}}}
+	manifest := &Toolchain{Version: 9, Binaries: []Binary{{Name: "bats", Version: "9.9.9"}}}
 
 	got := manifest.ApplyBinaryVersions("          hadolint_version=\"1.2.3\"\n")
 

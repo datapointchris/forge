@@ -124,8 +124,9 @@ findings by reporting success there.
 declaration, and a pin the declaration cannot fill is a refusal rather than a placeholder shipped to
 a repo (`toolchain.Unpinned`, `TestBlocksNameNoVersion`). Generation stamps the declaration's
 `version` as `# forge-toolchain: N`; bump it on any pin change, because the stamp is what staged
-rollout reads. `toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its
-values name tools rather than releases.
+rollout reads. shellcheck, shfmt and ruff take the release their hook pins (`hookPinnedTools`), and a
+`binaries` entry for one is refused as a second copy. `toolchain/testdata/toolchain.yml` is the test
+fixture, read by no command, and its values name tools rather than releases.
 
 **Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
 reads it, and a file at a managed path without it is reported rather than overwritten
