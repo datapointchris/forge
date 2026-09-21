@@ -204,3 +204,15 @@ func TestARepoWithNoPreCommitConfigGetsNoHooksJob(t *testing.T) {
 		t.Errorf("a hooks job with nothing to run:\n%s", workflow)
 	}
 }
+
+// Its pre-commit config carries the vue block's hooks, which are local, so no
+// job but a stack job can run them.
+func TestANodeComponentGetsTheVueJob(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("node", "server"), "", nil, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(workflow, "working-directory: server") || !strings.Contains(workflow, "npm run lint:fix") {
+		t.Errorf("no vue job for the node component:\n%s", workflow)
+	}
+}

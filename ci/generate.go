@@ -260,13 +260,16 @@ func Generate(
 	jobs := 0
 	covered := make(map[string]bool)
 	for _, component := range components {
-		block, err := loadBlock(blocksFS, component.Stack)
+		// By the category that lints the stack, as its pre-commit hooks are: a
+		// node component carries the vue block's hooks, and its job has to run
+		// them.
+		block, err := loadBlock(blocksFS, precommit.StackToCategory(component.Stack))
 		if err != nil {
 			return "", err
 		}
-		// A declared stack forge has no CI block for yet — docker and terraform
-		// are pre-commit concerns today. Silently skipping keeps the map free to
-		// declare more than CI currently knows how to build.
+		// A declared stack with no CI block, such as docker, leaves its hooks to
+		// the hooks job. Skipping keeps the map free to declare more than CI
+		// builds.
 		if block == "" {
 			continue
 		}
