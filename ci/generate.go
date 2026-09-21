@@ -24,9 +24,11 @@ import (
 	"github.com/datapointchris/forge/toolchain"
 )
 
-// ErrNoJobs is Generate's answer for a repo none of whose components has a CI
-// block. That repo is owed no workflow, which is not a failure to generate one.
-var ErrNoJobs = errors.New("no components with a CI block: nothing to generate")
+// ErrNoJobs is Generate's answer for a repo with no job to run: none of its
+// components has a CI block, and its pre-commit config leaves no hook for
+// HooksJob. That repo is owed no workflow, which is not a failure to generate
+// one.
+var ErrNoJobs = errors.New("no component has a CI block and no hook is left for the hooks job: nothing to generate")
 
 // WorkflowPath is where the generated workflow lands. Deliberately not ci.yml:
 // several repos carry a hand-written ci.yml, and generating over one would

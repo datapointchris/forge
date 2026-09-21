@@ -301,3 +301,29 @@ func TestTheLintDeclarationIsWrittenBeforeTheWorkflowThatNamesIt(t *testing.T) {
 		t.Errorf("changes = %v, want the lint declaration before the workflow that names it", items)
 	}
 }
+
+// The registry is silent about which stacks are here, and forge's stamp on the
+// pre-commit config still makes those hooks forge's to run.
+func TestAStampedRepoWithNoComponentsGetsTheHooksJob(t *testing.T) {
+	target := fixture(t, nil, map[string]string{".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos: []\n"})
+
+	applyAll(t, target, CI{})
+
+	workflow, err := os.ReadFile(target.Path(ci.WorkflowPath))
+	if err != nil {
+		t.Fatalf("read the workflow: %s", err)
+	}
+	if !strings.Contains(string(workflow), "\n  "+ci.HooksJob+":\n") {
+		t.Errorf("no hooks job:\n%s", workflow)
+	}
+}
+
+func TestARepoForgeMaintainsNothingInIsOwedNoWorkflow(t *testing.T) {
+	target := fixture(t, nil, nil)
+
+	applyAll(t, target, CI{})
+
+	if _, err := os.Stat(target.Path(ci.WorkflowPath)); !os.IsNotExist(err) {
+		t.Errorf("a workflow was written for a repo with nothing to run: %v", err)
+	}
+}

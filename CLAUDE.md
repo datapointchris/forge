@@ -185,7 +185,8 @@ from the config the precommit die would write, through the `preCommitOwed` both 
 job never names a hook the config lacks. It drops three kinds: a local hook, whose tool only a stack
 job installs; a hook off the `pre-commit` stage; and a hook whose block belongs to a stack with a
 job here. The shell block is why the last is decided per repo. Every config carries it, and only a
-repo declaring a shell component has a job running it.
+repo declaring a shell component has a job running it. A repo declaring no components gets a workflow
+holding this job alone, wherever forge maintains its pre-commit config.
 
 **The hooks job checks what the push or pull request changed, never every file.** That is what the
 hooks saw at commit time, so a finding in a file nobody touched cannot fail a push. The checkout

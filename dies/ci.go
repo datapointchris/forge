@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/datapointchris/forge/ci"
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/reconcile"
 	"github.com/datapointchris/forge/toolchain"
@@ -31,7 +32,7 @@ type CI struct{}
 func (CI) Name() string { return "ci" }
 
 func (CI) Description() string {
-	return "Generate .github/workflows/validate.yml from the standard CI blocks, one job per declared component. Reports a hand-written pipeline rather than overwriting it."
+	return "Generate .github/workflows/validate.yml from the standard CI blocks: one job per declared component, and one running the pre-commit hooks none of those covers. Reports a hand-written pipeline rather than overwriting it."
 }
 
 func (CI) Tags() []string { return []string{"ci", "actions", "standardization", "golden-path"} }
@@ -74,15 +75,24 @@ func (s ciState) Summary() string {
 }
 
 func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
-	// Checked before the components are, because a maintained directory declares
-	// components too. Without this, a directory declaring python and shell grows
-	// a .github/workflows/validate.yml that nothing will ever run — the one
-	// guard here that prevents a write rather than a wasted read.
+	// Checked first, because a maintained directory declares components too.
+	// Without this, a directory declaring python and shell grows a
+	// .github/workflows/validate.yml that nothing will ever run — the one guard
+	// here that prevents a write rather than a wasted read.
 	if !t.Versioned() {
 		return ciState{reason: "not a git repo, so no workflow would run"}, nil
 	}
-	if t.Repo.Toolchain == nil || len(t.Repo.Toolchain.Components) == 0 {
-		return ciState{reason: "declares no toolchain components"}, nil
+
+	// A repo declaring no components still has hooks when forge maintains its
+	// pre-commit config, and those are owed the hooks job like anyone's.
+	// Generate answers ErrNoJobs where there is neither.
+	preCommit, err := preCommitOwed(t)
+	if err != nil {
+		return nil, err
+	}
+	var components []config.Component
+	if t.Repo.Toolchain != nil {
+		components = t.Repo.Toolchain.Components
 	}
 
 	root := t.Repo.Path
@@ -98,16 +108,11 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		existing = string(data)
 	}
 
-	preCommit, err := preCommitOwed(t)
-	if err != nil {
-		return nil, err
-	}
-
 	runner := ci.RunnerFor(t.Repo.IsPrivate())
-	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain.Components, preCommit.wanted,
+	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommit.wanted,
 		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root), runner)
 	if errors.Is(err, ci.ErrNoJobs) {
-		return ciState{reason: "no components with a CI block"}, nil
+		return ciState{reason: "no component has a CI block, and no hook is left for the hooks job"}, nil
 	}
 	if err != nil {
 		return nil, err
