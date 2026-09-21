@@ -1,6 +1,6 @@
   # File format and basic checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: "{{pin}}"
     hooks:
       # --unsafe parses instead of safe_load'ing. Every mkdocs-material repo
       # carries `!!python/name:material.extensions.emoji.twemoji`, which
@@ -29,6 +29,6 @@
       - id: detect-private-key
 
   - repo: https://gitlab.com/bmares/check-json5
-    rev: v1.0.0
+    rev: "{{pin}}"
     hooks:
       - id: check-json5

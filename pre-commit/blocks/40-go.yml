@@ -2,7 +2,7 @@
   # Every -repo- hook runs in each go.mod it finds, so a repo holding api/ and
   # cli/ needs no hook per module.
   - repo: https://github.com/tekwizely/pre-commit-golang
-    rev: v1.0.0-rc.1
+    rev: "{{pin}}"
     hooks:
       - id: go-fumpt-repo
         args: [-w]

@@ -1,6 +1,6 @@
   # Terraform
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.99.5
+    rev: "{{pin}}"
     hooks:
       - id: terraform_validate
       - id: terraform_tflint

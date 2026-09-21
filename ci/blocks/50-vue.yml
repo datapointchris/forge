@@ -1,7 +1,8 @@
 # Vue
-      - uses: actions/setup-node@v7
+# covers: vue-eslint vue-prettier vue-typecheck
+      - uses: actions/setup-node@{{pin}}
         with:
-          node-version: "24"
+          node-version: "{{pin}}"
           cache: npm
           # A glob rather than {{dir}}/package-lock.json, because the two
           # layouts in use keep the lock in different places: one lock per
@@ -24,8 +25,16 @@
             cd "$GITHUB_WORKSPACE" && npm ci
           fi
 
-      # Not every frontend defines lint yet; --if-present keeps the rollout
-      # from hard-failing on a missing script.
-      - run: npm run lint --if-present
+      # lint:fix, not lint, because it is the script the vue-eslint hook runs
+      # and some frontends define no other. A file it rewrites is a finding the
+      # hook would have fixed before the commit.
+      - name: Lint
+        run: |
+          npm run lint:fix
+          git diff --exit-code -- .
+
+      - run: npx prettier --check .
+
+      - run: npm run --if-present typecheck
 
       - run: npm run build

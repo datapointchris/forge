@@ -14,7 +14,7 @@ import (
 
 func testManifest(t *testing.T) *toolchain.Toolchain {
 	t.Helper()
-	manifest, err := toolchain.Load(os.DirFS("../pre-commit"))
+	manifest, err := toolchain.Load(os.DirFS("../toolchain/testdata"))
 	if err != nil {
 		t.Fatalf("toolchain.Load: %v", err)
 	}
@@ -33,7 +33,7 @@ func comps(pairs ...string) []config.Component {
 // hide which failed and make them share a setup step.
 func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), nil, Ungated, Hosted)
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 // pipeline gates on it. Seven repos had no repo-wide lint at all; generating
 // them a workflow with no reachable trigger would have looked like a fix.
 func TestGenerateRunsOnPushToMain(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), "", nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestGenerateRunsOnPushToMain(t *testing.T) {
 // Where a release gates on this workflow it already runs on a push to main, so
 // emitting push here runs every job twice for one commit.
 func TestGenerateOmitsPushWhenTheReleaseGatesOnIt(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), nil, Gated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), "", nil, Gated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 // A root component is the common case and should not carry a redundant
 // working-directory or a directory suffix in its job name.
 func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
 // there is no baseline job to run. Those must not produce empty jobs.
 func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", ".", "docker", "."), nil, Ungated, Hosted)
+		comps("go", ".", "docker", "."), "", nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestGoCacheIsOnlyRestoredOnARunnerThatStartsEmpty(t *testing.T) {
 		{Hosted, "cache: true"},
 		{SelfHosted, "cache: false"},
 	} {
-		workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, Ungated, testCase.runner)
+		workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, testCase.runner)
 		if err != nil {
 			t.Fatalf("Generate(%s): %v", testCase.runner, err)
 		}
@@ -242,19 +242,22 @@ func TestGoCacheIsOnlyRestoredOnARunnerThatStartsEmpty(t *testing.T) {
 }
 
 func TestGenerateFailsWhenNoComponentHasABlock(t *testing.T) {
-	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), nil, Ungated, Hosted); err == nil {
+	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), "", nil, Ungated, Hosted); err == nil {
 		t.Fatal("expected an error rather than a workflow with zero jobs")
 	}
 }
 
 // The manifest, not the block file, decides the action version.
 func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
-	manifest := &toolchain.Toolchain{
-		Version: 42,
-		Actions: []toolchain.Action{{Uses: "actions/checkout", Version: "v99"}},
+	manifest := testManifest(t)
+	manifest.Version = 42
+	for i := range manifest.Actions {
+		if manifest.Actions[i].Uses == "actions/checkout" {
+			manifest.Actions[i].Version = "v99"
+		}
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -267,6 +270,18 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 	}
 }
 
+// A block's pin the versions file cannot fill would reach the runner as a
+// literal `{{pin}}` and fail at dispatch, so generation refuses it instead.
+func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {
+	manifest := testManifest(t)
+	manifest.Tools = nil
+
+	_, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, Hosted)
+	if err == nil || !strings.Contains(err.Error(), "govulncheck") {
+		t.Fatalf("Generate = %v, want a refusal naming govulncheck", err)
+	}
+}
+
 // A before:<stack> section runs before the stack's steps, not before checkout.
 // A repo can decrypt test secrets out of secrets/ in one, which needs the
 // workspace to exist.
@@ -276,7 +291,7 @@ func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 			"      - run: sops decrypt secrets/test.enc.env > .env",
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), custom, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), "", custom, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -308,7 +323,7 @@ func TestAnAfterSectionStopsAtTheNextJob(t *testing.T) {
 	}
 
 	first, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("python", ".", "go", "api"), custom, Ungated, Hosted)
+		comps("python", ".", "go", "api"), "", custom, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -319,7 +334,7 @@ func TestAnAfterSectionStopsAtTheNextJob(t *testing.T) {
 	}
 
 	second, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("python", ".", "go", "api"), extracted, Ungated, Hosted)
+		comps("python", ".", "go", "api"), "", extracted, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}
@@ -343,7 +358,7 @@ func TestAnAfterAllSectionKeepsItsWholeJob(t *testing.T) {
 			"      - run: pytest",
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), custom, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", custom, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -430,5 +445,22 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobIsClearedFirst(t *testing.T) {
 
 	if persistent == 0 {
 		t.Fatal("no clone outside $RUNNER_TEMP found; the shell block's bats step writes two into $HOME")
+	}
+}
+
+// Regeneration carries a custom section across as written, so one naming a
+// declared action would keep its old version through every bump.
+func TestACustomSectionTakesTheDeclaredPins(t *testing.T) {
+	custom := map[string]string{
+		"after:go": "      # > custom:after:go - release check\n" +
+			"      - uses: actions/checkout@v1",
+	}
+
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", custom, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if strings.Contains(workflow, "actions/checkout@v1") {
+		t.Errorf("the custom section kept its own pin:\n%s", workflow)
 	}
 }

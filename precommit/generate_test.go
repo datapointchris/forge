@@ -859,11 +859,29 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 // exactly the behavior an unmanaged repo should get.
 func testToolchain(t *testing.T) *toolchain.Toolchain {
 	t.Helper()
-	manifest, err := toolchain.Load(os.DirFS("../pre-commit"))
+	manifest, err := toolchain.Load(os.DirFS("../toolchain/testdata"))
 	if err != nil {
 		t.Fatalf("toolchain.Load: %v", err)
 	}
 	return manifest
+}
+
+// A rev the versions file cannot fill would reach pre-commit as `{{pin}}`, which
+// it rejects at install on every machine at once.
+func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {
+	manifest := testToolchain(t)
+	var kept []toolchain.Hook
+	for _, hook := range manifest.Hooks {
+		if hook.Repo != "https://github.com/datapointchris/refcheck" {
+			kept = append(kept, hook)
+		}
+	}
+	manifest.Hooks = kept
+
+	_, err := Generate(os.DirFS("../pre-commit/blocks"), manifest, detected("go"), nil, true, nil)
+	if err == nil || !strings.Contains(err.Error(), "datapointchris/refcheck") {
+		t.Fatalf("Generate = %v, want a refusal naming the refcheck repo", err)
+	}
 }
 
 func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
@@ -1013,5 +1031,25 @@ func writeConfig(t *testing.T, content string) {
 	t.Helper()
 	if err := os.WriteFile(".pre-commit-config.yaml", []byte(content), 0o644); err != nil {
 		t.Fatalf("writing config: %v", err)
+	}
+}
+
+// A custom section naming a declared repo would keep its own rev through
+// every bump, a second copy of the pin nothing reads.
+func TestACustomSectionTakesTheDeclaredRev(t *testing.T) {
+	manifest := &toolchain.Toolchain{Version: 1, Hooks: []toolchain.Hook{{Repo: "https://example.com/ruff", Rev: "v9"}}}
+	custom := map[string]string{"after:all": "# > custom:after:all - scripts in tools/\n" +
+		"  - repo: https://example.com/ruff\n" +
+		"    rev: v1\n" +
+		"    hooks:\n" +
+		"      - id: ruff-check\n" +
+		"        alias: ruff-check-tools\n"}
+
+	config, err := Generate(makeTestBlocks(), manifest, &config.Toolchain{}, custom, false, nil)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(config, "rev: v9") || strings.Contains(config, "rev: v1") {
+		t.Errorf("the custom section kept its own rev:\n%s", config)
 	}
 }

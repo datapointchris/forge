@@ -1,32 +1,103 @@
 package toolchain
 
 import (
+	"io/fs"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func loadManifest(t *testing.T) *Toolchain {
 	t.Helper()
-	manifest, err := Load(os.DirFS("../pre-commit"))
+	manifest, err := Load(os.DirFS("testdata"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	return manifest
 }
 
-// A block that names a remote repo the manifest does not pin would ship a
-// version nothing tracks — the exact drift the manifest exists to prevent.
-func TestToolchainManagesEveryBlockRepo(t *testing.T) {
-	manifest := loadManifest(t)
-	blocks := os.DirFS("../pre-commit/blocks")
-
-	unmanaged, err := manifest.UnmanagedRepos(blocks)
-	if err != nil {
-		t.Fatalf("UnmanagedRepos: %v", err)
+// A version written into a block is a copy of the pin that generation throws
+// away, and the one a reader of the block believes. Every line a substitution
+// rewrites must carry Pin instead. A release number in any other shape, such
+// as an action's version input, is a copy no substitution updates at all.
+func TestBlocksNameNoVersion(t *testing.T) {
+	literal := regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
+	versioned := []*regexp.Regexp{revLineRE, usesLineRE, goInstallRE, runtimeLineRE, binaryLineRE, uvxLineRE, literal}
+	for _, dir := range []string{"../pre-commit/blocks", "../ci/blocks"} {
+		err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, err := os.ReadFile(dir + "/" + path)
+			if err != nil {
+				return err
+			}
+			for n, line := range strings.Split(string(data), "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "#") || strings.Contains(line, Pin) {
+					continue
+				}
+				for _, re := range versioned {
+					if re.MatchString(line) {
+						t.Errorf("%s/%s:%d names a version instead of %s: %s", dir, path, n+1, Pin, strings.TrimSpace(line))
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	if len(unmanaged) > 0 {
-		t.Errorf("blocks use repos absent from toolchain.yml: %v", unmanaged)
+}
+
+// The fixture has to fill every pin the real blocks carry, or a generator test
+// is refused before it asserts anything.
+func TestFixturePinsEveryBlock(t *testing.T) {
+	manifest := loadManifest(t)
+	for _, dir := range []string{"../pre-commit/blocks", "../ci/blocks"} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			data, err := os.ReadFile(dir + "/" + entry.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if missing := Unpinned(manifest.ApplyAll(string(data))); len(missing) > 0 {
+				t.Errorf("%s/%s: the fixture pins nothing for %v", dir, entry.Name(), missing)
+			}
+		}
+	}
+}
+
+func TestUnpinnedNamesTheRepoARevBelongsTo(t *testing.T) {
+	block := "  - repo: https://example.com/hook\n    rev: \"" + Pin + "\"\n    hooks:\n      - id: hook\n"
+	got := Unpinned((&Toolchain{Version: 1}).ApplyRevs(block))
+	if len(got) != 1 || got[0] != "https://example.com/hook" {
+		t.Errorf("Unpinned = %v, want the repo URL", got)
+	}
+}
+
+// pre-commit-shfmt tags v3.13.1-1 for shfmt 3.13.1, and CI downloads shfmt by
+// its own release number. Keeping the counter asks for a release that does not
+// exist.
+func TestShfmtTakesTheReleaseItsHookWraps(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: hookPinnedTools["shfmt"], Rev: "v3.13.1-1"}}}
+
+	got := manifest.ApplyBinaryVersions("          shfmt_version=\"" + Pin + "\"\n")
+
+	if !strings.Contains(got, `shfmt_version="3.13.1"`) {
+		t.Errorf("shfmt not derived from its hook: %q", got)
+	}
+}
+
+func TestLoadRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nbinaries:\n  - name: shellcheck\n    version: \"0.10.0\"\n")}}
+	if _, err := Load(fixture); err == nil {
+		t.Error("a second copy of shellcheck's version loaded without complaint")
 	}
 }
 
@@ -44,20 +115,6 @@ func TestApplyRevsOverridesBlockRev(t *testing.T) {
 	}
 	if strings.Contains(got, "rev: v1.0.0") {
 		t.Errorf("block rev survived the override: %q", got)
-	}
-}
-
-// A CI block naming an action the manifest does not pin would ship a version
-// nothing tracks — same drift the hook manifest exists to prevent.
-func TestToolchainManagesEveryCIAction(t *testing.T) {
-	manifest := loadManifest(t)
-
-	unmanaged, err := manifest.UnmanagedActions(os.DirFS("../ci/blocks"))
-	if err != nil {
-		t.Fatalf("UnmanagedActions: %v", err)
-	}
-	if len(unmanaged) > 0 {
-		t.Errorf("CI blocks use actions absent from toolchain.yml: %v", unmanaged)
 	}
 }
 
@@ -80,12 +137,12 @@ func TestApplyToolVersionsOverridesGoInstall(t *testing.T) {
 func TestApplyBinaryVersionsOverridesBlockPin(t *testing.T) {
 	manifest := &Toolchain{
 		Version:  9,
-		Binaries: []Binary{{Name: "shellcheck", Version: "9.9.9"}},
+		Binaries: []Binary{{Name: "bats", Version: "9.9.9"}},
 	}
 
-	got := manifest.ApplyBinaryVersions("          shellcheck_version=\"0.0.1\"\n")
+	got := manifest.ApplyBinaryVersions("          bats_version=\"0.0.1\"\n")
 
-	if !strings.Contains(got, `shellcheck_version="9.9.9"`) {
+	if !strings.Contains(got, `bats_version="9.9.9"`) {
 		t.Errorf("manifest binary version not applied: %q", got)
 	}
 	if strings.Contains(got, "0.0.1") {
@@ -112,7 +169,7 @@ func TestApplyBinaryVersionsHandlesUnderscoredName(t *testing.T) {
 // A block may pin a version the manifest does not own; only managed names are
 // rewritten, so an unrelated assignment of the same shape is left intact.
 func TestApplyBinaryVersionsLeavesUnmanagedNameAlone(t *testing.T) {
-	manifest := &Toolchain{Version: 9, Binaries: []Binary{{Name: "shellcheck", Version: "9.9.9"}}}
+	manifest := &Toolchain{Version: 9, Binaries: []Binary{{Name: "bats", Version: "9.9.9"}}}
 
 	got := manifest.ApplyBinaryVersions("          hadolint_version=\"1.2.3\"\n")
 
@@ -152,5 +209,33 @@ func TestApplyUvxVersionsTracksTheHookRev(t *testing.T) {
 	unmapped := "      - run: uvx somethingelse@1.2.3 --help\n"
 	if got := manifest.ApplyUvxVersions(unmapped); got != unmapped {
 		t.Errorf("unmapped tool rewritten: %q", got)
+	}
+}
+
+func TestAnActionPinnedToACommitKeepsItsCommit(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Actions: []Action{{Uses: "actions/checkout", Version: "v9"}}}
+	line := "      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v4.1.1\n"
+
+	if got := manifest.ApplyActionVersions(line); got != line {
+		t.Errorf("a commit pin was loosened to a tag: %q", got)
+	}
+}
+
+// A hand-written release job builds against the Go it names, often a matrix of
+// several, and one declared version would collapse it.
+func TestAWorkflowForgeDidNotWriteKeepsItsRuntimes(t *testing.T) {
+	manifest := &Toolchain{
+		Version:  1,
+		Actions:  []Action{{Uses: "actions/setup-go", Version: "v9"}},
+		Runtimes: []Runtime{{Name: "go", Version: "1.99"}},
+	}
+
+	got := manifest.ApplyWorkflowPins("      - uses: actions/setup-go@v1\n        with:\n          go-version: \"1.21\"\n")
+
+	if !strings.Contains(got, "actions/setup-go@v9") {
+		t.Errorf("the action pin was not applied: %q", got)
+	}
+	if !strings.Contains(got, `go-version: "1.21"`) {
+		t.Errorf("the runtime was rewritten: %q", got)
 	}
 }

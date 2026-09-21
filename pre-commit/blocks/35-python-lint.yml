@@ -1,6 +1,6 @@
   # Python: linting
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.5
+    rev: "{{pin}}"
     hooks:
       - id: ruff-check
         args: [--fix]

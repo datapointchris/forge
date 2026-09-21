@@ -1,7 +1,12 @@
 # Python
-      - uses: astral-sh/setup-uv@v7
+# covers: uv-lock ruff-format ruff-check mypy
+      - uses: astral-sh/setup-uv@{{pin}}
         with:
           enable-cache: true
+
+      # Before the sync, which would rewrite a stale lock rather than fail on
+      # it. uvx, so the uv is the one the uv-lock hook pins.
+      - run: uvx uv@{{pin}} lock --check
 
       - run: uv sync --all-extras --dev
 
@@ -9,9 +14,9 @@
       # dependencies, and a repo treating ruff as an installed tool rather than a
       # project dependency does not declare it. The version is the one the
       # pre-commit hook pins, so the two cannot disagree about a finding.
-      - run: uvx ruff@0.12.5 check .
+      - run: uvx ruff@{{pin}} check .
 
-      - run: uvx ruff@0.12.5 format --check .
+      - run: uvx ruff@{{pin}} format --check .
 
       # Declaring mypy as a dependency is the opt-in, and `uv run` is the same
       # invocation the pre-commit hook uses, so a repo passing locally passes

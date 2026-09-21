@@ -120,10 +120,14 @@ Three categories are seeded by `Generate` rather than by a component:
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck
 findings by reporting success there.
 
-**Generation overwrites every block's `rev:` from the declaration, and stamps its `version` as
-`# forge-toolchain: N`.** Bump the version on any rev change, because the stamp is what staged
-rollout reads. `pre-commit/toolchain.yml` is a test fixture for `TestToolchainManagesEveryBlockRepo`
-and read by no command.
+**Blocks name no version.** Each writes `{{pin}}` where one belongs, generation fills it from the
+declaration, and a pin the declaration cannot fill is a refusal rather than a placeholder shipped to
+a repo (`toolchain.Unpinned`, `TestBlocksNameNoVersion`). Generation stamps the declaration's
+`version` as `# forge-toolchain: N`; bump it on any pin change, because the stamp is what staged
+rollout reads. A tool CI runs whose pre-commit hook pins its release takes that release, as
+`hookPinnedTools` maps them, and a `binaries` entry for one is refused as a second copy.
+`toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its values name
+tools rather than releases.
 
 **Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
 reads it, and a file at a managed path without it is reported rather than overwritten
@@ -160,6 +164,11 @@ Per-key ownership recorded at write time replaced whole-section overwrites, whic
 
 The generator preserves these across re-runs. A safety check aborts if unrecognized hooks exist without markers.
 
+A custom section naming a repo the versions file declares takes the declared rev on every run.
+
+A custom hook sharing a standard hook's id replaces that hook whole, so the declared rev and args never
+reach it. `check` reports each one as `ByHand` under its own item, and the config still regenerates.
+
 ## CI Standardization System
 
 `ci/blocks/` fragments compose into `.github/workflows/validate.yml`, triggered on `pull_request` and
@@ -176,6 +185,27 @@ failure mode is a duplicate run rather than an unvalidated main.
 parallel so a failure names its module. A declared stack with no CI block is skipped rather than
 emitting an empty job. That is why docker has no block: a Dockerfile is built by the deploy, not by
 validation.
+
+**One more job, `hooks`, runs the pre-commit hooks no stack job covers.** `ci.HooksToRun` reads them
+from the committed `.pre-commit-config.yaml`, never from the config the precommit die would write.
+CI runs the committed file, and the two differ wherever that die is blocked or not yet applied. A
+list taken from the owed config would name hooks the file lacks. A repo declaring no components gets
+a workflow holding this job alone, wherever forge maintains its pre-commit config.
+
+**The hooks job drops a hook a stack job here runs, and a stack block names each one it runs.** That
+is its `# covers:` line, which names hooks rather than a stack because a stack job runs only the
+checks written into it. `TestAStackJobRunsEveryHookItsStackCarries` holds each stack block to every
+hook its stack's pre-commit blocks carry, so a hook added to one needs a step in the other. The job
+also drops a hook off the `pre-commit` stage, and a local hook, whose tool only a stack job installs.
+A local hook calling uv is the exception, because this job sets uv up. The shell block is why
+coverage is decided per repo. Every config carries it, and only a repo declaring a shell component
+has a job running it.
+
+**The hooks job checks what the push or pull request changed.** That is what the hooks saw at commit
+time, so a finding in a file nobody touched cannot fail a push. The checkout stays one commit deep
+and the job fetches only the base commit. pre-commit falls back to a two-dot diff where two commits
+share no history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit
+can be fetched, as on a repo's first push, the job checks every file and says so in a notice.
 
 **`runs-on` follows the repo's declared visibility, through `ci.RunnerFor`.** A private repo takes the
 self-hosted pool, because GitHub bills hosted minutes on private repos only. Anything not positively
@@ -198,11 +228,14 @@ catches: `defaults.run.working-directory` does not apply to action inputs, so a 
 `{{dir}}`.
 
 **Every pinned version comes from the declaration.** `versions_file` resolves like `repos_registry` —
-flag, then `$FORGE_VERSIONS_FILE`, then the config key — and unset means the manifest embedded in
-this binary. A declared file that cannot be read is an error, never a fallback: rolling out whatever
-the binary shipped with reports success and changes nothing. `toolchain.LoadFile` reads the
-declaration into the embedded default's type, so only the path `forge toolchain show` prints tells
-the two apart.
+flag, then `$FORGE_VERSIONS_FILE`, then the config key — and unset is an error, because forge ships
+no pins of its own. `forge toolchain show` prints the path it read.
+
+**The declared pins reach workflows forge did not write.** The `ci` die rewrites the declared action,
+`go install`, uvx and binary versions in every hand-written workflow and in every custom section of
+the generated one, through `ApplyWorkflowPins`, and changes nothing else in them. A runtime version is
+left alone, because a hand-written matrix may test several on purpose. So is an action pinned to a
+commit, which is a stronger pin than the tag that would replace it.
 
 **The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
 and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches

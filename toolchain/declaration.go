@@ -33,9 +33,9 @@ type Language struct {
 // when none is declared.
 func (l Language) Minimum() string { return l.BindingMinimum.Value }
 
-// declaration is the on-disk shape of the version file. It differs from the
-// embedded manifest's YAML deliberately: this file is read by several tools and
-// carries its reasoning in fields, because JSON holds no comments.
+// declaration is the on-disk shape of the version file. It differs from the test
+// fixture's YAML deliberately: this file is read by several tools and carries its
+// reasoning in fields, because JSON holds no comments.
 type declaration struct {
 	Stamp struct {
 		Version int `json:"version"`
@@ -106,6 +106,9 @@ func LoadFile(path string) (*Toolchain, error) {
 		}
 	}
 	sortRuntimes(manifest.Runtimes)
+	if err := manifest.refuseDerivedBinaries(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return manifest, nil
 }
 

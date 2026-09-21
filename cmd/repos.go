@@ -94,13 +94,9 @@ func loadAssets() (reconcile.Assets, error) {
 
 // loadVersions reads the declaration this machine names.
 //
-// One source, always. A missing declaration is an error rather than a fallback
-// to the manifest embedded in this binary: the two carry the same shape and
-// print the same kind of numbers, so a silent fallback rolls out whatever the
-// binary shipped with and reports success — a bump that moves no repo, and a
-// generated config nobody can account for. Naming the file is what makes a
-// version bump one edit and a sweep, so a machine that names none is
-// half-provisioned rather than defaulted.
+// forge ships no pins of its own, so a machine naming no versions file gets
+// errNoVersionDeclaration, never a default. A version bump is then one edit to
+// that file and one `repos apply`.
 func loadVersions() (*toolchain.Toolchain, error) {
 	path := config.VersionsPath()
 	if path == "" {

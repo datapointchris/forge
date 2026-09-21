@@ -390,7 +390,8 @@ type block struct {
 }
 
 // Generate composes a .pre-commit-config.yaml from blocks and custom sections.
-// Tool versions come from the toolchain manifest, not the blocks' own rev lines.
+// Every rev comes from the manifest, and a block's pin it cannot fill is an
+// error rather than a config pre-commit would reject at install.
 //
 // Components carry where each stack lives, so a stack block is rendered once per
 // directory it was declared in. A repo whose frontend is in web/ and one whose
@@ -452,7 +453,7 @@ func Generate(
 		// Insert custom hooks that go BEFORE this block
 		if section, ok := customSections["before:"+b.Name]; ok {
 			lines = append(lines, "")
-			lines = append(lines, section)
+			lines = append(lines, manifest.ApplyRevs(section))
 		}
 
 		// Strip leading description comment (it's moved to the generated: header)
@@ -475,18 +476,24 @@ func Generate(
 		// Insert custom hooks that go AFTER this block
 		if section, ok := customSections["after:"+b.Name]; ok {
 			lines = append(lines, "")
-			lines = append(lines, section)
+			lines = append(lines, manifest.ApplyRevs(section))
 		}
 	}
 
-	// Custom hooks after everything
+	// Custom hooks after everything. Every section is the repo's own apart from
+	// the revs of repos the manifest declares, which a bump would otherwise
+	// leave behind in it.
 	if section, ok := customSections["after:all"]; ok {
 		lines = append(lines, "")
-		lines = append(lines, section)
+		lines = append(lines, manifest.ApplyRevs(section))
 	}
 
 	lines = append(lines, "")
-	return strings.Join(lines, "\n"), nil
+	config := strings.Join(lines, "\n")
+	if missing := toolchain.Unpinned(config); len(missing) > 0 {
+		return "", fmt.Errorf("the versions file pins nothing for %s", strings.Join(missing, ", "))
+	}
+	return config, nil
 }
 
 // GetExistingHookIDs extracts all hook IDs from an existing config.

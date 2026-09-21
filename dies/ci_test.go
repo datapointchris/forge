@@ -3,6 +3,8 @@ package dies
 import (
 	"os"
 	"os/exec"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -81,7 +83,7 @@ func TestTheDiesOwnLintRejectsThePoolLabelWithoutTheConfigAndAcceptsItWithOne(t 
 
 	assets := testAssets(t)
 	workflow, err := ci.Generate(assets.CI, assets.Manifest,
-		[]config.Component{{Stack: "go", Dir: "."}}, nil, ci.Ungated, ci.SelfHosted)
+		[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, ci.SelfHosted)
 	if err != nil {
 		t.Fatalf("Generate: %s", err)
 	}
@@ -300,4 +302,111 @@ func TestTheLintDeclarationIsWrittenBeforeTheWorkflowThatNamesIt(t *testing.T) {
 	if lint > workflow {
 		t.Errorf("changes = %v, want the lint declaration before the workflow that names it", items)
 	}
+}
+
+// The registry is silent about which stacks are here, and forge's stamp on the
+// pre-commit config still makes those hooks forge's to run.
+func TestAStampedRepoWithNoComponentsGetsTheHooksJob(t *testing.T) {
+	target := fixture(t, nil, map[string]string{".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos: []\n"})
+
+	applyAll(t, target, PreCommit{})
+	applyAll(t, target, CI{})
+
+	workflow, err := os.ReadFile(target.Path(ci.WorkflowPath))
+	if err != nil {
+		t.Fatalf("read the workflow: %s", err)
+	}
+	if !strings.Contains(string(workflow), "\n  "+ci.HooksJob+":\n") {
+		t.Errorf("no hooks job:\n%s", workflow)
+	}
+}
+
+// The precommit die would add every generic block's hooks to this config, and
+// is not asked to. A job listing them would fail on each one this file lacks.
+func TestTheHooksJobRunsTheHooksTheCommittedConfigHolds(t *testing.T) {
+	committed := "# forge-toolchain: 1\n" +
+		"repos:\n" +
+		"  # generated:codespell\n" +
+		"  - repo: https://github.com/codespell-project/codespell\n" +
+		"    rev: v2.4.1\n" +
+		"    hooks:\n" +
+		"      - id: codespell\n"
+	target := fixture(t, nil, map[string]string{".pre-commit-config.yaml": committed})
+
+	applyAll(t, target, CI{})
+
+	workflow, err := os.ReadFile(target.Path(ci.WorkflowPath))
+	if err != nil {
+		t.Fatalf("read the workflow: %s", err)
+	}
+	listed := regexp.MustCompile(`(?s)hooks=\(\n(.*?)\n\s*\)`).FindStringSubmatch(string(workflow))
+	if listed == nil {
+		t.Fatalf("no hook list:\n%s", workflow)
+	}
+	if got := strings.Fields(listed[1]); !slices.Equal(got, []string{"codespell"}) {
+		t.Errorf("hooks job runs %v, want the committed config's [codespell]", got)
+	}
+}
+
+func TestARepoForgeMaintainsNothingInIsOwedNoWorkflow(t *testing.T) {
+	target := fixture(t, nil, nil)
+
+	applyAll(t, target, CI{})
+
+	if _, err := os.Stat(target.Path(ci.WorkflowPath)); !os.IsNotExist(err) {
+		t.Errorf("a workflow was written for a repo with nothing to run: %v", err)
+	}
+}
+
+func TestAHandWrittenWorkflowTakesTheDeclaredPinsAndNothingElse(t *testing.T) {
+	commit := "0123456789abcdef0123456789abcdef01234567"
+	release := "name: release\n" +
+		"on: push\n" +
+		"jobs:\n" +
+		"  build:\n" +
+		"    runs-on: ubuntu-latest\n" +
+		"    steps:\n" +
+		"      - uses: actions/checkout@v1\n" +
+		"      - uses: actions/setup-go@" + commit + " # v5\n" +
+		"        with:\n" +
+		"          go-version: \"1.10\"\n" +
+		"      - uses: example/unmanaged@v3\n"
+	target := fixture(t, stacks("go"), map[string]string{".github/workflows/release.yml": release})
+
+	applyAll(t, target, CI{})
+
+	got := readFile(t, target.Path(".github/workflows/release.yml"))
+	want := strings.Replace(release, "actions/checkout@v1", "actions/checkout@fixture-checkout", 1)
+	if got != want {
+		t.Errorf("release.yml =\n%s\nwant only the checkout pin changed:\n%s", got, want)
+	}
+}
+
+// The blocker says the two pipelines may duplicate jobs, and the pins are no
+// part of that.
+func TestAHandWrittenPipelineBesideTheGeneratedOneIsStillRepinned(t *testing.T) {
+	pipeline := "name: ci\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v1\n"
+	target := fixture(t, stacks("go"), map[string]string{".github/workflows/ci.yml": pipeline})
+
+	applyAll(t, target, CI{})
+
+	if got := readFile(t, target.Path(".github/workflows/ci.yml")); !strings.Contains(got, "actions/checkout@fixture-checkout") {
+		t.Errorf("ci.yml kept its own checkout pin:\n%s", got)
+	}
+	changes, err := CI{}.Diff(target, mustObserve(t, target))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(changedItems(changes), ".github/workflows/ci.yml") {
+		t.Error("the blocker on the hand-written pipeline went with its pins")
+	}
+}
+
+func mustObserve(t *testing.T, target reconcile.Target) reconcile.Observation {
+	t.Helper()
+	observed, err := CI{}.Observe(target)
+	if err != nil {
+		t.Fatalf("Observe: %s", err)
+	}
+	return observed
 }

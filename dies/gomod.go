@@ -94,9 +94,8 @@ func (GoMod) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if lang, declared := m.LanguageFor("go"); declared {
 			state.floor, state.pinned = lang.Floor, lang.Toolchain
 		}
-		// The embedded manifest predates the declaration and carries runtimes
-		// alone, so a binary reading it still pins a toolchain and simply
-		// asserts no floor.
+		// A manifest declaring no languages — the YAML test fixture — carries
+		// runtimes alone, so it still pins a toolchain and asserts no floor.
 		if state.pinned == "" {
 			if version, managed := m.RuntimeVersion("go"); managed {
 				state.pinned = version

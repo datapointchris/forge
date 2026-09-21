@@ -392,39 +392,61 @@ func sameConfig(a, b []byte) (bool, error) {
 	return reflect.DeepEqual(left, right), nil
 }
 
-func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
-	root := t.Repo.Path
+// owedPreCommit is the config the precommit die would write to a repo, with
+// what it read to decide.
+type owedPreCommit struct {
+	blocksFS       fs.FS
+	existing       string
+	declared       *config.Toolchain
+	basis          maintenance
+	customSections map[string]string
+	scripts        []string
+	// wanted is "" where the basis is not applicable.
+	wanted string
+}
+
+func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 	blocksFS, err := fs.Sub(t.Assets.PreCommit, "blocks")
 	if err != nil {
-		return nil, err
+		return owedPreCommit{}, err
+	}
+	owed := owedPreCommit{blocksFS: blocksFS}
+	if data, err := os.ReadFile(filepath.Join(t.Repo.Path, preCommitConfigPath)); err == nil {
+		owed.existing = string(data)
 	}
 
-	var existing string
-	if data, err := os.ReadFile(filepath.Join(root, preCommitConfigPath)); err == nil {
-		existing = string(data)
+	owed.declared, owed.basis = maintained(t.Repo.Toolchain, owed.existing)
+	if !owed.basis.applicable() {
+		return owed, nil
 	}
 
-	declared, basis := maintained(t.Repo.Toolchain, existing)
-	if !basis.applicable() {
-		return preCommitState{basis: basis, blockers: strandedToolConfigs(root, basis)}, nil
+	owed.customSections = precommit.ExtractCustomSections(owed.existing)
+	owed.scripts = shebangScripts(t.Repo.Path, t.Versioned())
+	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, t.Versioned(), owed.scripts)
+	if err != nil {
+		return owedPreCommit{}, err
 	}
+	return owed, nil
+}
 
-	customSections := precommit.ExtractCustomSections(existing)
-
-	scripts := shebangScripts(root, t.Versioned())
-
-	wanted, err := precommit.Generate(blocksFS, t.Assets.Manifest, declared, customSections, t.Versioned(), scripts)
+func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
+	root := t.Repo.Path
+	owed, err := preCommitOwed(t)
 	if err != nil {
 		return nil, err
 	}
+	declared, wanted := owed.declared, owed.wanted
+	if !owed.basis.applicable() {
+		return preCommitState{basis: owed.basis, blockers: strandedToolConfigs(root, owed.basis)}, nil
+	}
 
-	state := preCommitState{basis: basis, config: readGenerated(root, preCommitConfigPath, wanted)}
+	state := preCommitState{basis: owed.basis, config: readGenerated(root, preCommitConfigPath, wanted)}
 
 	// Unmarked hooks abort a real sync rather than being destroyed. Surfacing
 	// them is the whole point: the fix is adding markers, not letting the sync
 	// take them.
-	if existing != "" {
-		unknown, err := precommit.SafetyCheck(existing, blocksFS, declared, customSections)
+	if owed.existing != "" {
+		unknown, err := precommit.SafetyCheck(owed.existing, owed.blocksFS, declared, owed.customSections)
 		if err != nil {
 			return nil, err
 		}
@@ -432,6 +454,20 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			state.blockers = append(state.blockers, blocker(preCommitConfigPath,
 				fmt.Sprintf("%s need a # > custom: marker or a sync would delete them: %s",
 					plural(len(unknown), "hook", "hooks"), strings.Join(unknown, ", "))))
+		}
+	}
+
+	// Its own item, so the config is still regenerated: that keeps the
+	// override as it is, and only a person can say whether it should go.
+	if len(owed.customSections) > 0 {
+		standard, err := precommit.Generate(owed.blocksFS, t.Assets.Manifest, declared, nil, t.Versioned(), owed.scripts)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range precommit.Shadowed(standard, owed.customSections) {
+			state.blockers = append(state.blockers, blocker("custom hook "+id,
+				"a custom section defines "+id+", which replaces the standard hook of that id whole, so the declared rev and args never reach it — "+
+					"remove it from the section to take the standard one"))
 		}
 	}
 

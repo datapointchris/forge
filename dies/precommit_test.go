@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -8,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/datapointchris/forge/reconcile"
 )
@@ -635,8 +638,7 @@ func TestPrecommitStillDeploysAToolConfigThatIsNotThereYet(t *testing.T) {
 // leaving one behind would keep it in force and forge's file unread. It is
 // removable because the same content lands at the new path in the same run.
 func TestPrecommitRemovesASupersededSpellingCarryingTheSameConfig(t *testing.T) {
-	sameContent := `{"default": true, "MD013": false, "MD024": {"siblings_only": true},
-	  "MD033": false, "MD036": false, "MD038": false, "MD046": false}`
+	sameContent := standardMarkdownlintAsJSON(t)
 	target := fixture(t, stacks("shell"), map[string]string{".markdownlint.json": sameContent})
 
 	applyAll(t, target, PreCommit{})
@@ -653,8 +655,7 @@ func TestPrecommitRemovesASupersededSpellingCarryingTheSameConfig(t *testing.T) 
 // the same run. apply continues past a failed change, so a write that failed
 // and a removal that succeeded would leave the repo with no config at all.
 func TestPrecommitKeepsTheSupersededSpellingWhenTheReplacementIsNotThere(t *testing.T) {
-	sameContent := `{"default": true, "MD013": false, "MD024": {"siblings_only": true},
-	  "MD033": false, "MD036": false, "MD038": false, "MD046": false}`
+	sameContent := standardMarkdownlintAsJSON(t)
 	target := fixture(t, stacks("shell"), map[string]string{".markdownlint.json": sameContent})
 
 	// A directory at the new path is what a failed write leaves behind.
@@ -758,4 +759,62 @@ func TestPrecommitReportsASupersededSpellingThatDiffers(t *testing.T) {
 	if _, err := os.Stat(target.Path(".markdownlint.json")); err != nil {
 		t.Error("apply removed a superseded config it was supposed to report")
 	}
+}
+
+// The custom hook keeps its own rev whatever the declared one is, and without
+// the report every verb calls the repo converged.
+func TestACustomHookReplacingAStandardOneIsReportedAndTheConfigStillRegenerates(t *testing.T) {
+	custom := "# > custom:after:all - our refcheck\n" +
+		"  - repo: https://github.com/datapointchris/refcheck\n    rev: v0.2.1\n    hooks:\n      - id: refcheck\n"
+	target := fixture(t, stacks("go"), map[string]string{
+		".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos:\n" + custom,
+	})
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	var reported bool
+	for _, change := range measured.Fold(reconcile.LensCheck).Changes {
+		reported = reported || (change.Item == "custom hook refcheck" && change.Repair == reconcile.ByHand)
+	}
+	if !reported {
+		t.Errorf("the shadowed refcheck went unreported: %v", measured.Fold(reconcile.LensCheck).Changes)
+	}
+	if !slices.Contains(plannedItems(measured), preCommitConfigPath) {
+		t.Error("the finding stopped the config regenerating")
+	}
+}
+
+func TestACustomHookOfItsOwnIdIsNotReported(t *testing.T) {
+	custom := "# > custom:after:all - our own check\n" +
+		"  - repo: local\n    hooks:\n      - id: my-bespoke-check\n" +
+		"        name: my bespoke check\n        entry: ./check.sh\n        language: system\n"
+	target := fixture(t, stacks("go"), map[string]string{
+		".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos:\n" + custom,
+	})
+
+	for _, change := range reconcile.Assess(target, PreCommit{}).Fold(reconcile.LensCheck).Changes {
+		if strings.HasPrefix(change.Item, "custom hook ") {
+			t.Errorf("a hook no standard block defines was reported: %+v", change)
+		}
+	}
+}
+
+// standardMarkdownlintAsJSON is the deployed markdownlint config in the JSON
+// spelling it supersedes, read from the asset so a new rule cannot leave the
+// fixture describing a config forge does not deploy.
+func standardMarkdownlintAsJSON(t *testing.T) string {
+	t.Helper()
+	data, err := fs.ReadFile(testAssets(t).PreCommit, "configs/markdownlint.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := yaml.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	out, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }

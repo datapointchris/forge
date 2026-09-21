@@ -1,9 +1,10 @@
 # Shell
+# covers: shellcheck shfmt bats
       # The runner image ships a shellcheck, but which one drifts with the
       # image, and style-level findings are exactly what moves between
-      # versions. Pinning to the same release the pre-commit hook uses is what
-      # lets CI run at the hook's severity without a runner bump breaking a
-      # release. Version comes from the toolchain manifest.
+      # versions. The version is the release the shellcheck hook pins, which is
+      # what lets CI run at the hook's severity without a runner bump breaking a
+      # release.
       #
       # Unpacked into RUNNER_TEMP and called by path rather than dropped in
       # /usr/local/bin, so the step makes no assumption about what the runner
@@ -15,7 +16,7 @@
       # space before the interpreter so that zsh does not match on "sh".
       - name: ShellCheck
         run: |
-          shellcheck_version="0.10.0"
+          shellcheck_version="{{pin}}"
           mkdir -p "$RUNNER_TEMP/shellcheck"
           curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/shellcheck-v${shellcheck_version}.linux.x86_64.tar.xz" \
             | tar -xJf - --strip-components=1 -C "$RUNNER_TEMP/shellcheck" "shellcheck-v${shellcheck_version}/shellcheck"
@@ -40,7 +41,8 @@
       # its own. Do not add a printer flag here: one flag discards the whole
       # file, so CI would silently grade against a different style than the
       # hook. -d is an output flag, keeps the config, and exits non-zero on any
-      # difference. Version comes from the toolchain manifest, like shellcheck.
+      # difference. The version is the release the shfmt hook pins, like
+      # shellcheck's.
       #
       # Discovery uses shfmt's own -f over tracked files rather than repeating
       # the shebang scan above, because the two tools disagree about what they
@@ -54,7 +56,7 @@
       # bash or sh shebang, which no zsh file carries.
       - name: shfmt
         run: |
-          shfmt_version="3.13.1"
+          shfmt_version="{{pin}}"
           shfmt_bin="$RUNNER_TEMP/shfmt"
           curl -fsSL -o "$shfmt_bin" \
             "https://github.com/mvdan/sh/releases/download/v${shfmt_version}/shfmt_v${shfmt_version}_linux_amd64"
@@ -104,9 +106,9 @@
       # unnoticed in the first place.
       - name: bats
         run: |
-          bats_version="1.14.0"
-          bats_support_version="0.3.0"
-          bats_assert_version="2.2.4"
+          bats_version="{{pin}}"
+          bats_support_version="{{pin}}"
+          bats_assert_version="{{pin}}"
 
           if [ -z "$(find tests -name '*.bats' -print -quit 2>/dev/null)" ]; then
             echo "no bats tests found"

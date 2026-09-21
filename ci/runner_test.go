@@ -32,7 +32,7 @@ func runsOnLines(workflow string) []string {
 
 func TestAPrivateRepoTakesTheSelfHostedPoolOnEveryJob(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), nil, Ungated, SelfHosted)
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, SelfHosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestAPrivateRepoTakesTheSelfHostedPoolOnEveryJob(t *testing.T) {
 // runner just as well.
 func TestAPublicRepoNeverNamesTheSelfHostedPool(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), nil, Ungated, Hosted)
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, Hosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestRunnerForSendsOnlyAPositivelyPrivateRepoToTheRunner(t *testing.T) {
 // with nothing after it. GitHub rejects that at dispatch, where the failure is
 // a queued job on a repo whose CI reads green.
 func TestTheZeroRunnerFallsBackToTheHostedImage(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, Ungated, Runner(""))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, Runner(""))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestTheZeroRunnerFallsBackToTheHostedImage(t *testing.T) {
 // still contains the right word while declaring nothing to actionlint, which is
 // silent until it fails a private repo's hook on the next commit.
 func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), nil, Ungated, SelfHosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, SelfHosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestACustomSectionOnAnotherRunnerIsNamedWithItsJob(t *testing.T) {
 func TestAWorkflowEntirelyOnItsOwnRunnerNamesNothing(t *testing.T) {
 	for _, runner := range []Runner{Hosted, SelfHosted} {
 		workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-			comps("go", "api", "vue", "web"), nil, false, runner)
+			comps("go", "api", "vue", "web"), "", nil, false, runner)
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
