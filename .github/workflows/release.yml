@@ -9,9 +9,9 @@ on:
   push:
     branches: [main]
 
-# Two pushes to main inside one run's window would otherwise race, and the later
-# run fails pushing its version bump onto a ref that has already moved.
-# Never cancel-in-progress: a canceled release can leave a tag with no release.
+# Two pushes to main inside one run's window would otherwise race to cut the
+# same version. Never cancel-in-progress: a canceled release can leave a tag
+# with no release.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -22,61 +22,15 @@ jobs:
   validate:
     uses: ./.github/workflows/validate.yml
 
-  semver:
+  release:
     needs: [validate]
-    runs-on: ubuntu-latest
+    uses: datapointchris/reusable-workflows/.github/workflows/go-semantic-release.yml@v1
     permissions:
       contents: write
-    outputs:
-      version: ${{ steps.semrel.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: go-semantic-release/action@453e003c94ddb9c64e7ea4153794ef69e477259e # v1
-        id: semrel
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          # No changelog-file: the release body is the changelog, and nothing here
-          # tracks one.
-
-  goreleaser:
-    needs: semver
-    if: needs.semver.outputs.version != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: v${{ needs.semver.outputs.version }}
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
-        with:
-          distribution: goreleaser
-          version: v2.17.0
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+    with:
+      goreleaser: true
       # A tag exists before the module proxy has fetched it, and `go install
       # <module>@latest` resolves through that proxy. Inside the gap it returns
       # the previous version and exits 0, so the installer reports the machine
       # converged while leaving the old binary in place.
-      #
-      # Measured on a release whose assets were up while the proxy still listed
-      # the version before it: the installer printed "forge installed" twice
-      # without moving the binary.
-      - name: Prime the module proxy
-        env:
-          VERSION: ${{ needs.semver.outputs.version }}
-        run: |
-          module="$(go list -m)"
-          curl -fsS "https://proxy.golang.org/${module}/@v/v${VERSION}.info" || \
-            echo "proxy has not picked up v${VERSION} yet; it will on first fetch"
+      prime-module-proxy: true
