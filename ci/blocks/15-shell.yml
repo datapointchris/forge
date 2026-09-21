@@ -18,7 +18,7 @@
         run: |
           shellcheck_version="{{pin}}"
           mkdir -p "$RUNNER_TEMP/shellcheck"
-          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/shellcheck-v${shellcheck_version}.linux.x86_64.tar.xz" \
+          curl -fsSL --retry 3 "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/shellcheck-v${shellcheck_version}.linux.x86_64.tar.xz" \
             | tar -xJf - --strip-components=1 -C "$RUNNER_TEMP/shellcheck" "shellcheck-v${shellcheck_version}/shellcheck"
           shellcheck_bin="$RUNNER_TEMP/shellcheck/shellcheck"
           "$shellcheck_bin" --version
@@ -58,7 +58,7 @@
         run: |
           shfmt_version="{{pin}}"
           shfmt_bin="$RUNNER_TEMP/shfmt"
-          curl -fsSL -o "$shfmt_bin" \
+          curl -fsSL --retry 3 -o "$shfmt_bin" \
             "https://github.com/mvdan/sh/releases/download/v${shfmt_version}/shfmt_v${shfmt_version}_linux_amd64"
           chmod +x "$shfmt_bin"
           "$shfmt_bin" --version
