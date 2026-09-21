@@ -1,6 +1,6 @@
   # Spell checking
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: "{{pin}}"
     hooks:
       # Lock files are generated and mostly integrity hashes, so a base64
       # fragment reads as a typo — a package-lock.json hash can contain a

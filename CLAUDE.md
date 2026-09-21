@@ -120,10 +120,12 @@ Three categories are seeded by `Generate` rather than by a component:
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck
 findings by reporting success there.
 
-**Generation overwrites every block's `rev:` from the declaration, and stamps its `version` as
-`# forge-toolchain: N`.** Bump the version on any rev change, because the stamp is what staged
-rollout reads. `pre-commit/toolchain.yml` is a test fixture for `TestToolchainManagesEveryBlockRepo`
-and read by no command.
+**Blocks name no version.** Each writes `{{pin}}` where one belongs, generation fills it from the
+declaration, and a pin the declaration cannot fill is a refusal rather than a placeholder shipped to
+a repo (`toolchain.Unpinned`, `TestBlocksNameNoVersion`). Generation stamps the declaration's
+`version` as `# forge-toolchain: N`; bump it on any pin change, because the stamp is what staged
+rollout reads. `toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its
+values name tools rather than releases.
 
 **Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
 reads it, and a file at a managed path without it is reported rather than overwritten
@@ -198,11 +200,8 @@ catches: `defaults.run.working-directory` does not apply to action inputs, so a 
 `{{dir}}`.
 
 **Every pinned version comes from the declaration.** `versions_file` resolves like `repos_registry` —
-flag, then `$FORGE_VERSIONS_FILE`, then the config key — and unset means the manifest embedded in
-this binary. A declared file that cannot be read is an error, never a fallback: rolling out whatever
-the binary shipped with reports success and changes nothing. `toolchain.LoadFile` reads the
-declaration into the embedded default's type, so only the path `forge toolchain show` prints tells
-the two apart.
+flag, then `$FORGE_VERSIONS_FILE`, then the config key — and unset is an error, because forge ships
+no pins of its own. `forge toolchain show` prints the path it read.
 
 **The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
 and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches

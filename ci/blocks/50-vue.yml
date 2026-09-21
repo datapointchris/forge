@@ -1,7 +1,7 @@
 # Vue
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@{{pin}}
         with:
-          node-version: "24"
+          node-version: "{{pin}}"
           cache: npm
           # A glob rather than {{dir}}/package-lock.json, because the two
           # layouts in use keep the lock in different places: one lock per

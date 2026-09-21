@@ -14,7 +14,7 @@ import (
 
 func testManifest(t *testing.T) *toolchain.Toolchain {
 	t.Helper()
-	manifest, err := toolchain.Load(os.DirFS("../pre-commit"))
+	manifest, err := toolchain.Load(os.DirFS("../toolchain/testdata"))
 	if err != nil {
 		t.Fatalf("toolchain.Load: %v", err)
 	}
@@ -249,9 +249,12 @@ func TestGenerateFailsWhenNoComponentHasABlock(t *testing.T) {
 
 // The manifest, not the block file, decides the action version.
 func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
-	manifest := &toolchain.Toolchain{
-		Version: 42,
-		Actions: []toolchain.Action{{Uses: "actions/checkout", Version: "v99"}},
+	manifest := testManifest(t)
+	manifest.Version = 42
+	for i := range manifest.Actions {
+		if manifest.Actions[i].Uses == "actions/checkout" {
+			manifest.Actions[i].Version = "v99"
+		}
 	}
 
 	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil, Ungated, Hosted)
@@ -264,6 +267,18 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 	}
 	if !strings.HasPrefix(workflow, "# forge-toolchain: 42") {
 		t.Errorf("stamp missing or wrong: %q", strings.SplitN(workflow, "\n", 2)[0])
+	}
+}
+
+// A block's pin the versions file cannot fill would reach the runner as a
+// literal `{{pin}}` and fail at dispatch, so generation refuses it instead.
+func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {
+	manifest := testManifest(t)
+	manifest.Tools = nil
+
+	_, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), nil, Ungated, Hosted)
+	if err == nil || !strings.Contains(err.Error(), "govulncheck") {
+		t.Fatalf("Generate = %v, want a refusal naming govulncheck", err)
 	}
 }
 

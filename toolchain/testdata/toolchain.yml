@@ -1,0 +1,83 @@
+# A test fixture in the versions file's shape, and no command reads it. Every
+# command reads the file `versions_file` names, and a machine naming none is an
+# error rather than a fallback to this.
+#
+# The values name their tool rather than a release, so a generated file built
+# from this cannot pass for one built from the real pins. Every remote repo,
+# action and tool a block names must appear here, or rendering that block in a
+# test leaves its {{pin}} behind and the generator refuses it.
+version: 1
+
+hooks:
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: fixture-conventional-pre-commit
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: fixture-pre-commit-hooks
+  - repo: https://gitlab.com/bmares/check-json5
+    rev: fixture-check-json5
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: fixture-markdownlint-cli
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: fixture-shellcheck-precommit
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: fixture-pre-commit-shfmt
+  - repo: https://github.com/codespell-project/codespell
+    rev: fixture-codespell
+  - repo: https://github.com/datapointchris/refcheck
+    rev: fixture-refcheck
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: fixture-uv-pre-commit
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.0.3
+  - repo: https://github.com/tekwizely/pre-commit-golang
+    rev: fixture-pre-commit-golang
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: fixture-sqlfluff
+  - repo: https://github.com/JohnnyMorganz/StyLua
+    rev: fixture-stylua
+  - repo: https://github.com/hadolint/hadolint
+    rev: fixture-hadolint
+  - repo: https://github.com/rhysd/actionlint
+    rev: fixture-actionlint
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: fixture-pre-commit-terraform
+
+actions:
+  - uses: actions/checkout
+    version: fixture-checkout
+  - uses: actions/setup-go
+    version: fixture-setup-go
+  - uses: actions/setup-node
+    version: fixture-setup-node
+  - uses: actions/setup-python
+    version: fixture-setup-python
+  - uses: astral-sh/setup-uv
+    version: fixture-setup-uv
+  - uses: JohnnyMorganz/stylua-action
+    version: fixture-stylua-action
+  - uses: hashicorp/setup-terraform
+    version: fixture-setup-terraform
+
+tools:
+  - module: github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+    version: fixture-golangci-lint
+  - module: golang.org/x/vuln/cmd/govulncheck
+    version: fixture-govulncheck
+
+binaries:
+  - name: shellcheck
+    version: fixture-shellcheck
+  - name: shfmt
+    version: fixture-shfmt
+  - name: bats
+    version: fixture-bats
+  - name: bats_support
+    version: fixture-bats-support
+  - name: bats_assert
+    version: fixture-bats-assert
+
+runtimes:
+  - name: node
+    version: fixture-node
+  - name: go
+    version: fixture-go

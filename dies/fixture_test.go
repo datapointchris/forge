@@ -60,15 +60,16 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// testAssets reads the real blocks, configs and manifest off disk, so a die is
-// tested against what actually ships rather than a fake of it.
+// testAssets reads the real blocks and configs off disk, so a die is tested
+// against what actually ships. The manifest is the test fixture, because no real
+// pin ships with forge.
 func testAssets(t *testing.T) reconcile.Assets {
 	t.Helper()
 
 	root := repoRoot(t)
 	preCommit := os.DirFS(filepath.Join(root, "pre-commit"))
 
-	manifest, err := toolchain.Load(preCommit)
+	manifest, err := toolchain.Load(os.DirFS(filepath.Join(root, "toolchain", "testdata")))
 	if err != nil {
 		t.Fatalf("loading toolchain: %s", err)
 	}

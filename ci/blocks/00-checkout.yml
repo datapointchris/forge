@@ -1,2 +1,2 @@
 # Checkout
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@{{pin}}

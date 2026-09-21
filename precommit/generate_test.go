@@ -859,11 +859,29 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 // exactly the behavior an unmanaged repo should get.
 func testToolchain(t *testing.T) *toolchain.Toolchain {
 	t.Helper()
-	manifest, err := toolchain.Load(os.DirFS("../pre-commit"))
+	manifest, err := toolchain.Load(os.DirFS("../toolchain/testdata"))
 	if err != nil {
 		t.Fatalf("toolchain.Load: %v", err)
 	}
 	return manifest
+}
+
+// A rev the versions file cannot fill would reach pre-commit as `{{pin}}`, which
+// it rejects at install on every machine at once.
+func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {
+	manifest := testToolchain(t)
+	var kept []toolchain.Hook
+	for _, hook := range manifest.Hooks {
+		if hook.Repo != "https://github.com/datapointchris/refcheck" {
+			kept = append(kept, hook)
+		}
+	}
+	manifest.Hooks = kept
+
+	_, err := Generate(os.DirFS("../pre-commit/blocks"), manifest, detected("go"), nil, true, nil)
+	if err == nil || !strings.Contains(err.Error(), "datapointchris/refcheck") {
+		t.Fatalf("Generate = %v, want a refusal naming the refcheck repo", err)
+	}
 }
 
 func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {

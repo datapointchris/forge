@@ -1,32 +1,80 @@
 package toolchain
 
 import (
+	"io/fs"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
 
 func loadManifest(t *testing.T) *Toolchain {
 	t.Helper()
-	manifest, err := Load(os.DirFS("../pre-commit"))
+	manifest, err := Load(os.DirFS("testdata"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	return manifest
 }
 
-// A block that names a remote repo the manifest does not pin would ship a
-// version nothing tracks — the exact drift the manifest exists to prevent.
-func TestToolchainManagesEveryBlockRepo(t *testing.T) {
-	manifest := loadManifest(t)
-	blocks := os.DirFS("../pre-commit/blocks")
-
-	unmanaged, err := manifest.UnmanagedRepos(blocks)
-	if err != nil {
-		t.Fatalf("UnmanagedRepos: %v", err)
+// A version written into a block is a copy of the pin that generation throws
+// away, and the one a reader of the block believes. Every line a substitution
+// rewrites must carry Pin instead.
+func TestBlocksNameNoVersion(t *testing.T) {
+	versioned := []*regexp.Regexp{revLineRE, usesLineRE, goInstallRE, runtimeLineRE, binaryLineRE, uvxLineRE}
+	for _, dir := range []string{"../pre-commit/blocks", "../ci/blocks"} {
+		err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, err := os.ReadFile(dir + "/" + path)
+			if err != nil {
+				return err
+			}
+			for n, line := range strings.Split(string(data), "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "#") || strings.Contains(line, Pin) {
+					continue
+				}
+				for _, re := range versioned {
+					if re.MatchString(line) {
+						t.Errorf("%s/%s:%d names a version instead of %s: %s", dir, path, n+1, Pin, strings.TrimSpace(line))
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	if len(unmanaged) > 0 {
-		t.Errorf("blocks use repos absent from toolchain.yml: %v", unmanaged)
+}
+
+// The fixture has to fill every pin the real blocks carry, or a generator test
+// is refused before it asserts anything.
+func TestFixturePinsEveryBlock(t *testing.T) {
+	manifest := loadManifest(t)
+	for _, dir := range []string{"../pre-commit/blocks", "../ci/blocks"} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			data, err := os.ReadFile(dir + "/" + entry.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if missing := Unpinned(manifest.ApplyAll(string(data))); len(missing) > 0 {
+				t.Errorf("%s/%s: the fixture pins nothing for %v", dir, entry.Name(), missing)
+			}
+		}
+	}
+}
+
+func TestUnpinnedNamesTheRepoARevBelongsTo(t *testing.T) {
+	block := "  - repo: https://example.com/hook\n    rev: \"" + Pin + "\"\n    hooks:\n      - id: hook\n"
+	got := Unpinned((&Toolchain{Version: 1}).ApplyRevs(block))
+	if len(got) != 1 || got[0] != "https://example.com/hook" {
+		t.Errorf("Unpinned = %v, want the repo URL", got)
 	}
 }
 
@@ -44,20 +92,6 @@ func TestApplyRevsOverridesBlockRev(t *testing.T) {
 	}
 	if strings.Contains(got, "rev: v1.0.0") {
 		t.Errorf("block rev survived the override: %q", got)
-	}
-}
-
-// A CI block naming an action the manifest does not pin would ship a version
-// nothing tracks — same drift the hook manifest exists to prevent.
-func TestToolchainManagesEveryCIAction(t *testing.T) {
-	manifest := loadManifest(t)
-
-	unmanaged, err := manifest.UnmanagedActions(os.DirFS("../ci/blocks"))
-	if err != nil {
-		t.Fatalf("UnmanagedActions: %v", err)
-	}
-	if len(unmanaged) > 0 {
-		t.Errorf("CI blocks use actions absent from toolchain.yml: %v", unmanaged)
 	}
 }
 

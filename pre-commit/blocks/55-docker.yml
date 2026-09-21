@@ -1,6 +1,6 @@
   # Docker
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.14.0
+    rev: "{{pin}}"
     hooks:
       # DL3018 is DL3008's apk counterpart — the same "pin every package
       # version" rule, for an Alpine base rather than a Debian one. Ignoring one

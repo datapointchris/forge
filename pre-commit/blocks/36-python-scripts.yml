@@ -11,7 +11,7 @@
   # types_or: [python, pyi, jupyter]; without the override that tag constraint
   # survives the files: anchor and matches nothing.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.5
+    rev: "{{pin}}"
     hooks:
       - id: ruff-format
         alias: ruff-format-scripts

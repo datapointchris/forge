@@ -7,7 +7,7 @@
       # pre-commit hook runs, or a repo can be green in one and red in the other.
       # `latest` also made the step depend on the action resolving a release at
       # run time, which is a third-party code path that has failed.
-      - uses: JohnnyMorganz/stylua-action@v4
+      - uses: JohnnyMorganz/stylua-action@{{pin}}
         with:
           token: ${{ github.token }}
           version: v2.5.2

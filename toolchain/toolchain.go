@@ -10,8 +10,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// File is the manifest path relative to the asset root.
+// File is the manifest path relative to the directory Load reads.
 const File = "toolchain.yml"
+
+// Pin is what a block writes where a version belongs. Every version a generated
+// file carries comes from the versions file, so a block names none of its own.
+// A pin the versions file does not fill survives rendering, and Unpinned names
+// it so the generator can refuse the file rather than ship the placeholder.
+const Pin = "{{pin}}"
 
 var (
 	repoLineRE    = regexp.MustCompile(`^(\s*-\s*repo:\s*)(\S+)\s*$`)
@@ -36,8 +42,8 @@ var uvxHookRepos = map[string]string{
 }
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
-// config. Blocks carry their own revs for readability; this overrides them so
-// a version is declared in exactly one place.
+// config. Blocks carry Pin where a version goes, so a version is declared in
+// exactly one place.
 type Toolchain struct {
 	Version int    `yaml:"version"`
 	Hooks   []Hook `yaml:"hooks"`
@@ -90,7 +96,8 @@ type Action struct {
 	Version string `yaml:"version"`
 }
 
-// Load reads the manifest from the asset root.
+// Load reads a manifest in the YAML shape the test fixture uses. Every command
+// reads the versions file through LoadFile instead.
 func Load(assetsFS fs.FS) (*Toolchain, error) {
 	data, err := fs.ReadFile(assetsFS, File)
 	if err != nil {
@@ -107,6 +114,28 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 	return &manifest, nil
 }
 
+// Unpinned names each Pin that survived rendering, as the repo for a hook's rev
+// and as the trimmed line otherwise. Non-empty means the versions file does not
+// pin something a block uses.
+func Unpinned(content string) []string {
+	var missing []string
+	repo := ""
+	for _, line := range strings.Split(content, "\n") {
+		if m := repoLineRE.FindStringSubmatch(line); m != nil {
+			repo = m[2]
+		}
+		if !strings.Contains(line, Pin) {
+			continue
+		}
+		if revLineRE.MatchString(line) && repo != "" {
+			missing = append(missing, repo)
+			continue
+		}
+		missing = append(missing, strings.TrimSpace(line))
+	}
+	return missing
+}
+
 // RevFor returns the pinned rev for a repo URL, and whether it is managed.
 func (t *Toolchain) RevFor(repo string) (string, bool) {
 	for _, hook := range t.Hooks {
@@ -118,9 +147,8 @@ func (t *Toolchain) RevFor(repo string) (string, bool) {
 }
 
 // ApplyRevs rewrites each `rev:` line in a block to the manifest's pinned
-// version for the repo it belongs to. A repo the manifest does not manage — a
-// `repo: local` block, or one added without a manifest entry — is left alone;
-// UnmanagedRepos is what reports that case as an error.
+// version for the repo it belongs to. A repo the manifest does not manage is
+// left alone, so a block's Pin survives for Unpinned to report.
 func (t *Toolchain) ApplyRevs(content string) string {
 	lines := strings.Split(content, "\n")
 	currentRepo := ""
@@ -139,44 +167,6 @@ func (t *Toolchain) ApplyRevs(content string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
-}
-
-// UnmanagedRepos returns remote repo URLs used by blocks that the manifest does
-// not pin. Non-empty means a block would ship a version nothing tracks.
-func (t *Toolchain) UnmanagedRepos(blocksFS fs.FS) ([]string, error) {
-	var unmanaged []string
-	seen := make(map[string]bool)
-
-	err := fs.WalkDir(blocksFS, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".yml") {
-			return nil
-		}
-		data, err := fs.ReadFile(blocksFS, path)
-		if err != nil {
-			return err
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			m := repoLineRE.FindStringSubmatch(line)
-			if len(m) < 3 {
-				continue
-			}
-			if m[2] == "local" {
-				continue
-			}
-			if _, managed := t.RevFor(m[2]); !managed && !seen[m[2]] {
-				seen[m[2]] = true
-				unmanaged = append(unmanaged, m[2])
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return unmanaged, nil
 }
 
 // ActionVersion returns the pinned version ref for an action, and whether it is managed.
@@ -205,41 +195,6 @@ func (t *Toolchain) ApplyActionVersions(content string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
-}
-
-// UnmanagedActions returns actions used by CI blocks that the manifest does not
-// pin. Non-empty means a block would ship a version nothing tracks.
-func (t *Toolchain) UnmanagedActions(blocksFS fs.FS) ([]string, error) {
-	var unmanaged []string
-	seen := make(map[string]bool)
-
-	err := fs.WalkDir(blocksFS, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".yml") {
-			return nil
-		}
-		data, err := fs.ReadFile(blocksFS, path)
-		if err != nil {
-			return err
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			m := usesLineRE.FindStringSubmatch(line)
-			if len(m) < 4 {
-				continue
-			}
-			if _, managed := t.ActionVersion(m[2]); !managed && !seen[m[2]] {
-				seen[m[2]] = true
-				unmanaged = append(unmanaged, m[2])
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return unmanaged, nil
 }
 
 // ToolVersion returns the pinned version for a Go module, and whether it is managed.

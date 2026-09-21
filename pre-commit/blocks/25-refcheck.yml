@@ -19,7 +19,7 @@
   # No --strict: one advisory warning across every repo, and a warning is
   # about fragility rather than breakage.
   - repo: https://github.com/datapointchris/refcheck
-    rev: v0.5.2
+    rev: "{{pin}}"
     hooks:
       - id: refcheck
         args: [--moves]

@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -100,8 +101,11 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	runner := ci.RunnerFor(t.Repo.IsPrivate())
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, t.Repo.Toolchain.Components,
 		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root), runner)
-	if err != nil {
+	if errors.Is(err, ci.ErrNoJobs) {
 		return ciState{reason: "no components with a CI block"}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	// Both paths are read whatever the runner is. Scoping the read to the

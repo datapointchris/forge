@@ -15,7 +15,7 @@
       # space before the interpreter so that zsh does not match on "sh".
       - name: ShellCheck
         run: |
-          shellcheck_version="0.10.0"
+          shellcheck_version="{{pin}}"
           mkdir -p "$RUNNER_TEMP/shellcheck"
           curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/shellcheck-v${shellcheck_version}.linux.x86_64.tar.xz" \
             | tar -xJf - --strip-components=1 -C "$RUNNER_TEMP/shellcheck" "shellcheck-v${shellcheck_version}/shellcheck"
@@ -54,7 +54,7 @@
       # bash or sh shebang, which no zsh file carries.
       - name: shfmt
         run: |
-          shfmt_version="3.13.1"
+          shfmt_version="{{pin}}"
           shfmt_bin="$RUNNER_TEMP/shfmt"
           curl -fsSL -o "$shfmt_bin" \
             "https://github.com/mvdan/sh/releases/download/v${shfmt_version}/shfmt_v${shfmt_version}_linux_amd64"
@@ -104,9 +104,9 @@
       # unnoticed in the first place.
       - name: bats
         run: |
-          bats_version="1.14.0"
-          bats_support_version="0.3.0"
-          bats_assert_version="2.2.4"
+          bats_version="{{pin}}"
+          bats_support_version="{{pin}}"
+          bats_assert_version="{{pin}}"
 
           if [ -z "$(find tests -name '*.bats' -print -quit 2>/dev/null)" ]; then
             echo "no bats tests found"

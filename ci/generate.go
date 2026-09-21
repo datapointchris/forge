@@ -9,6 +9,7 @@
 package ci
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -21,6 +22,10 @@ import (
 	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/toolchain"
 )
+
+// ErrNoJobs is Generate's answer for a repo none of whose components has a CI
+// block. That repo is owed no workflow, which is not a failure to generate one.
+var ErrNoJobs = errors.New("no components with a CI block: nothing to generate")
 
 // WorkflowPath is where the generated workflow lands. Deliberately not ci.yml:
 // several repos carry a hand-written ci.yml, and generating over one would
@@ -281,7 +286,7 @@ func Generate(
 	}
 
 	if jobs == 0 {
-		return "", fmt.Errorf("no components with a CI block: nothing to generate")
+		return "", ErrNoJobs
 	}
 
 	if section, ok := customSections["after:all"]; ok {
@@ -289,7 +294,11 @@ func Generate(
 	}
 
 	lines = append(lines, "")
-	return strings.Join(lines, "\n"), nil
+	workflow := strings.Join(lines, "\n")
+	if missing := toolchain.Unpinned(workflow); len(missing) > 0 {
+		return "", fmt.Errorf("the versions file pins nothing for %s", strings.Join(missing, ", "))
+	}
+	return workflow, nil
 }
 
 // ForeignRunners names every job in a generated workflow whose runs-on is not

@@ -1,5 +1,5 @@
 # Terraform
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@{{pin}}
         with:
           terraform_wrapper: false
 

@@ -8,7 +8,7 @@
   # so this is the native exclusion rather than a path regex that would have to
   # enumerate .zshrc, .zprofile, .zlogin and the rest.
   - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.10.0
+    rev: "{{pin}}"
     hooks:
       - id: shellcheck
         exclude_types: [zsh]
@@ -22,7 +22,7 @@
   # would silently drop switch_case_indent and binary_next_line along with it.
   # Output flags (--write, --diff) are safe. .editorconfig is the style.
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: v3.13.1-1
+    rev: "{{pin}}"
     hooks:
       - id: shfmt
         exclude_types: [zsh]
