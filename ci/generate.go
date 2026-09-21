@@ -292,8 +292,10 @@ func Generate(
 		return "", ErrNoJobs
 	}
 
+	// A custom section is the repo's own apart from its pins, which a version
+	// bump would otherwise leave behind in every one naming a declared action.
 	if section, ok := customSections["after:all"]; ok {
-		lines = append(lines, "", section)
+		lines = append(lines, "", manifest.ApplyWorkflowPins(section))
 	}
 
 	lines = append(lines, "")
@@ -308,8 +310,8 @@ func Generate(
 // the runner the repo was generated for.
 //
 // The generator writes one runner into every job it emits, so a different value
-// can only have come from a custom section — a block preserved verbatim and
-// never rewritten, which is the whole contract of a custom section.
+// can only have come from a custom section, which regeneration preserves as
+// written apart from its pins.
 //
 // That job is invisible on a private repo. GitHub refuses a hosted job before
 // any step runs, so it reports zero steps and no failing step, while the rest
@@ -360,11 +362,11 @@ func (j workflowJob) render(manifest *toolchain.Toolchain, customSections map[st
 	// of checkout.
 	lines = append(lines, "", applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(j.checkout))), j.dir, runner))
 	if section, ok := customSections["before:"+j.name]; ok {
-		lines = append(lines, "", section)
+		lines = append(lines, "", manifest.ApplyWorkflowPins(section))
 	}
 	lines = append(lines, "", fmt.Sprintf("      # generated:%s", j.name), applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(j.block))), j.dir, runner))
 	if section, ok := customSections["after:"+j.name]; ok {
-		lines = append(lines, "", section)
+		lines = append(lines, "", manifest.ApplyWorkflowPins(section))
 	}
 	return lines
 }

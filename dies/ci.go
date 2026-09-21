@@ -61,7 +61,10 @@ type ciState struct {
 	// selfHosted records which runner the workflow names, for the row a
 	// converged repo shows.
 	selfHosted bool
-	blockers   []reconcile.Change
+	// repinned are the repo's own workflows, each wanting the declared pins
+	// and nothing else changed.
+	repinned []generatedFile
+	blockers []reconcile.Change
 }
 
 func (s ciState) Summary() string {
@@ -139,6 +142,8 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		},
 	}
 
+	state.repinned = repinnedWorkflows(root, t.Assets.Manifest)
+
 	for _, file := range state.files {
 		if !handWritten(root, file.rel) {
 			continue
@@ -191,6 +196,36 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	return state, nil
+}
+
+// repinnedWorkflows is every workflow forge did not write, each with the
+// declared pins applied.
+//
+// A version bump reached the generated workflow and none of these, so a
+// release job kept an action three majors behind the validation it gates on.
+// Only the pin lines change: the rest of the file is the repo's own, which is
+// why a hand-written workflow is otherwise never touched.
+func repinnedWorkflows(root string, manifest *toolchain.Toolchain) []generatedFile {
+	dir := filepath.Dir(ci.WorkflowPath)
+	entries, err := os.ReadDir(filepath.Join(root, dir))
+	if err != nil {
+		return nil
+	}
+	var files []generatedFile
+	for _, entry := range entries {
+		rel := filepath.ToSlash(filepath.Join(dir, entry.Name()))
+		// A hand-written file at the generated path is reported whole instead.
+		if ext := filepath.Ext(rel); entry.IsDir() || (ext != ".yml" && ext != ".yaml") || rel == ci.WorkflowPath || !handWritten(root, rel) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			continue
+		}
+		have := string(data)
+		files = append(files, generatedFile{rel: rel, want: manifest.ApplyWorkflowPins(have), have: have, exists: true})
+	}
+	return files
 }
 
 // lintConfigFor is the actionlint configuration a repo on this runner is owed.
@@ -341,8 +376,18 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 			changes = append(changes, change)
 		}
 	}
+	// Not suppressed by a blocker on the same path. The one a hand-written
+	// ci.yml draws is about it duplicating jobs, which its pins do not touch.
+	for _, file := range state.repinned {
+		if change, drifted := file.change(repinReason); drifted {
+			changes = append(changes, change)
+		}
+	}
 	return changes, nil
 }
+
+// repinReason is what a plan says for a workflow forge did not write.
+const repinReason = "take the declared action and tool versions; the rest of this workflow is the repo's own"
 
 func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	if !change.Actionable() {
@@ -354,6 +399,19 @@ func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outc
 		return reconcile.Outcome{}, err
 	}
 	state := observed.(ciState)
+
+	for _, repinned := range state.repinned {
+		if repinned.rel != change.Item {
+			continue
+		}
+		if repinned.matches() {
+			return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
+		}
+		if err := writeGenerated(t.Repo.Path, repinned); err != nil {
+			return reconcile.Outcome{}, err
+		}
+		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "repinned " + repinned.rel}, nil
+	}
 
 	// The plan names which file this change is for, and Perform re-observes
 	// rather than trusting it. Writing whichever file the die happens to hold

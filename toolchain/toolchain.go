@@ -31,6 +31,8 @@ var (
 	// block happens to name — the exact drift the manifest exists to prevent.
 	binaryLineRE = regexp.MustCompile(`^(\s*)([a-z0-9_]+)_version="\S+"\s*$`)
 	uvxLineRE    = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
+	// A full commit id, which is a stronger pin than any tag the manifest names.
+	commitRefRE = regexp.MustCompile(`@[0-9a-f]{40}\b`)
 )
 
 // hookPinnedTools maps a tool generated CI runs to the pre-commit repo whose rev
@@ -202,13 +204,14 @@ func (t *Toolchain) ActionVersion(uses string) (string, bool) {
 
 // ApplyActionVersions rewrites each `uses: owner/action@ref` to the manifest's
 // pinned version. A local workflow reference (`uses: ./...`) and any action the
-// manifest does not pin are left alone.
+// manifest does not pin are left alone, and so is an action pinned to a commit:
+// replacing that with a tag would loosen the pin.
 func (t *Toolchain) ApplyActionVersions(content string) string {
 	lines := strings.Split(content, "\n")
 
 	for i, line := range lines {
 		m := usesLineRE.FindStringSubmatch(line)
-		if len(m) < 4 {
+		if len(m) < 4 || commitRefRE.MatchString(line) {
 			continue
 		}
 		if version, managed := t.ActionVersion(m[2]); managed {
@@ -293,6 +296,14 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ApplyWorkflowPins rewrites the pins a workflow forge did not write shares
+// with the one it did: actions, `go install` tools, uvx tools and binaries.
+// A runtime version is left alone, because a hand-written matrix may test
+// several on purpose.
+func (t *Toolchain) ApplyWorkflowPins(content string) string {
+	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionVersions(content))))
 }
 
 // ApplyAll runs every substitution a generated file may need.

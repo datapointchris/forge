@@ -3,6 +3,7 @@ package dies
 import (
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -326,4 +327,57 @@ func TestARepoForgeMaintainsNothingInIsOwedNoWorkflow(t *testing.T) {
 	if _, err := os.Stat(target.Path(ci.WorkflowPath)); !os.IsNotExist(err) {
 		t.Errorf("a workflow was written for a repo with nothing to run: %v", err)
 	}
+}
+
+func TestAHandWrittenWorkflowTakesTheDeclaredPinsAndNothingElse(t *testing.T) {
+	commit := "0123456789abcdef0123456789abcdef01234567"
+	release := "name: release\n" +
+		"on: push\n" +
+		"jobs:\n" +
+		"  build:\n" +
+		"    runs-on: ubuntu-latest\n" +
+		"    steps:\n" +
+		"      - uses: actions/checkout@v1\n" +
+		"      - uses: actions/setup-go@" + commit + " # v5\n" +
+		"        with:\n" +
+		"          go-version: \"1.10\"\n" +
+		"      - uses: example/unmanaged@v3\n"
+	target := fixture(t, stacks("go"), map[string]string{".github/workflows/release.yml": release})
+
+	applyAll(t, target, CI{})
+
+	got := readFile(t, target.Path(".github/workflows/release.yml"))
+	want := strings.Replace(release, "actions/checkout@v1", "actions/checkout@fixture-checkout", 1)
+	if got != want {
+		t.Errorf("release.yml =\n%s\nwant only the checkout pin changed:\n%s", got, want)
+	}
+}
+
+// The blocker says the two pipelines may duplicate jobs, and the pins are no
+// part of that.
+func TestAHandWrittenPipelineBesideTheGeneratedOneIsStillRepinned(t *testing.T) {
+	pipeline := "name: ci\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v1\n"
+	target := fixture(t, stacks("go"), map[string]string{".github/workflows/ci.yml": pipeline})
+
+	applyAll(t, target, CI{})
+
+	if got := readFile(t, target.Path(".github/workflows/ci.yml")); !strings.Contains(got, "actions/checkout@fixture-checkout") {
+		t.Errorf("ci.yml kept its own checkout pin:\n%s", got)
+	}
+	changes, err := CI{}.Diff(target, mustObserve(t, target))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(changedItems(changes), ".github/workflows/ci.yml") {
+		t.Error("the blocker on the hand-written pipeline went with its pins")
+	}
+}
+
+func mustObserve(t *testing.T, target reconcile.Target) reconcile.Observation {
+	t.Helper()
+	observed, err := CI{}.Observe(target)
+	if err != nil {
+		t.Fatalf("Observe: %s", err)
+	}
+	return observed
 }

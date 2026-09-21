@@ -447,3 +447,20 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobIsClearedFirst(t *testing.T) {
 		t.Fatal("no clone outside $RUNNER_TEMP found; the shell block's bats step writes two into $HOME")
 	}
 }
+
+// A custom section naming a declared action went stale at every bump, because
+// regeneration carried it across as written.
+func TestACustomSectionTakesTheDeclaredPins(t *testing.T) {
+	custom := map[string]string{
+		"after:go": "      # > custom:after:go - release check\n" +
+			"      - uses: actions/checkout@v1",
+	}
+
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", custom, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if strings.Contains(workflow, "actions/checkout@v1") {
+		t.Errorf("the custom section kept its own pin:\n%s", workflow)
+	}
+}

@@ -209,3 +209,31 @@ func TestApplyUvxVersionsTracksTheHookRev(t *testing.T) {
 		t.Errorf("unmapped tool rewritten: %q", got)
 	}
 }
+
+func TestAnActionPinnedToACommitKeepsItsCommit(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Actions: []Action{{Uses: "actions/checkout", Version: "v9"}}}
+	line := "      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v4.1.1\n"
+
+	if got := manifest.ApplyActionVersions(line); got != line {
+		t.Errorf("a commit pin was loosened to a tag: %q", got)
+	}
+}
+
+// A hand-written release job builds against the Go it names, often a matrix of
+// several, and one declared version would collapse it.
+func TestAWorkflowForgeDidNotWriteKeepsItsRuntimes(t *testing.T) {
+	manifest := &Toolchain{
+		Version:  1,
+		Actions:  []Action{{Uses: "actions/setup-go", Version: "v9"}},
+		Runtimes: []Runtime{{Name: "go", Version: "1.99"}},
+	}
+
+	got := manifest.ApplyWorkflowPins("      - uses: actions/setup-go@v1\n        with:\n          go-version: \"1.21\"\n")
+
+	if !strings.Contains(got, "actions/setup-go@v9") {
+		t.Errorf("the action pin was not applied: %q", got)
+	}
+	if !strings.Contains(got, `go-version: "1.21"`) {
+		t.Errorf("the runtime was rewritten: %q", got)
+	}
+}

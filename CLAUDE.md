@@ -217,6 +217,12 @@ catches: `defaults.run.working-directory` does not apply to action inputs, so a 
 flag, then `$FORGE_VERSIONS_FILE`, then the config key — and unset is an error, because forge ships
 no pins of its own. `forge toolchain show` prints the path it read.
 
+**The declared pins reach workflows forge did not write.** The `ci` die rewrites the declared action,
+`go install`, uvx and binary versions in every hand-written workflow and in every custom section of
+the generated one, through `ApplyWorkflowPins`, and changes nothing else in them. A runtime version is
+left alone, because a hand-written matrix may test several on purpose. So is an action pinned to a
+commit, which is a stronger pin than the tag that would replace it.
+
 **The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
 and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
 up to. Taking a fixed standard library by raising the floor has a measured cost — `go install
