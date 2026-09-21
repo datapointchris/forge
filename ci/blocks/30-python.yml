@@ -1,4 +1,5 @@
 # Python
+# covers: uv-lock ruff-format ruff-check mypy
       - uses: astral-sh/setup-uv@{{pin}}
         with:
           enable-cache: true

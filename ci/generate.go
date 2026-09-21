@@ -269,8 +269,11 @@ func Generate(
 		if block == "" {
 			continue
 		}
+		covers, block := splitCovers(block)
+		for _, hook := range covers {
+			covered[hook] = true
+		}
 		jobs++
-		covered[precommit.StackToCategory(component.Stack)] = true
 		job := workflowJob{name: JobName(component), dir: component.Dir, checkout: shared, block: block}
 		lines = append(lines, job.render(manifest, customSections, runner)...)
 	}
@@ -378,22 +381,22 @@ const HooksJob = "hooks"
 // HooksToRun lists what the hooks job runs: every hook a standard block put in
 // the config, less three kinds.
 //
+//   - A hook a stack job here runs the check of, as its block's covers line
+//     names it. covered is keyed by Selector.
 //   - A local hook calls a tool the runner has only where a stack job
 //     installed it, in another job.
 //   - A hook off the pre-commit stage grades something a pushed tree does not
 //     carry, such as a commit message.
-//   - A hook whose block belongs to a stack with a job here runs there already,
-//     as that stack's own tools.
 func HooksToRun(preCommitConfig string, covered map[string]bool) []string {
 	var hooks []string
 	for _, hook := range precommit.GeneratedHooks(preCommitConfig) {
+		if covered[hook.Selector()] {
+			continue
+		}
 		if hook.Repo == "local" || hook.Repo == "meta" {
 			continue
 		}
 		if len(hook.Stages) > 0 && !slices.Contains(hook.Stages, "pre-commit") {
-			continue
-		}
-		if covered[precommit.BlockCategory(hook.Block)] {
 			continue
 		}
 		if !slices.Contains(hooks, hook.Selector()) {
@@ -401,6 +404,21 @@ func HooksToRun(preCommitConfig string, covered map[string]bool) []string {
 		}
 	}
 	return hooks
+}
+
+// coversLineRE is a stack block's line naming the pre-commit hooks its job runs
+// the checks of, each by the name `pre-commit run` selects it by. A long list
+// takes several lines.
+var coversLineRE = regexp.MustCompile(`(?m)^# covers:(.*)\n`)
+
+// splitCovers is the hooks a stack block covers, and the block without the
+// lines naming them.
+func splitCovers(block string) ([]string, string) {
+	var covers []string
+	for _, m := range coversLineRE.FindAllStringSubmatch(block, -1) {
+		covers = append(covers, strings.Fields(m[1])...)
+	}
+	return covers, coversLineRE.ReplaceAllString(block, "")
 }
 
 // hooksLineRE is the line in the hooks block that becomes one line per hook.

@@ -101,8 +101,8 @@ func Shadowed(standardConfig string, customSections map[string]string) []string 
 // BlockCategory is the declared category that pulls a block in.
 //
 // A generic block has none and answers with its own name. For the shell block
-// that name is also the stack a shell component declares, which is how a repo
-// with a shell job is known to have its shell hooks run already.
+// that name is also the stack a shell component declares, so the shell job is
+// the one whose checks its hooks are held to.
 func BlockCategory(block string) string {
 	if category, ok := categoryMap[block]; ok {
 		return category

@@ -22,8 +22,97 @@ func owedConfig(t *testing.T, components []config.Component, scripts ...string) 
 	return cfg
 }
 
+// coveredBy is what the named stacks' jobs declare they run, read from their
+// real blocks.
+func coveredBy(t *testing.T, stacks ...string) map[string]bool {
+	t.Helper()
+	covered := make(map[string]bool)
+	for _, stack := range stacks {
+		block, err := loadBlock(os.DirFS("blocks"), stack)
+		if err != nil || block == "" {
+			t.Fatalf("no %s block: %v", stack, err)
+		}
+		hooks, _ := splitCovers(block)
+		for _, hook := range hooks {
+			covered[hook] = true
+		}
+	}
+	return covered
+}
+
+// preCommitHooks is every hook the real pre-commit blocks run at the pre-commit
+// stage, by the category that pulls each block in.
+func preCommitHooks(t *testing.T) map[string][]precommit.GeneratedHook {
+	t.Helper()
+	entries, err := os.ReadDir("../pre-commit/blocks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byCategory := make(map[string][]precommit.GeneratedHook)
+	for _, entry := range entries {
+		data, err := os.ReadFile("../pre-commit/blocks/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := precommit.BlockName(entry.Name())
+		for _, hook := range precommit.GeneratedHooks("# generated:" + name + "\n" + string(data)) {
+			if len(hook.Stages) == 0 || slices.Contains(hook.Stages, "pre-commit") {
+				byCategory[precommit.BlockCategory(name)] = append(byCategory[precommit.BlockCategory(name)], hook)
+			}
+		}
+	}
+	return byCategory
+}
+
+// stackBlocks names every CI block a declared stack selects.
+func stackBlocks(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir("blocks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stacks []string
+	for _, entry := range entries {
+		if name := precommit.BlockName(entry.Name()); name != "checkout" && name != HooksJob {
+			stacks = append(stacks, name)
+		}
+	}
+	return stacks
+}
+
+// A hook its stack's job leaves out falls to the hooks job, which has none of
+// Go, terraform or node to run it with, or to nothing where it is local.
+func TestAStackJobRunsEveryHookItsStackCarries(t *testing.T) {
+	hooks := preCommitHooks(t)
+	for _, stack := range stackBlocks(t) {
+		covered := coveredBy(t, stack)
+		carried := make(map[string]bool)
+		for _, hook := range hooks[precommit.StackToCategory(stack)] {
+			carried[hook.Selector()] = true
+			if !covered[hook.Selector()] {
+				t.Errorf("the %s job does not run %s from the %s block", stack, hook.Selector(), hook.Block)
+			}
+		}
+		for hook := range covered {
+			if !carried[hook] {
+				t.Errorf("the %s block covers %s, which no %s pre-commit block carries", stack, hook, stack)
+			}
+		}
+	}
+}
+
+func TestACoversLineStaysOutOfTheWorkflow(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if strings.Contains(workflow, "covers:") {
+		t.Errorf("a covers line reached the workflow:\n%s", workflow)
+	}
+}
+
 func TestTheHooksJobRunsWhatNoStackJobCovers(t *testing.T) {
-	got := HooksToRun(owedConfig(t, comps("go", ".")), map[string]bool{"go": true})
+	got := HooksToRun(owedConfig(t, comps("go", ".")), coveredBy(t, "go"))
 
 	for _, want := range []string{"check-yaml", "check-json5", "markdownlint", "shellcheck", "shfmt", "codespell", "refcheck"} {
 		if !slices.Contains(got, want) {
@@ -32,6 +121,7 @@ func TestTheHooksJobRunsWhatNoStackJobCovers(t *testing.T) {
 	}
 	for _, skipped := range []string{
 		"go-vet-repo-mod",         // the go job runs it
+		"go-fumpt-repo",           // so too, though no other job has the Go it needs
 		"bats",                    // local, and its tool is installed only by the shell job
 		"conventional-pre-commit", // grades a commit message, which a pushed tree lacks
 	} {
@@ -44,7 +134,7 @@ func TestTheHooksJobRunsWhatNoStackJobCovers(t *testing.T) {
 // The shell block is generic, so every repo's config has it, but only a repo
 // declaring a shell component has a shell job to run it.
 func TestShellHooksRunHereOnlyWithoutAShellJob(t *testing.T) {
-	got := HooksToRun(owedConfig(t, comps("shell", ".")), map[string]bool{"shell": true})
+	got := HooksToRun(owedConfig(t, comps("shell", ".")), coveredBy(t, "shell"))
 	if slices.Contains(got, "shellcheck") || slices.Contains(got, "shfmt") {
 		t.Errorf("the shell job's hooks run twice: %v", got)
 	}
@@ -53,7 +143,7 @@ func TestShellHooksRunHereOnlyWithoutAShellJob(t *testing.T) {
 // ruff-format alone would select the python block's hook as well as the
 // scripts one, and the python job runs that already.
 func TestAScriptsHookIsRunByItsAlias(t *testing.T) {
-	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"), map[string]bool{"python": true})
+	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"), coveredBy(t, "python"))
 	if !slices.Contains(got, "ruff-format-scripts") || slices.Contains(got, "ruff-format") {
 		t.Errorf("hooks = %v, want ruff-format-scripts and not ruff-format", got)
 	}

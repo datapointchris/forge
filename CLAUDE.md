@@ -188,12 +188,16 @@ validation.
 **One more job, `hooks`, runs the pre-commit hooks no stack job covers.** `ci.HooksToRun` reads them
 from the committed `.pre-commit-config.yaml`, never from the config the precommit die would write.
 CI runs the committed file, and the two differ wherever that die is blocked or not yet applied. A
-list taken from the owed config would name hooks the file lacks. It drops three kinds: a local hook,
-whose tool only a stack job installs; a hook off the `pre-commit` stage; and a hook whose block
-belongs to a stack with a job here. The shell block is why the last is decided per repo. Every
-config carries it, and only a repo declaring a shell component has a job running it. A repo
-declaring no components gets a workflow holding this job alone, wherever forge maintains its
-pre-commit config.
+list taken from the owed config would name hooks the file lacks. A repo declaring no components gets
+a workflow holding this job alone, wherever forge maintains its pre-commit config.
+
+**The hooks job drops a hook a stack job here runs, and a stack block names each one it runs.** That
+is its `# covers:` line, which names hooks rather than a stack because a stack job runs only the
+checks written into it. `TestAStackJobRunsEveryHookItsStackCarries` holds each stack block to every
+hook its stack's pre-commit blocks carry, so a hook added to one needs a step in the other. The job
+also drops a hook off the `pre-commit` stage, and a local hook, whose tool only a stack job installs.
+The shell block is why coverage is decided per repo. Every config carries it, and only a repo declaring a shell component
+has a job running it.
 
 **The hooks job checks what the push or pull request changed.** That is what the hooks saw at commit
 time, so a finding in a file nobody touched cannot fail a push. The checkout stays one commit deep

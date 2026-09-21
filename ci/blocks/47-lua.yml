@@ -1,4 +1,5 @@
 # Lua
+# covers: stylua-github
       # --check, not the formatting run the pre-commit hook does: CI reports,
       # it does not rewrite the tree.
       #

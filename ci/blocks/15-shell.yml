@@ -1,4 +1,5 @@
 # Shell
+# covers: shellcheck shfmt bats
       # The runner image ships a shellcheck, but which one drifts with the
       # image, and style-level findings are exactly what moves between
       # versions. The version is the release the shellcheck hook pins, which is

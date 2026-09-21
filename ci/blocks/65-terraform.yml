@@ -1,4 +1,5 @@
 # Terraform
+# covers: terraform_validate terraform_tflint terraform_fmt terraform_docs
       - uses: hashicorp/setup-terraform@{{pin}}
         with:
           terraform_wrapper: false

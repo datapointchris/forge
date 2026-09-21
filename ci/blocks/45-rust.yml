@@ -1,4 +1,5 @@
 # Rust
+# covers: cargo-fmt cargo-clippy
       # The toolchain ships with the runner image; rust-toolchain.toml, if the
       # repo has one, still decides the version.
       - run: cargo fmt --check
