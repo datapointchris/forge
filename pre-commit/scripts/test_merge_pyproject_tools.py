@@ -367,6 +367,23 @@ def test_the_shipped_template_records_a_module_alias_as_one_key_and_resyncs_clea
     assert target['tool']['ruff']['lint']['flake8-import-conventions']['extend-aliases']['pyspark.sql.functions'] == 'sf'
 
 
+def test_a_table_created_mid_file_is_separated_from_the_next_header():
+    """A new table lands inside its parent's block, ahead of whatever header follows."""
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.ruff.lint.conventions]\nbanned = ["datetime"]\n\n[tool.ruff.lint.conventions.aliases]\ndatetime = "dt"\n')
+        target_path.write_text('[tool.ruff.lint]\nselect = ["E"]\n\n[tool.ruff.format]\nquote-style = "single"\n')
+
+        assert main([str(standard_path), str(target_path)]) == 0
+        written = target_path.read_text()
+        assert main([str(standard_path), str(target_path)]) == 0
+
+        assert 'datetime = "dt"\n\n[tool.ruff.format]' in written
+        assert 'banned = ["datetime"]\n\n[tool.ruff.lint.conventions.aliases]' in written
+        assert target_path.read_text() == written
+
+
 if __name__ == '__main__':
     test_adds_missing_sections()
     test_forces_a_key_the_record_already_claims()
@@ -391,4 +408,5 @@ if __name__ == '__main__':
     test_a_key_is_spelled_as_toml_spells_it()
     test_full_pyproject_roundtrip()
     test_the_shipped_template_records_a_module_alias_as_one_key_and_resyncs_clean()
+    test_a_table_created_mid_file_is_separated_from_the_next_header()
     print('all tests passed')

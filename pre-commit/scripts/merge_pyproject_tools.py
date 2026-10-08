@@ -153,12 +153,32 @@ def plain(value):
 
 
 def set_path(tool, path, value):
+    """Write a leaf, creating the tables on the way. Returns the tables it created."""
+    created = []
     table = tool
     for key in path[:-1]:
         if key not in table or not isinstance(table[key], dict):
             table[key] = tomlkit.table()
+            created.append(table[key])
         table = table[key]
     table[path[-1]] = value
+    return created
+
+
+def separate_created_tables(created):
+    """End each created table that renders last in its block with a blank line.
+
+    tomlkit inserts a new table where its parent's block sits, which is usually
+    mid-file, and gives it no trailing whitespace. Its last key then abuts the
+    next header. A table holding a sub-table is left alone: tomlkit already
+    separates a body from its sub-table's header, and the sub-table is the one
+    rendered last.
+
+    Only tables this sync created are touched, so a resync leaves the file alone.
+    """
+    for table in created:
+        if not any(isinstance(value, dict) for value in table.values()):
+            table.add(tomlkit.nl())
 
 
 def delete_path(tool, path):
@@ -214,6 +234,7 @@ def apply_standard(standard_tool, target_tool):
     claimed = set(recorded)
     adopted = {}
     conflicts = []
+    created = []
     for path, value in managed.items():
         existing, answer = read_path(target_tool, path)
         if answer == UNREADABLE:
@@ -225,9 +246,10 @@ def apply_standard(standard_tool, target_tool):
         # Writing an equal value back would re-render the item and can move the
         # trivia attached to it, which turns an agreeing repo into a diff.
         if answer == MISSING or plain(existing) != plain(value):
-            set_path(target_tool, path, value)
+            created.extend(set_path(target_tool, path, value))
         adopted[path] = value
 
+    separate_created_tables(created)
     write_managed_paths(target_tool, adopted)
     return retracted, conflicts
 
