@@ -3,9 +3,10 @@
 # Project-specific overrides (codespell skip patterns, mypy plugins, extra
 # per-file-ignores, etc.) should be added after these base settings.
 #
-# The rule set is deliberately the six every repo already runs. Widening it is
+# The rule set is deliberately the rules every repo already runs. Widening it is
 # a deliberate piece of work with fallout to fix, not something a config sync
-# should carry along.
+# should carry along: a rule lands here after the sweep that makes the fleet
+# pass it.
 
 [tool.ruff]
 line-length = 140
@@ -25,6 +26,7 @@ select = [
     "B",    # flake8-bugbear
     "SIM",  # flake8-simplify
     "I",    # isort
+    "ICN",  # flake8-import-conventions
 ]
 ignore = [
     "SIM108",  # ternary operator — often less readable
@@ -32,6 +34,25 @@ ignore = [
 
 [tool.ruff.lint.isort]
 force-single-line = true
+
+# Importing any of these modules' members by name is the fault itself.
+# `from datetime import datetime` makes one name a module in some files and a
+# class in others. pyspark.sql.functions exports `sum`, `min`, `max`, `abs`,
+# `round` and `filter`, each shadowing the builtin, so a by-name import turns a
+# later `sum()` over a list into a Column with nothing at the call site to say so.
+[tool.ruff.lint.flake8-import-conventions]
+banned-from = ["datetime", "pyspark.sql.functions", "pyspark.sql.types"]
+
+# `extend-aliases`, not `aliases`: `aliases` replaces ruff's defaults (`pd`,
+# `np`, `plt` and the rest) rather than adding to them. The Spark pair is
+# lowercase because PEP 8 reserves a capital for a class, and `F.col` reads as a
+# method on one. `sqlalchemy` is aliased and not banned, because SQLAlchemy's
+# own documentation imports `select` and `Session` by name.
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+datetime = "dt"
+sqlalchemy = "sa"
+"pyspark.sql.functions" = "sf"
+"pyspark.sql.types" = "st"
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]

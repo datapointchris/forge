@@ -144,7 +144,9 @@ reads it, and a file at a managed path without it is reported rather than overwr
   flag on the shfmt hook**: one flag replaces the EditorConfig file wholesale.
 - **`pyproject-tools.toml` keeps `[tool.pyright]`** although the hook enforces mypy, because
   basedpyright runs in every editor and is what drifts. Its ruff `select` is the rules every repo
-  already runs, since a template nothing conforms to cannot measure drift.
+  already runs, since a template nothing conforms to cannot measure drift. A rule joins it after
+  the sweep that makes the fleet pass it, as `ICN` did with its import aliases (`dt`, `sa`, `sf`,
+  `st`). Those sit under `extend-aliases`, because `aliases` replaces ruff's defaults.
 - `golangci.yml` goes to Go repos, and `.sqlfluff` — narrowed and lint-only, so it never reformats —
   wherever a `sql_dialect` is declared.
 

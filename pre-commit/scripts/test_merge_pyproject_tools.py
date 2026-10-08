@@ -350,6 +350,23 @@ def test_full_pyproject_roundtrip():
     assert target['pyright']['reportAny'] is False
 
 
+def test_the_shipped_template_records_a_module_alias_as_one_key_and_resyncs_clean():
+    """An alias keyed by a dotted module name is one path segment, and a resync writes nothing."""
+    template = (Path(__file__).parent.parent / 'configs' / 'pyproject-tools.toml').read_text()
+    target = tomlkit.parse('[project]\nname = "myapp"\n')
+    target['tool'] = tomlkit.table()
+    apply_standard(tomlkit.parse(template)['tool'], target['tool'])
+    first = tomlkit.dumps(target)
+
+    apply_standard(tomlkit.parse(template)['tool'], target['tool'])
+
+    assert tomlkit.dumps(target) == first
+    assert ('ruff', 'lint', 'flake8-import-conventions', 'extend-aliases', 'pyspark.sql.functions') in read_managed_paths(
+        target['tool']
+    )
+    assert target['tool']['ruff']['lint']['flake8-import-conventions']['extend-aliases']['pyspark.sql.functions'] == 'sf'
+
+
 if __name__ == '__main__':
     test_adds_missing_sections()
     test_forces_a_key_the_record_already_claims()
@@ -373,4 +390,5 @@ if __name__ == '__main__':
     test_every_value_shape_is_written_on_one_line()
     test_a_key_is_spelled_as_toml_spells_it()
     test_full_pyproject_roundtrip()
+    test_the_shipped_template_records_a_module_alias_as_one_key_and_resyncs_clean()
     print('all tests passed')
