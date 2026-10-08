@@ -171,7 +171,8 @@ lock never lags the spec. Raising the ruff hook rev in the declaration is the wh
 records the format `revision` of whichever uv last rewrote it. Two writers at different releases
 flip it on every re-lock, and `uv lock --check` passes either way. So the lock after a write runs
 as `uvx uv@<pin> lock`, never the uv on `PATH`. A lock whose content changes takes that uv's
-revision. A lock that changes nothing keeps the revision it found. A Python release build reads the
+revision. A lock that changes nothing keeps the revision it found. A declaration pinning no uv hook
+refuses a repo keeping a `uv.lock` at `Observe`, before the merge writes. A Python release build reads the
 same rev out of the committed `.pre-commit-config.yaml` to install its uv, so that `rev:` line must
 stay directly under the hook's `repo:` line.
 

@@ -306,6 +306,20 @@ func TestPyprojectLocksWithTheUvItsHookPins(t *testing.T) {
 	}
 }
 
+func TestPyprojectRefusesARepoWithALockWhenNoUvIsPinned(t *testing.T) {
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+		"uv.lock":        "version = 1\n",
+	})
+	target.Assets.Manifest = &toolchain.Toolchain{Hooks: []toolchain.Hook{{Repo: "https://github.com/astral-sh/ruff-pre-commit", Rev: "v0.13.0"}}}
+
+	measured := reconcile.Assess(target, Pyproject{})
+
+	if !strings.Contains(measured.Refusal, "no pre-commit hook for uv") {
+		t.Errorf("refusal = %q, want it to name the uv pin it could not find", measured.Refusal)
+	}
+}
+
 // The dev pin is derived from the ruff hook's rev, so a raised hook pin reaches
 // the dependency on the same apply that rewrites the hook.
 func TestDevPinsFollowTheRuffHookRev(t *testing.T) {
