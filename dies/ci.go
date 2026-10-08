@@ -21,8 +21,9 @@ import (
 // keep those as their own workflow files; this one is additive, and callable
 // via workflow_call so a release workflow can gate on it.
 //
-// validate.yml, deliberately not ci.yml: several repos carry a hand-written
-// ci.yml, and generating over one would destroy work nothing could recover.
+// validate.yml, deliberately not ci.yml: ci.yml is the name a hand-written
+// pipeline takes by default, and generating over one would destroy work
+// nothing could recover.
 //
 // Absorbs the CI half of can-generate, which existed only because the generator
 // could not be run across the portfolio. It can now, so the pre-rollout gate is

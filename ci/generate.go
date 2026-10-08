@@ -31,8 +31,8 @@ import (
 var ErrNoJobs = errors.New("no component has a CI block and no hook is left for the hooks job: nothing to generate")
 
 // WorkflowPath is where the generated workflow lands. Deliberately not ci.yml:
-// several repos carry a hand-written ci.yml, and generating over one would
-// destroy work nothing could recover.
+// ci.yml is the name a hand-written pipeline takes by default, and generating
+// over one would destroy work nothing could recover.
 const WorkflowPath = ".github/workflows/validate.yml"
 
 // workflowsDir is read, never written apart from WorkflowPath — every other

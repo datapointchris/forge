@@ -218,8 +218,8 @@ actionlint knows GitHub's labels and nothing else. Its absence in a public repo 
 reject a hand-written workflow reaching the pool. A repo that turns public has it removed; a
 hand-written one at `.yaml` or `.yml` is reported and left alone.
 
-**The output is `validate.yml`, not `ci.yml`.** Several repos carry a hand-written `ci.yml`, and
-generating over one would destroy work nothing could recover. The die refuses any `validate.yml`
+**The output is `validate.yml`, not `ci.yml`.** `ci.yml` is the name a hand-written pipeline takes
+by default, and generating over one would destroy work nothing could recover. The die refuses any `validate.yml`
 lacking the `# forge-toolchain:` header for the same reason.
 
 **`forge repos check` is the pre-rollout gate.** The `precommit` and `ci` dies run actionlint and
