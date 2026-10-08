@@ -280,9 +280,7 @@ func TestPyprojectReportsATableValueAsOneConflict(t *testing.T) {
 	}
 }
 
-// A lock whose content changes takes the format revision of the uv that wrote
-// it. Recording the shim's arguments is the only offline way to see which uv
-// re-locked the repo.
+// The fake uvx records its arguments, because a real `uvx uv@<pin>` downloads uv.
 func TestPyprojectLocksWithTheUvItsHookPins(t *testing.T) {
 	requireUV(t)
 	shims := t.TempDir()

@@ -167,14 +167,16 @@ already runs that version at every commit, so a differing dev spec is a second a
 question CI settles. A write is followed by a lock wherever the repo keeps a `uv.lock`, so the
 lock never lags the spec. Raising the ruff hook rev in the declaration is the whole bump.
 
-**The uv-pre-commit hook's rev is the one uv release every writer of `uv.lock` runs.** A lock
-records the format `revision` of whichever uv last rewrote it. Two writers at different releases
-flip it on every re-lock, and `uv lock --check` passes either way. So the lock after a write runs
-as `uvx uv@<pin> lock`, never the uv on `PATH`. A lock whose content changes takes that uv's
-revision. A lock that changes nothing keeps the revision it found. A declaration pinning no uv hook
-refuses a repo keeping a `uv.lock` at `Observe`, before the merge writes. A Python release build reads the
-same rev out of the committed `.pre-commit-config.yaml` to install its uv, so that `rev:` line must
-stay directly under the hook's `repo:` line.
+**The uv-pre-commit hook's rev is the uv release the hook, CI, a release build and forge all run
+against `uv.lock`.** A lock records the format `revision` of whichever uv last rewrote it. Two
+writers at different releases flip it on every re-lock. `uv lock --check` passes either way. So the
+lock after a write runs as `uvx uv@<pin> lock`, never the uv on `PATH`. A lock whose content
+changes takes that uv's revision. A lock that changes nothing keeps the revision it found. Where
+the declaration pins no uv hook, `Observe` refuses any repo keeping a `uv.lock`, before the merge
+writes. A Python release's `build_command` reads the rev out of the committed
+`.pre-commit-config.yaml` to install its uv. A `rev:` line moved off the one after the hook's
+`repo:` line matches nothing there, and every release fails at that install.
+`TestIntegration_AReleaseBuildReadsTheUvHookRev` holds the line in place.
 
 **Custom hook markers** — repos with project-specific hooks use these markers in their `.pre-commit-config.yaml`:
 

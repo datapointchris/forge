@@ -273,9 +273,10 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 	return runIn(t.Repo.Path, "uv", args...)
 }
 
-// lockWithPinnedUV re-locks with the release the uv-lock hook pins rather than
-// the uv on PATH. A lock whose content changes takes the format revision of the
-// uv that wrote it, so this is the revision the hook and a release build write.
+// lockWithPinnedUV re-locks with the release the uv-lock hook pins. A lock whose
+// content changes takes the format revision of the uv that wrote it, so the uv
+// on PATH would leave a revision the hook and a release build each rewrite on
+// their next change.
 func lockWithPinnedUV(t reconcile.Target) error {
 	version, err := pinnedUV(t.Assets.Manifest)
 	if err != nil {
@@ -286,8 +287,8 @@ func lockWithPinnedUV(t reconcile.Target) error {
 }
 
 // pinnedUV is the release the uv-pre-commit hook pins. Observe asks for it
-// before the merge writes anything, so a repo with a lock is refused whole
-// rather than merged and then left with a lock nothing could rewrite.
+// before the merge writes, so a declaration without one refuses a locked repo
+// instead of merging its pyproject.toml and leaving uv.lock behind the new spec.
 func pinnedUV(manifest *toolchain.Toolchain) (string, error) {
 	if manifest != nil {
 		if version, pinned := manifest.HookPinnedVersion("uv"); pinned {

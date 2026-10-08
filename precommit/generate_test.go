@@ -563,9 +563,9 @@ func TestIntegration_PythonRepo(t *testing.T) {
 	}
 }
 
-// A Python release build installs its uv by reading this rev with the regex
-// below, so moving the rev off the line after the hook's repo fails every
-// release at its install step.
+// The regex below is the one a Python release's build_command uses to install
+// its uv. A rev moved off the line after the hook's repo matches nothing, and
+// every release fails at that install.
 func TestIntegration_AReleaseBuildReadsTheUvHookRev(t *testing.T) {
 	manifest := testToolchain(t)
 	for i, hook := range manifest.Hooks {
