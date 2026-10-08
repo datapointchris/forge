@@ -293,7 +293,7 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 		if len(m) < 5 {
 			continue
 		}
-		if version, derived := t.hookPinnedVersion(m[2]); derived {
+		if version, derived := t.HookPinnedVersion(m[2]); derived {
 			lines[i] = m[1] + m[2] + "@" + version + m[4]
 		}
 	}
@@ -313,9 +313,9 @@ func (t *Toolchain) ApplyAll(content string) string {
 	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content))))))
 }
 
-// hookPinnedVersion is the upstream release a tool's hook rev wraps, and whether
+// HookPinnedVersion is the upstream release a tool's hook rev wraps, and whether
 // the tool's version comes from a hook at all.
-func (t *Toolchain) hookPinnedVersion(tool string) (string, bool) {
+func (t *Toolchain) HookPinnedVersion(tool string) (string, bool) {
 	repo, derived := hookPinnedTools[tool]
 	if !derived {
 		return "", false
@@ -330,7 +330,7 @@ func (t *Toolchain) hookPinnedVersion(tool string) (string, bool) {
 // BinaryVersion returns the pinned version for a released binary, and whether
 // it is managed. A tool with a hook takes the release that hook pins.
 func (t *Toolchain) BinaryVersion(name string) (string, bool) {
-	if version, derived := t.hookPinnedVersion(name); derived {
+	if version, derived := t.HookPinnedVersion(name); derived {
 		return version, true
 	}
 	for _, binary := range t.Binaries {

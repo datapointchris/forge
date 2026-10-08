@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 // requireUV skips only where uv genuinely cannot be run, and fails where it is
@@ -289,5 +290,27 @@ func TestPyprojectReportsATableValueAsOneConflict(t *testing.T) {
 	}
 	if conflict.Repair != reconcile.ByHand || conflict.Observed != "{max = 140}" {
 		t.Errorf("repair %q observed %q, want by_hand and the table inline", conflict.Repair, conflict.Observed)
+	}
+}
+
+// The dev pin is derived from the ruff hook's rev, so a raised hook pin reaches
+// the dependency on the same apply that rewrites the hook.
+func TestDevPinsFollowTheRuffHookRev(t *testing.T) {
+	manifest := &toolchain.Toolchain{Hooks: []toolchain.Hook{{Repo: "https://github.com/astral-sh/ruff-pre-commit", Rev: "v0.13.0"}}}
+
+	args, err := devPins(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(args, []string{"--pin", "ruff==0.13.0"}) {
+		t.Errorf("args = %v, want --pin ruff==0.13.0", args)
+	}
+}
+
+func TestDevPinsRefuseADeclarationWithNoRuffHook(t *testing.T) {
+	for name, manifest := range map[string]*toolchain.Toolchain{"no declaration": nil, "no ruff hook": {}} {
+		if args, err := devPins(manifest); err == nil {
+			t.Errorf("%s: args = %v, want a refusal rather than a floating ruff", name, args)
+		}
 	}
 }

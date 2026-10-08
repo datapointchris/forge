@@ -384,6 +384,85 @@ def test_a_table_created_mid_file_is_separated_from_the_next_header():
         assert target_path.read_text() == written
 
 
+def merge_with_pin(target_text, *pins, check=False):
+    """Run main with `--pin` arguments against a written target, returning (file text, report)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.ruff]\nline-length = 140\n')
+        target_path.write_text(target_text)
+        arguments = ['--check'] if check else []
+        for pin in pins:
+            arguments += ['--pin', pin]
+        output = io.StringIO()
+        with redirect_stdout(output):
+            assert main([*arguments, str(standard_path), str(target_path)]) == 0
+        return target_path.read_text(), json.loads(output.getvalue())
+
+
+def test_a_pin_is_added_to_the_dev_group_when_no_list_names_it():
+    written, _ = merge_with_pin('[project]\nname = "myapp"\n', 'ruff==0.12.5')
+    again, _ = merge_with_pin(written, 'ruff==0.12.5')
+
+    document = tomlkit.parse(written)
+    assert document['dependency-groups']['dev'] == ['ruff==0.12.5']
+    assert document['tool']['forge']['pinned'] == ['ruff']
+    assert '\n\n\n' not in written
+    assert again == written
+
+
+def test_a_pin_rewrites_the_spec_and_leaves_its_neighbors_in_order():
+    written, _ = merge_with_pin(
+        '[dependency-groups]\ndev = [\n    "pytest>=8.0",\n    # the linter\n    "Ruff>=0.7.0",\n    "mypy",\n]\n',
+        'ruff==0.12.5',
+    )
+
+    assert '    "pytest>=8.0",\n    # the linter\n    "ruff==0.12.5",\n    "mypy",\n' in written
+
+
+def test_a_pin_reaches_every_group_and_extra_that_names_it():
+    written, _ = merge_with_pin(
+        '[project]\nname = "myapp"\ndependencies = ["ruff>=0.1"]\n\n'
+        '[project.optional-dependencies]\ndev = ["ruff", "pytest"]\n\n'
+        '[dependency-groups]\nlint = ["ruff[lsp]>=0.5; python_version >= \'3.11\'"]\n',
+        'ruff==0.12.5',
+    )
+
+    document = tomlkit.parse(written)
+    assert document['project']['optional-dependencies']['dev'] == ['ruff==0.12.5', 'pytest']
+    assert document['dependency-groups']['lint'] == ["ruff[lsp]==0.12.5; python_version >= '3.11'"]
+    # A runtime dependency is the product's, and no dev group was created beside it.
+    assert document['project']['dependencies'] == ['ruff>=0.1']
+    assert 'dev' not in document['dependency-groups']
+
+
+def test_a_pinned_resync_writes_nothing():
+    first, _ = merge_with_pin('[dependency-groups]\ndev = ["pytest", "ruff>=0.7"]\n', 'ruff==0.12.5')
+
+    again, report = merge_with_pin(first, 'ruff==0.12.5', check=True)
+
+    assert again == first
+    assert report['status'] == 'current'
+
+
+def test_a_raised_pin_rewrites_a_spec_forge_already_wrote():
+    first, _ = merge_with_pin('[dependency-groups]\ndev = ["ruff"]\n', 'ruff==0.12.5')
+
+    raised, report = merge_with_pin(first, 'ruff==0.13.0', check=True)
+
+    assert raised == first
+    assert report['status'] == 'would-update'
+    assert '+dev = ["ruff==0.13.0"]' in report['patch']
+
+
+def test_a_pin_without_a_version_is_refused():
+    with tempfile.TemporaryDirectory() as tmp:
+        target_path = Path(tmp) / 'pyproject.toml'
+        target_path.write_text('')
+
+        assert main(['--pin', 'ruff', str(target_path), str(target_path)]) == 1
+
+
 if __name__ == '__main__':
     test_adds_missing_sections()
     test_forces_a_key_the_record_already_claims()
@@ -409,4 +488,10 @@ if __name__ == '__main__':
     test_full_pyproject_roundtrip()
     test_the_shipped_template_records_a_module_alias_as_one_key_and_resyncs_clean()
     test_a_table_created_mid_file_is_separated_from_the_next_header()
+    test_a_pin_is_added_to_the_dev_group_when_no_list_names_it()
+    test_a_pin_rewrites_the_spec_and_leaves_its_neighbors_in_order()
+    test_a_pin_reaches_every_group_and_extra_that_names_it()
+    test_a_pinned_resync_writes_nothing()
+    test_a_raised_pin_rewrites_a_spec_forge_already_wrote()
+    test_a_pin_without_a_version_is_refused()
     print('all tests passed')

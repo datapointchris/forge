@@ -30,7 +30,16 @@ Paths are recorded as arrays rather than dotted strings because a segment can
 itself contain a dot (`per-file-ignores."__init__.py"`). This is the record
 that authorizes deletion; it does not get to depend on quoting being right.
 
-Usage: merge_pyproject_tools.py [--check] <standard.toml> <target-pyproject.toml>
+A pinned dependency is the one thing owned outside `[tool]`. `--pin ruff==0.12.5`
+holds that package at the toolchain's version in every dependency group and
+every optional extra that names it, and adds it to `[dependency-groups] dev`
+where none does. It is recorded by name under `[tool.forge] pinned`, and every
+other element of those lists stays the project's, in its order. A pin is owned
+outright rather than gated like a key, because the pre-commit hook already runs
+that version at every commit: a dev spec that differs is a second answer to a
+question CI settles, never a choice with a comment arguing for it.
+
+Usage: merge_pyproject_tools.py [--check] [--pin NAME==VERSION ...] <standard.toml> <target-pyproject.toml>
 
 stdout is one JSON object, and forge's pyproject die is its reader:
 
@@ -52,6 +61,7 @@ still wrong, so the status alone cannot carry it.
 
 import difflib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -60,6 +70,11 @@ from tomlkit.items import Item
 
 MANAGED_TABLE = 'forge'
 MANAGED_KEY = 'managed'
+PINNED_KEY = 'pinned'
+
+# PEP 508 as far as a pin needs it: the name, any extras, the version spec, and
+# an environment marker after the semicolon.
+REQUIREMENT = re.compile(r'^\s*(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)\s*(?P<extras>\[[^\]]*\])?(?P<spec>[^;]*?)\s*(?:;\s*(?P<marker>.*?))?\s*$')
 
 # Folding UNREADABLE into MISSING lets adoption write a table over the project.
 MISSING = 'missing'
@@ -70,6 +85,11 @@ MANAGED_COMMENT_LINES = [
     'Keys the shared toolchain standard owns, written by its generator.',
     'Dropping one from the template removes it here on the next sync; a key absent',
     'from this list belongs to the project and is never touched. Do not hand-edit.',
+]
+
+PINNED_COMMENT_LINES = [
+    'Dependencies held at the version the pre-commit hook runs, in every group',
+    'and extra that names them, so a local run and CI cannot disagree.',
 ]
 
 
@@ -92,7 +112,7 @@ def read_managed_paths(tool):
     return [tuple(path) for path in tool[MANAGED_TABLE].get(MANAGED_KEY, [])]
 
 
-def write_managed_paths(tool, paths):
+def write_managed_paths(tool, paths, pinned=()):
     """Rebuild the record table from scratch — it is forge's in its entirety.
 
     Rebuilding rather than patching is what keeps a resync byte-identical: the
@@ -107,6 +127,10 @@ def write_managed_paths(tool, paths):
     for line in MANAGED_COMMENT_LINES:
         table.add(tomlkit.comment(line))
     table[MANAGED_KEY] = record
+    if pinned:
+        for line in PINNED_COMMENT_LINES:
+            table.add(tomlkit.comment(line))
+        table[PINNED_KEY] = sorted(pinned)
     table.add(tomlkit.nl())
 
     if MANAGED_TABLE in tool:
@@ -201,7 +225,71 @@ def delete_path(tool, path):
     return True
 
 
-def apply_standard(standard_tool, target_tool):
+def canonical_name(name):
+    """A distribution name as PEP 503 compares it."""
+    return re.sub(r'[-_.]+', '-', name).lower()
+
+
+def dependency_lists(document):
+    """Every list a repo keeps development dependencies in.
+
+    Each dependency group and each optional extra, because a repo names ruff in
+    whichever it adopted first. A pin applied to `dev` alone would leave a `lint`
+    group's floor resolving against it. `[project] dependencies` is not one of
+    them: a runtime dependency on a linter is a product decision.
+    """
+    lists = []
+    groups = document.get('dependency-groups')
+    if isinstance(groups, dict):
+        lists.extend(value for value in groups.values() if isinstance(value, list))
+    project = document.get('project')
+    extras = project.get('optional-dependencies') if isinstance(project, dict) else None
+    if isinstance(extras, dict):
+        lists.extend(value for value in extras.values() if isinstance(value, list))
+    return lists
+
+
+def pin_dependencies(document, pins):
+    """Hold each pinned package at its version wherever a dependency list names it.
+
+    `pins` maps a name to a version. An entry keeps its extras and marker and
+    loses only its version spec. A package no list names is added to
+    `[dependency-groups] dev`. An entry already spelled as wanted is not
+    reassigned, which keeps a resync byte-identical.
+    """
+    for name, version in pins.items():
+        found = False
+        for entries in dependency_lists(document):
+            for index, entry in enumerate(entries):
+                if not isinstance(entry, str):
+                    continue
+                match = REQUIREMENT.match(entry)
+                if not match or canonical_name(match['name']) != canonical_name(name):
+                    continue
+                found = True
+                wanted = f'{name}{match["extras"] or ""}=={version}'
+                if match['marker']:
+                    wanted += f'; {match["marker"]}'
+                if str(entry) != wanted:
+                    entries[index] = wanted
+        if not found:
+            if 'dependency-groups' not in document:
+                document['dependency-groups'] = tomlkit.table()
+            groups = document['dependency-groups']
+            if 'dev' not in groups:
+                groups['dev'] = tomlkit.array()
+            groups['dev'].append(f'{name}=={version}')
+
+
+def parse_pin(text):
+    """`NAME==VERSION` as a (name, version) pair, or a refusal naming it."""
+    name, separator, version = text.partition('==')
+    if not separator or not name or not version:
+        raise ValueError(f'--pin {text!r} is not NAME==VERSION')
+    return name, version
+
+
+def apply_standard(standard_tool, target_tool, pinned=()):
     """Adopt the keys forge may write, retract the ones the standard dropped.
 
     Deletion is scoped to the recorded paths by construction, which is the whole
@@ -250,7 +338,7 @@ def apply_standard(standard_tool, target_tool):
         adopted[path] = value
 
     separate_created_tables(created)
-    write_managed_paths(target_tool, adopted)
+    write_managed_paths(target_tool, adopted, pinned)
     return retracted, conflicts
 
 
@@ -292,11 +380,27 @@ def inline(value):
 
 
 def main(argv):
-    check = '--check' in argv
-    positional = [arg for arg in argv if arg != '--check']
+    usage = f'usage: {sys.argv[0]} [--check] [--pin NAME==VERSION ...] <standard.toml> <target.toml>'
+    check = False
+    pins = {}
+    positional = []
+    arguments = iter(argv)
+    for arg in arguments:
+        if arg == '--check':
+            check = True
+        elif arg == '--pin':
+            text = next(arguments, '')
+            try:
+                name, version = parse_pin(text)
+            except ValueError as error:
+                print(error, file=sys.stderr)
+                return 1
+            pins[name] = version
+        else:
+            positional.append(arg)
 
     if len(positional) != 2:
-        print(f'usage: {sys.argv[0]} [--check] <standard.toml> <target.toml>', file=sys.stderr)
+        print(usage, file=sys.stderr)
         return 1
 
     standard_file, target_file = Path(positional[0]), Path(positional[1])
@@ -312,7 +416,8 @@ def main(argv):
     if 'tool' not in target:
         target['tool'] = tomlkit.table()
 
-    retracted, conflicts = apply_standard(standard['tool'], target['tool'])
+    retracted, conflicts = apply_standard(standard['tool'], target['tool'], list(pins))
+    pin_dependencies(target, pins)
 
     # The record table carries a trailing blank line so it does not abut the next
     # header. When it lands at EOF there is no next header, and end-of-file-fixer

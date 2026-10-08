@@ -156,6 +156,17 @@ It gates adoption on the same terms, so forcing a key is conditional rather than
 
 Per-key ownership recorded at write time replaced whole-section overwrites, which deleted project config three times — a ruff `exclude`, bugbear exemptions, a pydantic mypy plugin, an alembic per-file-ignore. Paths are stored as arrays, not dotted strings, because a segment can contain a dot (`per-file-ignores."__init__.py"`) and the record that authorizes deletion does not get to depend on quoting being right. The record table is rebuilt from scratch on every write, so a resync is byte-identical — the die reporting converged depends on that idempotence.
 
+**The one thing the merge owns outside `[tool]` is a dev pin.** `devPinnedTools` in `dies/pyproject.go`
+lists the tools held at the release their pre-commit hook pins — `HookPinnedVersion`, the same
+derivation CI's `uvx` lines take — and the script gets each as `--pin NAME==VERSION`. The pin is
+rewritten in every `[dependency-groups]` group and `[project.optional-dependencies]` extra naming
+the package, keeping its extras and marker, and added to `[dependency-groups] dev` where none does.
+Every other element stays the project's, in order, and `[project] dependencies` is never touched.
+Ownership is recorded by name as `[tool.forge] pinned`. It is not gated like a key: the hook
+already runs that version at every commit, so a differing dev spec is a second answer to a
+question CI settles. A write is followed by `uv lock` wherever the repo keeps a `uv.lock`, so the
+lock never lags the spec. Raising the ruff hook rev in the declaration is the whole bump.
+
 **Custom hook markers** — repos with project-specific hooks use these markers in their `.pre-commit-config.yaml`:
 
 ```yaml

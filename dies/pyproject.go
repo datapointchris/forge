@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 // Pyproject merges the standard [tool.*] sections into a Python repo's
@@ -37,7 +38,17 @@ import (
 // conflict and left alone. It comes back ByHand, so check surfaces it and apply
 // cannot reach it — only a person can say whether the project or the standard
 // is right, and the prose around the key usually argues for the project.
+//
+// The die also holds each tool in devPinnedTools at the release its pre-commit
+// hook pins, in every dependency group and extra naming it. That is the version
+// `uv run ruff` resolves locally, and CI and the hook run the hook's, so the two
+// would otherwise disagree about a finding. A write is followed by `uv lock`
+// wherever the repo keeps a uv.lock, so the lock never lags the spec it records.
 type Pyproject struct{}
+
+// devPinnedTools are the tools a repo's development dependencies hold at the
+// release their pre-commit hook pins.
+var devPinnedTools = []string{"ruff"}
 
 func (Pyproject) Name() string { return "pyproject" }
 
@@ -199,6 +210,11 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 	case "current":
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
 	case "updated":
+		if _, err := os.Stat(t.Path("uv.lock")); err == nil {
+			if _, err := runIn(t.Repo.Path, "uv", "lock"); err != nil {
+				return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: "merged, then uv lock failed: " + err.Error()}, nil
+			}
+		}
 		// Neither a retraction nor a conflict is ever silent. The first names
 		// what was removed; the second names a key this run deliberately left
 		// alone, which would otherwise read as merged.
@@ -241,9 +257,33 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 		return "", err
 	}
 
+	pins, err := devPins(t.Assets.Manifest)
+	if err != nil {
+		return "", err
+	}
+
 	args := append([]string{"run", "--no-project", "--with", "tomlkit", "python", script}, extraArgs...)
+	args = append(args, pins...)
 	args = append(args, standard, "pyproject.toml")
 	return runIn(t.Repo.Path, "uv", args...)
+}
+
+// devPins renders devPinnedTools as the script's `--pin NAME==VERSION`
+// arguments. A tool the declaration cannot pin is a refusal rather than a
+// dependency left floating, the same answer an unfilled block pin gets.
+func devPins(manifest *toolchain.Toolchain) ([]string, error) {
+	if manifest == nil {
+		return nil, fmt.Errorf("pyproject: no toolchain declaration to pin %s from", strings.Join(devPinnedTools, ", "))
+	}
+	var args []string
+	for _, tool := range devPinnedTools {
+		version, pinned := manifest.HookPinnedVersion(tool)
+		if !pinned {
+			return nil, fmt.Errorf("pyproject: the toolchain declaration pins no pre-commit hook for %s", tool)
+		}
+		args = append(args, "--pin", tool+"=="+version)
+	}
+	return args, nil
 }
 
 func materialize(fsys fs.FS, name, dir string) (string, error) {
