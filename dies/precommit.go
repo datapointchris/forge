@@ -581,12 +581,26 @@ func uninstalledHooks(root, generated string) []string {
 		if !slices.Contains(used, stage) {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(root, ".git", "hooks", stage))
+		data, err := os.ReadFile(filepath.Join(hooksDir(root), stage))
 		if err != nil || !strings.Contains(string(data), "pre-commit") {
 			missing = append(missing, stage)
 		}
 	}
 	return missing
+}
+
+// hooksDir is where git runs root's hooks from. In a linked worktree .git is a
+// file, and the hooks are the main checkout's, so .git/hooks names nothing there.
+// Where git cannot answer, the path is .git/hooks.
+func hooksDir(root string) string {
+	path, err := runIn(root, "git", "rev-parse", "--git-path", "hooks")
+	if err != nil || path == "" {
+		return filepath.Join(root, ".git", "hooks")
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	return path
 }
 
 // npmRunHook matches a strict `npm run X` the generator emits. --if-present
@@ -768,7 +782,7 @@ func writeIfStale(root string, file generatedFile, change reconcile.Change) (rec
 // change of a batch carries its siblings and they report Skipped.
 func installHooks(root string, change reconcile.Change) (reconcile.Outcome, error) {
 	stage := strings.TrimPrefix(change.Item, ".git/hooks/")
-	if data, err := os.ReadFile(filepath.Join(root, ".git", "hooks", stage)); err == nil && strings.Contains(string(data), "pre-commit") {
+	if data, err := os.ReadFile(filepath.Join(hooksDir(root), stage)); err == nil && strings.Contains(string(data), "pre-commit") {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already installed"}, nil
 	}
 

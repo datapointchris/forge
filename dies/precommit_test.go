@@ -327,6 +327,22 @@ func TestPrecommitDoesNotInstallHooksInARepoItOnlyStamped(t *testing.T) {
 	}
 }
 
+// A linked worktree's .git is a file, and its hooks are the main checkout's.
+// Read from .git/hooks, every stage reads uninstalled and never converges.
+func TestPrecommitFindsTheHooksOfALinkedWorktree(t *testing.T) {
+	checkout := fixture(t, stacks("shell"), map[string]string{"README.md": "# fixture\n"})
+	initRepo(t, checkout, "main")
+	linked := filepath.Join(t.TempDir(), "linked")
+	if _, err := runIn(checkout.Repo.Path, "git", "worktree", "add", "-q", "-b", "sweep", linked); err != nil {
+		t.Fatalf("git worktree add: %s", err)
+	}
+
+	config := "default_stages: [" + strings.Join(hookStages, ", ") + "]\n"
+	if missing := uninstalledHooks(linked, config); len(missing) != 0 {
+		t.Errorf("the worktree reports %v uninstalled, and the main checkout holds all of them", missing)
+	}
+}
+
 // The same fixture with a declaration still reports the missing hooks, which is
 // what makes the assertion above a narrowing rather than a removal.
 func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T) {
