@@ -42,7 +42,7 @@ import (
 // The die also holds each tool in devPinnedTools at the release its pre-commit
 // hook pins, in every dependency group and extra naming it. That is the version
 // `uv run ruff` resolves locally, and CI and the hook run the hook's, so the two
-// would otherwise disagree about a finding. A write is followed by `uv lock`
+// would otherwise disagree about a finding. A write is followed by a lock
 // wherever the repo keeps a uv.lock, so the lock never lags the spec it records.
 type Pyproject struct{}
 
@@ -136,6 +136,11 @@ func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	} else if err != nil {
 		return nil, err
 	}
+	if _, err := os.Stat(t.Path("uv.lock")); err == nil {
+		if _, err := pinnedUV(t.Assets.Manifest); err != nil {
+			return nil, err
+		}
+	}
 
 	// --check is the read. The script reports what it would write, with the
 	// unified diff as the patch, and writes nothing.
@@ -211,7 +216,7 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
 	case "updated":
 		if _, err := os.Stat(t.Path("uv.lock")); err == nil {
-			if _, err := runIn(t.Repo.Path, "uv", "lock"); err != nil {
+			if err := lockWithPinnedUV(t); err != nil {
 				return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: "merged, then uv lock failed: " + err.Error()}, nil
 			}
 		}
@@ -266,6 +271,31 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 	args = append(args, pins...)
 	args = append(args, standard, "pyproject.toml")
 	return runIn(t.Repo.Path, "uv", args...)
+}
+
+// lockWithPinnedUV re-locks with the release the uv-lock hook pins. A lock whose
+// content changes takes the format revision of the uv that wrote it, so the uv
+// on PATH would leave a revision the hook and a release build each rewrite on
+// their next change.
+func lockWithPinnedUV(t reconcile.Target) error {
+	version, err := pinnedUV(t.Assets.Manifest)
+	if err != nil {
+		return err
+	}
+	_, err = runIn(t.Repo.Path, "uvx", "uv@"+version, "lock")
+	return err
+}
+
+// pinnedUV is the release the uv-pre-commit hook pins. Observe asks for it
+// before the merge writes, so a declaration without one refuses a locked repo
+// instead of merging its pyproject.toml and leaving uv.lock behind the new spec.
+func pinnedUV(manifest *toolchain.Toolchain) (string, error) {
+	if manifest != nil {
+		if version, pinned := manifest.HookPinnedVersion("uv"); pinned {
+			return version, nil
+		}
+	}
+	return "", fmt.Errorf("pyproject: the toolchain declaration pins no pre-commit hook for uv, so uv.lock could not be re-locked")
 }
 
 // devPins renders devPinnedTools as the script's `--pin NAME==VERSION`

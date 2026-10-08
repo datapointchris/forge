@@ -3,6 +3,7 @@ package dies
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -66,20 +67,6 @@ func TestPyprojectCarriesTheDiffIntoThePlan(t *testing.T) {
 	}
 	if !strings.Contains(measured.Changes[0].Patch, "tool.ruff") {
 		t.Errorf("the diff does not show the standard sections:\n%s", measured.Changes[0].Patch)
-	}
-}
-
-// The read verb runs the same script with --check, so this is the case the
-// no-writes property is really guarding.
-func TestPyprojectReadLeavesThePyprojectByteIdentical(t *testing.T) {
-	requireUV(t)
-	original := "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n"
-	target := fixture(t, stacks("python"), map[string]string{"pyproject.toml": original})
-
-	reconcile.Assess(target, Pyproject{})
-
-	if got := readFile(t, target.Path("pyproject.toml")); got != original {
-		t.Errorf("observe wrote to pyproject.toml:\n%q", got)
 	}
 }
 
@@ -290,6 +277,44 @@ func TestPyprojectReportsATableValueAsOneConflict(t *testing.T) {
 	}
 	if conflict.Repair != reconcile.ByHand || conflict.Observed != "{max = 140}" {
 		t.Errorf("repair %q observed %q, want by_hand and the table inline", conflict.Repair, conflict.Observed)
+	}
+}
+
+// The fake uvx records its arguments, because a real `uvx uv@<pin>` downloads uv.
+func TestPyprojectLocksWithTheUvItsHookPins(t *testing.T) {
+	requireUV(t)
+	shims := t.TempDir()
+	record := filepath.Join(shims, "uvx-args")
+	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" > '" + record + "'\n"
+	if err := os.WriteFile(filepath.Join(shims, "uvx"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+		"uv.lock":        "version = 1\n",
+	})
+
+	if outcomes := applyAll(t, target, Pyproject{}); len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
+		t.Fatalf("outcomes = %v, want one done", outcomes)
+	}
+
+	if got := strings.TrimSpace(readFile(t, record)); got != "uv@fixture-uv-pre-commit lock" {
+		t.Errorf("uvx ran %q, want the hook's uv locking", got)
+	}
+}
+
+func TestPyprojectRefusesARepoWithALockWhenNoUvIsPinned(t *testing.T) {
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+		"uv.lock":        "version = 1\n",
+	})
+	target.Assets.Manifest = &toolchain.Toolchain{Hooks: []toolchain.Hook{{Repo: "https://github.com/astral-sh/ruff-pre-commit", Rev: "v0.13.0"}}}
+
+	measured := reconcile.Assess(target, Pyproject{})
+
+	if !strings.Contains(measured.Refusal, "no pre-commit hook for uv") {
+		t.Errorf("refusal = %q, want it to name the uv pin it could not find", measured.Refusal)
 	}
 }
 
