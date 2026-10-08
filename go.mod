@@ -2,7 +2,7 @@ module github.com/datapointchris/forge
 
 go 1.26.5
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 require (
 	github.com/datapointchris/goselfupdate v0.11.0
