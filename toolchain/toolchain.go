@@ -31,6 +31,8 @@ var (
 	// block happens to name — the exact drift the manifest exists to prevent.
 	binaryLineRE = regexp.MustCompile(`^(\s*)([a-z0-9_]+)_version="\S+"\s*$`)
 	uvxLineRE    = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
+	// The pyproject template's one pin, under [tool.uv].
+	uvRequiredVersionRE = regexp.MustCompile(`^(\s*required-version\s*=\s*")` + regexp.QuoteMeta(Pin) + `("\s*)$`)
 	// A full commit id, which is a stronger pin than any tag the manifest names.
 	commitRefRE = regexp.MustCompile(`@[0-9a-f]{40}\b`)
 )
@@ -295,6 +297,26 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 		}
 		if version, derived := t.HookPinnedVersion(m[2]); derived {
 			lines[i] = m[1] + m[2] + "@" + version + m[4]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ApplyUvRequiredVersion fills `required-version = "{{pin}}"` with an exact
+// specifier for the release the uv hook pins. uv refuses to run in a project
+// whose required-version it does not satisfy, setup-uv installs the release it
+// names, and a release build reads it to install its own uv. So the desks, CI
+// and every release write uv.lock with one uv, and its `revision` stops flipping.
+// With no uv hook pinned the line keeps its Pin, for Unpinned to name.
+func (t *Toolchain) ApplyUvRequiredVersion(content string) string {
+	version, pinned := t.HookPinnedVersion("uv")
+	if !pinned {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if m := uvRequiredVersionRE.FindStringSubmatch(line); m != nil {
+			lines[i] = m[1] + "==" + version + m[2]
 		}
 	}
 	return strings.Join(lines, "\n")

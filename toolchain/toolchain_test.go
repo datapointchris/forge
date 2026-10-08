@@ -212,6 +212,20 @@ func TestApplyUvxVersionsTracksTheHookRev(t *testing.T) {
 	}
 }
 
+func TestUvRequiredVersionIsTheReleaseTheUvHookPins(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: "https://github.com/astral-sh/uv-pre-commit", Rev: "9.9.9"}}}
+
+	got := manifest.ApplyUvRequiredVersion("[tool.uv]\nrequired-version = \"{{pin}}\"\n")
+	if want := "[tool.uv]\nrequired-version = \"==9.9.9\"\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+
+	unpinned := &Toolchain{Version: 1}
+	if missing := Unpinned(unpinned.ApplyUvRequiredVersion("required-version = \"{{pin}}\"\n")); len(missing) != 1 {
+		t.Errorf("with no uv hook, Unpinned = %v, want the required-version line", missing)
+	}
+}
+
 func TestAnActionPinnedToACommitKeepsItsCommit(t *testing.T) {
 	manifest := &Toolchain{Version: 1, Actions: []Action{{Uses: "actions/checkout", Version: "v9"}}}
 	line := "      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v4.1.1\n"

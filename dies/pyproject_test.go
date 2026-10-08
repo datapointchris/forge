@@ -3,6 +3,7 @@ package dies
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -290,6 +291,77 @@ func TestPyprojectReportsATableValueAsOneConflict(t *testing.T) {
 	}
 	if conflict.Repair != reconcile.ByHand || conflict.Observed != "{max = 140}" {
 		t.Errorf("repair %q observed %q, want by_hand and the table inline", conflict.Repair, conflict.Observed)
+	}
+}
+
+func TestPyprojectHoldsUvAtTheReleaseItsHookPins(t *testing.T) {
+	requireUV(t)
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+	})
+
+	if outcomes := applyAll(t, target, Pyproject{}); len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
+		t.Fatalf("outcomes = %v, want one done", outcomes)
+	}
+
+	got := readFile(t, target.Path("pyproject.toml"))
+	if !strings.Contains(got, "[tool.uv]\nrequired-version = \"==fixture-uv-pre-commit\"") {
+		t.Errorf("required-version is not the fixture's uv hook rev:\n%s", got)
+	}
+	if !strings.Contains(got, `["uv", "required-version"]`) {
+		t.Errorf("required-version is not recorded, so a bump could not rewrite it:\n%s", got)
+	}
+}
+
+// uv enforces a project's required-version even under `uv run --no-project`.
+// Run under the repo's own settings, the merge could not read a repo pinned to
+// a uv the desk does not run, which is every repo during a bump.
+func TestPyprojectMeasuresARepoPinnedToAnotherUv(t *testing.T) {
+	requireUV(t)
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n[tool.uv]\nrequired-version = \"==0.0.1\"\n",
+	})
+
+	if measured := reconcile.Assess(target, Pyproject{}); measured.Refusal != "" {
+		t.Errorf("refused: %s", measured.Refusal)
+	}
+}
+
+func TestPyprojectRefusesADeclarationWithNoUvHook(t *testing.T) {
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+	})
+	target.Assets.Manifest = &toolchain.Toolchain{Hooks: []toolchain.Hook{{Repo: "https://github.com/astral-sh/ruff-pre-commit", Rev: "v0.13.0"}}}
+
+	measured := reconcile.Assess(target, Pyproject{})
+
+	if !strings.Contains(measured.Refusal, "required-version") {
+		t.Errorf("refusal = %q, want it to name the required-version pin it could not fill", measured.Refusal)
+	}
+}
+
+// A lock records the format revision of the uv that last wrote it, so the lock
+// after a merge is written by the uv the declaration pins, whatever the desk runs.
+func TestPyprojectLocksWithTheUvItsHookPins(t *testing.T) {
+	requireUV(t)
+	shims := t.TempDir()
+	record := filepath.Join(shims, "uvx-args")
+	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" > '" + record + "'\n"
+	if err := os.WriteFile(filepath.Join(shims, "uvx"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+	target := fixture(t, stacks("python"), map[string]string{
+		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+		"uv.lock":        "version = 1\n",
+	})
+
+	if outcomes := applyAll(t, target, Pyproject{}); len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
+		t.Fatalf("outcomes = %v, want one done", outcomes)
+	}
+
+	if got := strings.TrimSpace(readFile(t, record)); got != "uv@fixture-uv-pre-commit lock" {
+		t.Errorf("uvx ran %q, want the hook's uv locking", got)
 	}
 }
 
