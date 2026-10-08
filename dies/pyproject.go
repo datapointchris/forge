@@ -42,12 +42,8 @@ import (
 // The die also holds each tool in devPinnedTools at the release its pre-commit
 // hook pins, in every dependency group and extra naming it. That is the version
 // `uv run ruff` resolves locally, and CI and the hook run the hook's, so the two
-// would otherwise disagree about a finding.
-//
-// The template's one pin is [tool.uv] required-version, filled from the release
-// the uv hook pins. A write is followed by a lock with that same uv wherever the
-// repo keeps a uv.lock, so the lock never lags the spec it records and never
-// takes the format revision of whatever uv the desk happens to run.
+// would otherwise disagree about a finding. A write is followed by a lock
+// wherever the repo keeps a uv.lock, so the lock never lags the spec it records.
 type Pyproject struct{}
 
 // devPinnedTools are the tools a repo's development dependencies hold at the
@@ -256,7 +252,7 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	standard, err := renderStandard(t.Assets, dir)
+	standard, err := materialize(t.Assets.PreCommit, "configs/pyproject-tools.toml", dir)
 	if err != nil {
 		return "", err
 	}
@@ -266,42 +262,15 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 		return "", err
 	}
 
-	// --no-config, because uv enforces a project's required-version on `uv run`
-	// even with --no-project. Without it, a desk one uv release behind the
-	// declaration could not run the merge that brings the repo up to it.
-	args := append([]string{"run", "--no-config", "--no-project", "--with", "tomlkit", "python", script}, extraArgs...)
+	args := append([]string{"run", "--no-project", "--with", "tomlkit", "python", script}, extraArgs...)
 	args = append(args, pins...)
 	args = append(args, standard, "pyproject.toml")
 	return runIn(t.Repo.Path, "uv", args...)
 }
 
-// renderStandard writes the template with its uv pin filled. A pin the
-// declaration cannot fill is a refusal, the answer a block's unfilled pin gets,
-// rather than a literal placeholder merged into every Python repo.
-func renderStandard(assets reconcile.Assets, dir string) (string, error) {
-	const name = "configs/pyproject-tools.toml"
-	if assets.Manifest == nil {
-		return "", fmt.Errorf("pyproject: no toolchain declaration to fill %s from", name)
-	}
-	data, err := fs.ReadFile(assets.PreCommit, name)
-	if err != nil {
-		return "", fmt.Errorf("reading embedded %s: %w", name, err)
-	}
-	rendered := assets.Manifest.ApplyUvRequiredVersion(string(data))
-	if missing := toolchain.Unpinned(rendered); len(missing) > 0 {
-		return "", fmt.Errorf("pyproject: the toolchain declaration fills no pin for %s", strings.Join(missing, ", "))
-	}
-
-	path := filepath.Join(dir, filepath.Base(name))
-	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-// lockWithPinnedUV re-locks with the uv the declaration pins rather than the
-// one on PATH, so a lock forge writes carries the revision every other writer
-// uses, and a desk behind the declaration is not refused by required-version.
+// lockWithPinnedUV re-locks with the release the uv-lock hook pins rather than
+// the uv on PATH. A lock whose content changes takes the format revision of the
+// uv that wrote it, so this is the revision the hook and a release build write.
 func lockWithPinnedUV(t reconcile.Target) error {
 	version, pinned := t.Assets.Manifest.HookPinnedVersion("uv")
 	if !pinned {

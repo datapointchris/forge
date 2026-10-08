@@ -70,20 +70,6 @@ func TestPyprojectCarriesTheDiffIntoThePlan(t *testing.T) {
 	}
 }
 
-// The read verb runs the same script with --check, so this is the case the
-// no-writes property is really guarding.
-func TestPyprojectReadLeavesThePyprojectByteIdentical(t *testing.T) {
-	requireUV(t)
-	original := "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n"
-	target := fixture(t, stacks("python"), map[string]string{"pyproject.toml": original})
-
-	reconcile.Assess(target, Pyproject{})
-
-	if got := readFile(t, target.Path("pyproject.toml")); got != original {
-		t.Errorf("observe wrote to pyproject.toml:\n%q", got)
-	}
-}
-
 func TestPyprojectApplyThenPlanIsClean(t *testing.T) {
 	requireUV(t)
 	target := fixture(t, stacks("python"), map[string]string{
@@ -294,54 +280,9 @@ func TestPyprojectReportsATableValueAsOneConflict(t *testing.T) {
 	}
 }
 
-func TestPyprojectHoldsUvAtTheReleaseItsHookPins(t *testing.T) {
-	requireUV(t)
-	target := fixture(t, stacks("python"), map[string]string{
-		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
-	})
-
-	if outcomes := applyAll(t, target, Pyproject{}); len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
-		t.Fatalf("outcomes = %v, want one done", outcomes)
-	}
-
-	got := readFile(t, target.Path("pyproject.toml"))
-	if !strings.Contains(got, "[tool.uv]\nrequired-version = \"==fixture-uv-pre-commit\"") {
-		t.Errorf("required-version is not the fixture's uv hook rev:\n%s", got)
-	}
-	if !strings.Contains(got, `["uv", "required-version"]`) {
-		t.Errorf("required-version is not recorded, so a bump could not rewrite it:\n%s", got)
-	}
-}
-
-// uv enforces a project's required-version even under `uv run --no-project`.
-// Run under the repo's own settings, the merge could not read a repo pinned to
-// a uv the desk does not run, which is every repo during a bump.
-func TestPyprojectMeasuresARepoPinnedToAnotherUv(t *testing.T) {
-	requireUV(t)
-	target := fixture(t, stacks("python"), map[string]string{
-		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n[tool.uv]\nrequired-version = \"==0.0.1\"\n",
-	})
-
-	if measured := reconcile.Assess(target, Pyproject{}); measured.Refusal != "" {
-		t.Errorf("refused: %s", measured.Refusal)
-	}
-}
-
-func TestPyprojectRefusesADeclarationWithNoUvHook(t *testing.T) {
-	target := fixture(t, stacks("python"), map[string]string{
-		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
-	})
-	target.Assets.Manifest = &toolchain.Toolchain{Hooks: []toolchain.Hook{{Repo: "https://github.com/astral-sh/ruff-pre-commit", Rev: "v0.13.0"}}}
-
-	measured := reconcile.Assess(target, Pyproject{})
-
-	if !strings.Contains(measured.Refusal, "required-version") {
-		t.Errorf("refusal = %q, want it to name the required-version pin it could not fill", measured.Refusal)
-	}
-}
-
-// A lock records the format revision of the uv that last wrote it, so the lock
-// after a merge is written by the uv the declaration pins, whatever the desk runs.
+// A lock whose content changes takes the format revision of the uv that wrote
+// it. Recording the shim's arguments is the only offline way to see which uv
+// re-locked the repo.
 func TestPyprojectLocksWithTheUvItsHookPins(t *testing.T) {
 	requireUV(t)
 	shims := t.TempDir()

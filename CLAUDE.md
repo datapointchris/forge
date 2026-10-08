@@ -167,16 +167,13 @@ already runs that version at every commit, so a differing dev spec is a second a
 question CI settles. A write is followed by a lock wherever the repo keeps a `uv.lock`, so the
 lock never lags the spec. Raising the ruff hook rev in the declaration is the whole bump.
 
-**The template's one pin is `[tool.uv] required-version`**, filled as `==` plus the release the
-uv-pre-commit hook pins, and owned like any other key. It holds every writer of `uv.lock` to one uv.
-A lock records the format `revision` of whichever uv last rewrote it, so two writers flip it on
-every re-lock, and `uv lock --check` passes either way. uv refuses to run under any other release.
-setup-uv installs the release the key names, and a release's `build_command` reads it to install
-its own. The merge runs under `uv run --no-config`, because uv enforces the key even with
-`--no-project`. Without that, a machine one release behind could not run the merge that catches it
-up. The lock after a write runs as `uvx uv@<pin> lock` for the same reason, and so that forge writes
-the declared revision. A subproject below the root reads its own `pyproject.toml`, never the root's
-key.
+**The uv-pre-commit hook's rev is the one uv release every writer of `uv.lock` runs.** A lock
+records the format `revision` of whichever uv last rewrote it. Two writers at different releases
+flip it on every re-lock, and `uv lock --check` passes either way. So the lock after a write runs
+as `uvx uv@<pin> lock`, never the uv on `PATH`. A lock whose content changes takes that uv's
+revision. A lock that changes nothing keeps the revision it found. A Python release build reads the
+same rev out of the committed `.pre-commit-config.yaml` to install its uv, so that `rev:` line must
+stay directly under the hook's `repo:` line.
 
 **Custom hook markers** — repos with project-specific hooks use these markers in their `.pre-commit-config.yaml`:
 

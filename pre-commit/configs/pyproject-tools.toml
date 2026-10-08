@@ -114,11 +114,3 @@ uri-ignore-words-list = "*"
 verbosity_assertions = 2
 minversion = "8.0"
 testpaths = ["tests"]
-
-# The uv every desk, CI job and release build runs. A lock records the format
-# revision of whichever uv last rewrote it, so two uv versions flip it back and
-# forth on every re-lock. The pyproject die fills this from the uv-pre-commit
-# hook's pin. uv refuses to run under any other release, setup-uv installs the
-# one named here, and a release's build_command installs it from this key.
-[tool.uv]
-required-version = "{{pin}}"
