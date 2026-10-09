@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 
 	"github.com/datapointchris/goclikit"
 	"github.com/datapointchris/goselfupdate/autoupdate"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/dies"
 	"github.com/datapointchris/forge/reconcile"
 )
 
@@ -29,6 +31,15 @@ func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
 	embeddedCI = ciBlocks
 }
 
+// rootCmd's help is the first screen anyone reads, so it says where to start
+// and in what order, not only what exists.
+//
+// A die is an argument to a reconcile verb, never a command of its own, and
+// nothing in a bare list of subcommands says so: `forge precommit`, `forge ci`
+// and `forge dies release` all read as plausible. The help names every die
+// from dies.BuiltinNames, so the list cannot lag a die being added, and
+// TestEveryCommandTheRootHelpShowsExists holds each command line it prints to
+// the real tree.
 var rootCmd = &cobra.Command{
 	Use:   "forge",
 	Short: "Reconcile each repo in the registry against the standards",
@@ -44,6 +55,16 @@ var rootCmd = &cobra.Command{
 		"drift a die repairs; check lists what only a person can settle, such as\n" +
 		"a hand-written pipeline. A repo can be clean on one and not the other.\n" +
 		"\n" +
+		"A die is the word given to those verbs, never a command of its own: the\n" +
+		"pre-commit config is `forge repos plan precommit`, and the workflows are\n" +
+		"`forge repos plan ci`. `forge dies show <die>` says what one does. The\n" +
+		"dies are:\n" +
+		"\n" +
+		wrapList(dies.BuiltinNames(), "  ", 78) + "\n" +
+		"\n" +
+		"A repo's stacks are declared in the registry rather than reached by a\n" +
+		"command: `forge test` runs their suites.\n" +
+		"\n" +
 		"Reach for `forge toolchain show` when a pinned version is the line that\n" +
 		"caught your eye. It names the file every generated pin comes from.\n" +
 		"\n" +
@@ -51,7 +72,8 @@ var rootCmd = &cobra.Command{
 		"for what each repo's planning says, `fleet info` for everything in\n" +
 		"flight on one page, `fleet stats` for the shape of the set.\n" +
 		"\n" +
-		"`forge config` prints the registry it resolved and which layer named it.",
+		"`forge config show` prints the registry it resolved and which layer\n" +
+		"named it.",
 	Example: "  forge repos plan\n" +
 		"  forge repos apply precommit -F forge\n" +
 		"  forge repos check\n" +
@@ -94,6 +116,27 @@ func Execute() {
 		}
 		os.Exit(1)
 	}
+}
+
+// wrapList joins words with commas into indented lines no wider than width.
+func wrapList(words []string, indent string, width int) string {
+	var lines []string
+	line := indent
+	for i, word := range words {
+		if i < len(words)-1 {
+			word += ","
+		}
+		switch {
+		case line == indent:
+			line += word
+		case len(line)+1+len(word) > width:
+			lines = append(lines, line)
+			line = indent + word
+		default:
+			line += " " + word
+		}
+	}
+	return strings.Join(append(lines, line), "\n")
 }
 
 // registryFlag is the flag a command declares to accept a registry path.
