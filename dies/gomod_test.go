@@ -3,6 +3,7 @@ package dies
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -246,11 +247,10 @@ func TestAFlooredRepoIsPulledDownToTheDeclaration(t *testing.T) {
 	}
 }
 
-func TestADeclaredFloorTheLinterCannotBuildIsRefused(t *testing.T) {
-	// Generated CI sets up exactly the floor under GOTOOLCHAIN=local and then
-	// installs golangci-lint. Writing a floor below its minimum would fail Lint
-	// in every Go repo at once, with nothing wrong in any of them.
-	target := declared(t, "1.24.0", "1.26.6", "1.25.0", map[string]string{
+func TestAModuleWhoseCIGoTheLinterCannotBuildIsRefused(t *testing.T) {
+	// CI would set up the owed go1.24.9 and then fail to install golangci-lint,
+	// which needs 1.25.0.
+	target := declared(t, "1.24.0", "1.24.9", "1.25.0", map[string]string{
 		".": "module x\n\ngo 1.26.5\n",
 	})
 	changes := gomodChanges(t, target)
@@ -277,6 +277,24 @@ func TestADeclaredFloorTheLinterCannotBuildIsRefused(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Errorf("go.mod was written anyway:\n%s", after)
+	}
+}
+
+func TestAFloorBelowTheLinterIsWrittenWhereTheToolchainCarriesCIAboveIt(t *testing.T) {
+	// setup-go installs the toolchain directive, so CI runs go1.26.6 and the
+	// linter builds. The 1.24.0 floor only bounds who may consume the module.
+	target := declared(t, "1.24.0", "1.26.6", "1.25.0", map[string]string{
+		".": "module x\n\ngo 1.26.5\n",
+	})
+	changes := gomodChanges(t, target)
+	for _, c := range changes {
+		if !c.Actionable() {
+			t.Fatalf("a floor the toolchain covers was refused: %+v", c)
+		}
+	}
+	performAll(t, target, changes)
+	if got, want := readFile(t, target.Path("go.mod")), "module x\n\ngo 1.24.0\n\ntoolchain go1.26.6\n"; got != want {
+		t.Errorf("go.mod =\n%q\nwant\n%q", got, want)
 	}
 }
 
@@ -330,6 +348,154 @@ func TestConvergingOneModuleSettlesBothDirectivesAtOnce(t *testing.T) {
 	}
 	if done != 1 {
 		t.Errorf("%d changes reported Done, want exactly one to have written", done)
+	}
+}
+
+// withFiles writes files into a target, each path relative to the repo.
+func withFiles(t *testing.T, target reconcile.Target, files map[string]string) reconcile.Target {
+	t.Helper()
+	for rel, body := range files {
+		if err := writeFile(target.Path(rel), body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return target
+}
+
+func performAll(t *testing.T, target reconcile.Target, changes []reconcile.Change) {
+	t.Helper()
+	for _, c := range changes {
+		if _, err := (GoMod{}).Perform(target, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+const apiImage = "FROM golang:alpine AS builder\nWORKDIR /build\nRUN go build -o /server .\n\nFROM alpine:3.22\nCOPY --from=builder /server /server\n"
+
+func TestAFloatingGolangTagTakesTheGoCITests(t *testing.T) {
+	// The official image sets GOTOOLCHAIN=local, so the toolchain line below
+	// never reaches a build from golang:alpine.
+	target := withFiles(t, goTarget(t, "1.26.9", map[string]string{
+		"api": "module x/api\n\ngo 1.26.5\n\ntoolchain go1.26.9\n",
+	}), map[string]string{"api/Dockerfile": apiImage})
+
+	changes := gomodChanges(t, target)
+	if len(changes) != 1 || changes[0].Item != "api/Dockerfile" || !changes[0].Actionable() {
+		t.Fatalf("changes = %+v", changes)
+	}
+	performAll(t, target, changes)
+
+	want := strings.Replace(apiImage, "golang:alpine", "golang:1.26.9-alpine", 1)
+	if got := readFile(t, target.Path("api", "Dockerfile")); got != want {
+		t.Errorf("Dockerfile =\n%s\nwant\n%s", got, want)
+	}
+	if again := gomodChanges(t, target); len(again) != 0 {
+		t.Errorf("second pass still sees drift: %+v", again)
+	}
+}
+
+func TestARewriteMovesOnlyTheGoRelease(t *testing.T) {
+	for _, tc := range []struct{ have, want string }{
+		{"FROM golang:alpine AS builder", "FROM golang:1.26.9-alpine AS builder"},
+		{"FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build", "FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS build"},
+		{"from docker.io/library/golang:1.26.6 as b", "from docker.io/library/golang:1.26.9 as b"},
+		{"FROM golang:1.26-alpine3.22", "FROM golang:1.26-alpine3.22"},
+		{"FROM golang", "FROM golang:1.26.9"},
+		{"FROM golang:latest", "FROM golang:1.26.9"},
+		{"FROM golang:1.26.9-alpine@sha256:0abc", "FROM golang:1.26.9-alpine@sha256:0abc"},
+		{"FROM golangci/golangci-lint:v2.1.0", "FROM golangci/golangci-lint:v2.1.0"},
+		{"FROM alpine:3.22", "FROM alpine:3.22"},
+	} {
+		if got, _ := pinGolangImages(tc.have+"\n", "1.26.9"); got != tc.want+"\n" {
+			t.Errorf("%q became %q, want %q", tc.have, got, tc.want+"\n")
+		}
+	}
+}
+
+func TestAnImageTakesTheFloorWhereNoToolchainLineIsOwed(t *testing.T) {
+	// setup-go reads the `go` directive when go.mod names no toolchain, so a
+	// floor above the pin is the Go CI tests.
+	target := withFiles(t, declared(t, "1.27.0", "1.26.9", "1.25.0", map[string]string{
+		"api": "module x/api\n\ngo 1.27.0\n",
+	}), map[string]string{"api/Dockerfile": "FROM golang:1.26.9-alpine\n"})
+
+	performAll(t, target, gomodChanges(t, target))
+	if got := readFile(t, target.Path("api", "Dockerfile")); got != "FROM golang:1.27.0-alpine\n" {
+		t.Errorf("Dockerfile = %q", got)
+	}
+}
+
+func TestAnImageWhoseGoTheTagCannotSetIsReportedNotRewritten(t *testing.T) {
+	// Docker Hub publishes a new Go only on the newest distro releases, so a
+	// rewritten alpine3.22 or bookworm tag may not exist.
+	for _, from := range []string{
+		"FROM golang@sha256:0abc AS builder\n",
+		"ARG GO_VERSION\nFROM golang:${GO_VERSION}-alpine AS builder\n",
+		"FROM golang:1.26-alpine3.22 AS builder\n",
+		"FROM golang:1.26.6-bookworm AS builder\n",
+	} {
+		target := withFiles(t, goTarget(t, "1.26.9", map[string]string{
+			"api": "module x/api\n\ngo 1.26.5\n\ntoolchain go1.26.9\n",
+		}), map[string]string{"api/Dockerfile": from})
+
+		changes := gomodChanges(t, target)
+		if len(changes) != 1 || changes[0].Repair != reconcile.ByHand {
+			t.Fatalf("%q: changes = %+v", from, changes)
+		}
+		performAll(t, target, changes)
+		if got := readFile(t, target.Path("api", "Dockerfile")); got != from {
+			t.Errorf("%q was rewritten to %q", from, got)
+		}
+	}
+}
+
+func TestTheImageAndGoModAgreeWhicheverChangeLandsFirst(t *testing.T) {
+	// The Dockerfile's change runs while go.mod still names the old toolchain,
+	// so reading go.mod off disk would pin the image to the release being left.
+	target := withFiles(t, goTarget(t, "1.26.9", map[string]string{
+		"api": "module x/api\n\ngo 1.26.5\n\ntoolchain go1.26.6\n",
+	}), map[string]string{"api/Dockerfile": "FROM golang:1.26.6-alpine\n"})
+
+	changes := gomodChanges(t, target)
+	if len(changes) != 2 {
+		t.Fatalf("changes = %+v", changes)
+	}
+	slices.Reverse(changes)
+	performAll(t, target, changes)
+
+	if got := readFile(t, target.Path("api", "Dockerfile")); got != "FROM golang:1.26.9-alpine\n" {
+		t.Errorf("Dockerfile = %q", got)
+	}
+	if got := readFile(t, target.Path("api", "go.mod")); !strings.Contains(got, "toolchain go1.26.9\n") {
+		t.Errorf("go.mod =\n%s", got)
+	}
+}
+
+func TestOnlyDockerfilesInTheComponentDirectoryAreRead(t *testing.T) {
+	target := withFiles(t, goTarget(t, "1.26.9", map[string]string{
+		"api": "module x/api\n\ngo 1.26.5\n\ntoolchain go1.26.9\n",
+	}), map[string]string{
+		"api/prod.Dockerfile":         "FROM golang:alpine\n",
+		"api/Dockerfile.dockerignore": "FROM golang:alpine\n",
+		"Dockerfile":                  "FROM golang:alpine\n",
+	})
+
+	changes := gomodChanges(t, target)
+	if len(changes) != 1 || changes[0].Item != "api/prod.Dockerfile" {
+		t.Errorf("changes = %+v", changes)
+	}
+}
+
+func TestARefusedModuleMovesNoImage(t *testing.T) {
+	target := withFiles(t, declared(t, "1.24.0", "1.24.9", "1.25.0", map[string]string{
+		"api": "module x/api\n\ngo 1.26.5\n",
+	}), map[string]string{"api/Dockerfile": "FROM golang:alpine\n"})
+
+	for _, c := range gomodChanges(t, target) {
+		if c.Item == "api/Dockerfile" {
+			t.Errorf("an image moved under a refused declaration: %+v", c)
+		}
 	}
 }
 
