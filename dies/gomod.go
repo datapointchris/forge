@@ -95,10 +95,9 @@ type gomodState struct {
 	// converged rather than inventing a version.
 	floor  string
 	pinned string
-	// minimum is the declared hard bottom under the floor — the Go the pinned
-	// golangci-lint requires. A floor below it produces a go.mod whose Lint job
-	// fails for reasons unrelated to the repo, so the die refuses rather than
-	// writing it.
+	// minimum is the Go the pinned golangci-lint requires. A module whose CI
+	// would set up an older Go fails Lint for reasons unrelated to the repo, so
+	// the die refuses rather than converging it.
 	minimum string
 }
 
@@ -231,21 +230,23 @@ func (GoMod) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconci
 			continue
 		}
 		changes = append(changes, moduleChanges(state, module)...)
-		// A refused declaration converges nothing, so no image is moved to a Go
-		// its go.mod will not name.
-		if !floorRefused(state) {
+		// A refused module converges nothing, so no image is moved to a Go its
+		// go.mod will not name.
+		if !lintRefused(state, module) {
 			changes = append(changes, imageChanges(state, module)...)
 		}
 	}
 	return changes, nil
 }
 
-// floorRefused reports a declared floor the pinned linter cannot build. Generated
-// CI sets up exactly the floor under GOTOOLCHAIN=local and then installs
-// golangci-lint, so writing it would produce a repo whose Lint job fails with
-// nothing wrong in its code — and it would do that to every Go repo at once.
-func floorRefused(state gomodState) bool {
-	return state.floor != "" && state.minimum != "" && !meetsFloor(state.floor, state.minimum)
+// lintRefused reports a module whose CI would set up a Go older than the pinned
+// linter's minimum. CI sets up go.mod's toolchain directive where there is one
+// and its floor otherwise, under GOTOOLCHAIN=local, and then installs
+// golangci-lint, which refuses to build on an older Go. Converging such a
+// module would leave its Lint job failing with nothing wrong in its code.
+func lintRefused(state gomodState, module goModule) bool {
+	build := buildGo(state, module)
+	return state.minimum != "" && build != "" && !meetsFloor(build, state.minimum)
 }
 
 // convergedFloor is the `go` directive a module holds once this die has run.
@@ -290,14 +291,12 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 	item := filepath.Join(module.rel, "go.mod")
 	var changes []reconcile.Change
 
-	// A declared floor the pinned linter cannot build is refused rather than
-	// written.
-	if floorRefused(state) {
+	if lintRefused(state, module) {
 		return []reconcile.Change{{
 			Item:     item,
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.ByHand,
-			Detail:   fmt.Sprintf("the declared floor %s is below the %s the pinned linter requires; Lint would fail on a repo whose code is fine", state.floor, state.minimum),
+			Detail:   fmt.Sprintf("CI would set up Go %s, below the %s the pinned linter requires; Lint would fail on a repo whose code is fine", buildGo(state, module), state.minimum),
 			Observed: "go " + module.goVersion,
 		}}
 	}
@@ -379,23 +378,25 @@ func imageChange(image dockerfile, want string) (reconcile.Change, bool) {
 	var stale string
 	for _, m := range golangFromRE.FindAllStringSubmatch(image.body, -1) {
 		line, tag, digest := strings.TrimSpace(m[0]), m[2], m[3]
-		if goImageTag(tag, want) == tag {
+		next, published := goImageTag(tag, want)
+		if next == tag {
 			continue
 		}
 		// A digest outranks the tag beside it, and a build argument is filled
 		// by whoever runs the build. Rewriting the tag reaches neither.
+		var reason string
 		switch {
 		case digest != "":
-			return reconcile.Change{
-				Item: image.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-				Detail:   "pinned by a digest whose Go cannot be read offline; CI tests " + want,
-				Observed: line,
-			}, true
+			reason = "pinned by a digest whose Go cannot be read offline"
 		case strings.Contains(tag, "$"):
+			reason = "takes its tag from a build argument"
+		case !published:
+			reason = "names a distro release, which may have no " + next + " tag"
+		}
+		if reason != "" {
 			return reconcile.Change{
 				Item: image.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-				Detail:   "takes its tag from a build argument; CI tests " + want,
-				Observed: line,
+				Detail: reason + "; CI tests Go " + want, Observed: line,
 			}, true
 		}
 		if stale == "" {
@@ -415,14 +416,14 @@ func imageChange(image dockerfile, want string) (reconcile.Change, bool) {
 }
 
 // pinGolangImages sets the Go release in every golang FROM line it can rewrite,
-// keeping the platform flag, the variant and the stage name.
+// keeping the platform flag and the stage name.
 func pinGolangImages(body, want string) (string, bool) {
 	changed := false
 	updated := golangFromRE.ReplaceAllStringFunc(body, func(line string) string {
 		m := golangFromRE.FindStringSubmatch(line)
 		prefix, tag, digest, rest := m[1], m[2], m[3], m[4]
-		next := goImageTag(tag, want)
-		if digest != "" || strings.Contains(tag, "$") || next == tag {
+		next, published := goImageTag(tag, want)
+		if digest != "" || strings.Contains(tag, "$") || !published || next == tag {
 			return line
 		}
 		changed = true
@@ -431,18 +432,24 @@ func pinGolangImages(body, want string) (string, bool) {
 	return updated, changed
 }
 
-// goImageTag is tag with its Go release set to want and its variant kept:
-// alpine becomes 1.26.9-alpine and 1.26-alpine3.22 becomes 1.26.9-alpine3.22.
-func goImageTag(tag, want string) string {
+// goImageTag is tag with its Go release set to want, and whether that tag is
+// sure to exist. alpine becomes 1.26.9-alpine, and a bare release stays bare.
+// The official image publishes a new Go release only on its newest distro
+// releases, so a variant naming one, such as alpine3.22 or bookworm, may have
+// no tag for want.
+func goImageTag(tag, want string) (string, bool) {
 	if tag == "" || tag == "latest" {
-		return want
+		return want, true
 	}
 	release := goImageReleaseRE.FindString(tag)
-	variant := strings.TrimPrefix(tag[len(release):], "-")
-	if variant == "" {
-		return want
+	switch variant := strings.TrimPrefix(tag[len(release):], "-"); variant {
+	case "":
+		return want, true
+	case "alpine":
+		return want + "-alpine", true
+	default:
+		return want + "-" + variant, false
 	}
-	return want + "-" + variant
 }
 
 func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
@@ -497,16 +504,17 @@ func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.O
 }
 
 // performImage rewrites one Dockerfile's golang tags to the Go its module's CI
-// tests. buildGo reads the declaration rather than the go.mod on disk, so the
-// result is the same whichever of the module's changes lands first.
+// tests. buildGo reads only the go.mod values Perform never rewrites: the `go`
+// line where no floor is declared, and a toolchain line no pin owes. So the
+// image and go.mod agree whichever change applies first.
 func performImage(t reconcile.Target, state gomodState, change reconcile.Change) (reconcile.Outcome, error) {
-	if floorRefused(state) {
-		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "the declared floor is refused"}, nil
-	}
 	for _, module := range state.modules {
 		for _, image := range module.dockerfiles {
 			if image.rel != change.Item {
 				continue
+			}
+			if lintRefused(state, module) {
+				return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "the module's Go is refused"}, nil
 			}
 			want := buildGo(state, module)
 			pinned, changed := pinGolangImages(image.body, want)

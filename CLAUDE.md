@@ -278,12 +278,15 @@ owns the module, never to a fleet-wide sweep.
 Both numbers come from the declaration's `languages.go`. Bump the toolchain on a standard-library
 advisory; `govulncheck` in generated CI is what reports one.
 
-**A declared floor the pinned linter cannot build is refused, never written.** Generated CI sets up
-exactly the floor under `GOTOOLCHAIN=local` and then installs golangci-lint, so a floor below its
-own minimum fails Lint in every Go repo at once with nothing wrong in any of them. The declaration
-carries that bottom as `languages.go.binding_minimum` — declared rather than derived, because
-reading it needs the module proxy and a die that reaches the network to decide one line is a die
-that fails offline. The refusal is `ByHand`, so it surfaces in `check` and `apply` cannot reach it.
+**A module whose CI Go the pinned linter cannot build is refused, never written.** Generated CI
+sets up go.mod's toolchain directive where there is one and its floor otherwise, under
+`GOTOOLCHAIN=local`, and then installs golangci-lint. A Go below the linter's own minimum fails
+Lint in every Go repo at once with nothing wrong in any of them. A floor below that minimum is
+still written where an owed toolchain line puts CI above it, because the floor only says who may
+consume the module. The declaration carries that bottom as `languages.go.binding_minimum` —
+declared rather than derived, because reading it needs the module proxy and a die that reaches
+the network to decide one line is a die that fails offline. The refusal is `ByHand`, so it
+surfaces in `check` and `apply` cannot reach it.
 
 **A floor moves in either direction.** Lowering one is safe for every consumer; raising one excludes
 them. No module is floored above the declaration, so nothing in the portfolio is stricter than the
@@ -299,12 +302,20 @@ declared Go component directory takes the release CI's setup-go reads from the c
 the toolchain directive where there is one, and the floor where there is not. The official image
 sets `GOTOOLCHAIN=local`, which ignores go.mod's toolchain line. So the tag alone decides what
 compiles the shipped binary, and a floating `golang:alpine` follows Go's newest release, which no
-CI run tested. The rewrite keeps the variant, `--platform` and the stage name. A digest or a
-build-argument tag is reported `ByHand`, because rewriting the tag reaches neither. `buildGo`
-reads the declaration rather than the go.mod on disk, so the image and go.mod agree whichever
-change applies first. A Dockerfile outside a component directory is not read. A raise made on the
-day of a Go release can fail the image job until Docker Hub publishes `golang:<pin>-<variant>`,
-and production keeps the previous image meanwhile.
+CI run tested. The rewrite keeps `--platform` and the stage name.
+
+Only a bare release and the `alpine` family are rewritten. The official image publishes a new Go
+release only on its newest distro releases, so a variant naming one, such as `alpine3.22` or
+`bookworm`, may have no tag for the pin. That variant is reported `ByHand`, and so are a digest
+and a build-argument tag, because rewriting the tag reaches neither. `buildGo` reads only the
+go.mod values `Perform` never rewrites: the `go` line where no floor is declared, and a toolchain
+line no pin owes. So the image and go.mod agree whichever change applies first. A Dockerfile
+outside a component directory is not read.
+
+The die cannot see the prose above a `FROM` line, so a comment explaining the old tag survives the
+rewrite and argues for it. The commit landing a rewrite owes that comment. A raise made on the day
+of a Go release can fail the image job until Docker Hub publishes `golang:<pin>-alpine`, and
+production keeps the previous image meanwhile.
 
 `Perform` converges the whole module rather than the one directive its `Change` names. A `Change`
 carries the file, not the line, and a module can drift on both at once — so the second change for

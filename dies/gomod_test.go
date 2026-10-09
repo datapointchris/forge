@@ -247,11 +247,11 @@ func TestAFlooredRepoIsPulledDownToTheDeclaration(t *testing.T) {
 	}
 }
 
-func TestADeclaredFloorTheLinterCannotBuildIsRefused(t *testing.T) {
-	// Generated CI sets up exactly the floor under GOTOOLCHAIN=local and then
-	// installs golangci-lint. Writing a floor below its minimum would fail Lint
-	// in every Go repo at once, with nothing wrong in any of them.
-	target := declared(t, "1.24.0", "1.26.6", "1.25.0", map[string]string{
+func TestAModuleWhoseCIGoTheLinterCannotBuildIsRefused(t *testing.T) {
+	// CI sets up the owed toolchain, go1.24.9, under GOTOOLCHAIN=local and then
+	// installs golangci-lint, which needs 1.25.0. Converging would fail Lint in
+	// every Go repo at once, with nothing wrong in any of them.
+	target := declared(t, "1.24.0", "1.24.9", "1.25.0", map[string]string{
 		".": "module x\n\ngo 1.26.5\n",
 	})
 	changes := gomodChanges(t, target)
@@ -278,6 +278,24 @@ func TestADeclaredFloorTheLinterCannotBuildIsRefused(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Errorf("go.mod was written anyway:\n%s", after)
+	}
+}
+
+func TestAFloorBelowTheLinterIsWrittenWhereTheToolchainCarriesCIAboveIt(t *testing.T) {
+	// setup-go installs the toolchain directive, so CI runs go1.26.6 and the
+	// linter builds. The floor is only who may consume the module.
+	target := declared(t, "1.24.0", "1.26.6", "1.25.0", map[string]string{
+		".": "module x\n\ngo 1.26.5\n",
+	})
+	changes := gomodChanges(t, target)
+	for _, c := range changes {
+		if !c.Actionable() {
+			t.Fatalf("a floor the toolchain covers was refused: %+v", c)
+		}
+	}
+	performAll(t, target, changes)
+	if got, want := readFile(t, target.Path("go.mod")), "module x\n\ngo 1.24.0\n\ntoolchain go1.26.6\n"; got != want {
+		t.Errorf("go.mod =\n%q\nwant\n%q", got, want)
 	}
 }
 
@@ -381,8 +399,9 @@ func TestAFloatingGolangTagTakesTheGoCITests(t *testing.T) {
 func TestARewriteMovesOnlyTheGoRelease(t *testing.T) {
 	for _, tc := range []struct{ have, want string }{
 		{"FROM golang:alpine AS builder", "FROM golang:1.26.9-alpine AS builder"},
-		{"FROM --platform=$BUILDPLATFORM golang:1.25-alpine3.22 AS build", "FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine3.22 AS build"},
-		{"from docker.io/library/golang:1.26.6-bookworm as b", "from docker.io/library/golang:1.26.9-bookworm as b"},
+		{"FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build", "FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS build"},
+		{"from docker.io/library/golang:1.26.6 as b", "from docker.io/library/golang:1.26.9 as b"},
+		{"FROM golang:1.26-alpine3.22", "FROM golang:1.26-alpine3.22"},
 		{"FROM golang", "FROM golang:1.26.9"},
 		{"FROM golang:latest", "FROM golang:1.26.9"},
 		{"FROM golang:1.26.9-alpine@sha256:0abc", "FROM golang:1.26.9-alpine@sha256:0abc"},
@@ -409,9 +428,13 @@ func TestAnImageTakesTheFloorWhereNoToolchainLineIsOwed(t *testing.T) {
 }
 
 func TestAnImageWhoseGoTheTagCannotSetIsReportedNotRewritten(t *testing.T) {
+	// A distro release in the variant is here because Docker Hub publishes a
+	// new Go only on the newest ones, so the rewritten tag may not exist.
 	for _, from := range []string{
 		"FROM golang@sha256:0abc AS builder\n",
 		"ARG GO_VERSION\nFROM golang:${GO_VERSION}-alpine AS builder\n",
+		"FROM golang:1.26-alpine3.22 AS builder\n",
+		"FROM golang:1.26.6-bookworm AS builder\n",
 	} {
 		target := withFiles(t, goTarget(t, "1.26.9", map[string]string{
 			"api": "module x/api\n\ngo 1.26.5\n\ntoolchain go1.26.9\n",
@@ -465,8 +488,8 @@ func TestOnlyDockerfilesInTheComponentDirectoryAreRead(t *testing.T) {
 	}
 }
 
-func TestARefusedFloorMovesNoImage(t *testing.T) {
-	target := withFiles(t, declared(t, "1.24.0", "1.26.9", "1.25.0", map[string]string{
+func TestARefusedModuleMovesNoImage(t *testing.T) {
+	target := withFiles(t, declared(t, "1.24.0", "1.24.9", "1.25.0", map[string]string{
 		"api": "module x/api\n\ngo 1.26.5\n",
 	}), map[string]string{"api/Dockerfile": "FROM golang:alpine\n"})
 
