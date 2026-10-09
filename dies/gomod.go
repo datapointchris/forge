@@ -33,16 +33,22 @@ import (
 // So this die never writes the `go` line. Raising a floor is a compatibility
 // decision about who may consume the module, and it belongs to whoever owns
 // the module rather than to a fleet-wide sweep.
+//
+// The Dockerfiles beside each go.mod build the module's image, so their
+// `FROM golang:` lines take the same Go. The official image sets
+// GOTOOLCHAIN=local, which ignores go.mod's toolchain line, so the tag alone
+// decides what compiles the shipped binary. A floating tag such as
+// golang:alpine follows Go's newest release, which no CI run tested.
 type GoMod struct{}
 
 func (GoMod) Name() string { return "gomod" }
 
 func (GoMod) Description() string {
-	return "Pin the Go toolchain each module builds with, from the manifest's runtime version. Never touches the `go` directive, which is a consumer's floor rather than this build's toolchain."
+	return "Pin the Go toolchain each module builds with, from the manifest's runtime version, in its go.mod and in the golang image its Dockerfiles build from. Never touches the `go` directive, which is a consumer's floor rather than this build's toolchain."
 }
 
 func (GoMod) Tags() []string {
-	return []string{"go", "toolchain", "govulncheck", "standardization", "golden-path"}
+	return []string{"go", "toolchain", "docker", "govulncheck", "standardization", "golden-path"}
 }
 
 var (
@@ -51,6 +57,16 @@ var (
 	// strips the file's trailing newline.
 	goDirectiveRE        = regexp.MustCompile(`(?m)^go[ \t]+(\S+)[ \t]*$`)
 	toolchainDirectiveRE = regexp.MustCompile(`(?m)^toolchain[ \t]+(\S+)[ \t]*$`)
+
+	// golangFromRE is a FROM naming the official golang image. The groups are
+	// everything up to the image name, the tag, a digest, and the rest of the
+	// line. golangci and every other image starting with the word fail at the
+	// character after it.
+	golangFromRE = regexp.MustCompile(`(?im)^([ \t]*FROM[ \t]+(?:--platform=\S+[ \t]+)?(?:docker\.io/)?(?:library/)?golang)(?::([^\s@]+))?(@\S+)?((?:[ \t].*)?)$`)
+
+	// goImageReleaseRE is the Go release at the front of a golang tag, ahead of
+	// the variant: 1.26.9 in 1.26.9-alpine, 1.26 in 1.26-alpine3.22.
+	goImageReleaseRE = regexp.MustCompile(`^\d+(?:\.\d+)*(?:rc\d+)?`)
 )
 
 // goModule is one go.mod under a declared Go component.
@@ -62,6 +78,14 @@ type goModule struct {
 	exists    bool
 	goVersion string
 	toolchain string
+	// dockerfiles are the ones in the component directory, which a Go image
+	// takes as its build context. One elsewhere in the repo is not read.
+	dockerfiles []dockerfile
+}
+
+type dockerfile struct {
+	rel  string
+	body string
 }
 
 type gomodState struct {
@@ -85,7 +109,14 @@ func (s gomodState) Summary() string {
 	if len(s.modules) == 0 {
 		return "no Go modules declared"
 	}
-	return fmt.Sprintf("toolchain current (%s)", plural(len(s.modules), "module", "modules"))
+	var images int
+	for _, module := range s.modules {
+		images += len(module.dockerfiles)
+	}
+	if images == 0 {
+		return fmt.Sprintf("toolchain current (%s)", plural(len(s.modules), "module", "modules"))
+	}
+	return fmt.Sprintf("toolchain current (%s, %s)", plural(len(s.modules), "module", "modules"), plural(images, "Dockerfile", "Dockerfiles"))
 }
 
 func (GoMod) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -140,9 +171,49 @@ func (GoMod) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		default:
 			return nil, err
 		}
+		if module.exists {
+			if module.dockerfiles, err = readDockerfiles(t, rel); err != nil {
+				return nil, err
+			}
+		}
 		state.modules = append(state.modules, module)
 	}
 	return state, nil
+}
+
+// readDockerfiles reads every Dockerfile in one component directory that
+// builds from the golang image. A Dockerfile building from anything else owes
+// this die nothing and is not counted.
+func readDockerfiles(t reconcile.Target, rel string) ([]dockerfile, error) {
+	entries, err := os.ReadDir(t.Path(rel))
+	if err != nil {
+		return nil, err
+	}
+	var found []dockerfile
+	for _, entry := range entries {
+		if entry.IsDir() || !isDockerfileName(entry.Name()) {
+			continue
+		}
+		item := filepath.Join(rel, entry.Name())
+		body, err := os.ReadFile(t.Path(item))
+		if err != nil {
+			return nil, err
+		}
+		if golangFromRE.Match(body) {
+			found = append(found, dockerfile{rel: item, body: string(body)})
+		}
+	}
+	return found, nil
+}
+
+// isDockerfileName is the three spellings docker build takes by convention:
+// Dockerfile, Dockerfile.<name> and <name>.Dockerfile. Dockerfile.dockerignore
+// is the ignore file a BuildKit build reads beside its Dockerfile.
+func isDockerfileName(name string) bool {
+	if strings.HasSuffix(name, ".dockerignore") {
+		return false
+	}
+	return name == "Dockerfile" || strings.HasPrefix(name, "Dockerfile.") || strings.HasSuffix(name, ".Dockerfile")
 }
 
 func (GoMod) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
@@ -160,8 +231,56 @@ func (GoMod) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconci
 			continue
 		}
 		changes = append(changes, moduleChanges(state, module)...)
+		// A refused declaration converges nothing, so no image is moved to a Go
+		// its go.mod will not name.
+		if !floorRefused(state) {
+			changes = append(changes, imageChanges(state, module)...)
+		}
 	}
 	return changes, nil
+}
+
+// floorRefused reports a declared floor the pinned linter cannot build. Generated
+// CI sets up exactly the floor under GOTOOLCHAIN=local and then installs
+// golangci-lint, so writing it would produce a repo whose Lint job fails with
+// nothing wrong in its code — and it would do that to every Go repo at once.
+func floorRefused(state gomodState) bool {
+	return state.floor != "" && state.minimum != "" && !meetsFloor(state.floor, state.minimum)
+}
+
+// convergedFloor is the `go` directive a module holds once this die has run.
+func convergedFloor(state gomodState, goVersion string) string {
+	if state.floor != "" {
+		return state.floor
+	}
+	return goVersion
+}
+
+// owedToolchain is the toolchain directive this die writes into a module, or ""
+// where the converged floor already reaches the pin. It is the one place that
+// decision is made, for go.mod and for the image alike.
+func owedToolchain(state gomodState, goVersion string) string {
+	if state.pinned == "" || meetsFloor(convergedFloor(state, goVersion), state.pinned) {
+		return ""
+	}
+	return "go" + state.pinned
+}
+
+// buildGo is the Go release a module's CI tests once its go.mod has converged,
+// which is the release its image has to build with. setup-go reads go.mod as
+// the toolchain directive where there is one and the `go` directive otherwise,
+// so this reads the converged file the same way.
+func buildGo(state gomodState, module goModule) string {
+	toolchain := owedToolchain(state, module.goVersion)
+	if toolchain == "" {
+		// A toolchain line the floor has overtaken is reported, never removed,
+		// and setup-go reads it while it is there.
+		toolchain = module.toolchain
+	}
+	if toolchain != "" {
+		return strings.TrimPrefix(toolchain, "go")
+	}
+	return convergedFloor(state, module.goVersion)
 }
 
 // moduleChanges decides one go.mod, floor first and toolchain second, because
@@ -172,11 +291,8 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 	var changes []reconcile.Change
 
 	// A declared floor the pinned linter cannot build is refused rather than
-	// written. Generated CI sets up exactly the floor under GOTOOLCHAIN=local
-	// and then installs golangci-lint, so writing it would produce a repo whose
-	// Lint job fails with nothing wrong in its code — and it would do that to
-	// every Go repo at once.
-	if state.floor != "" && state.minimum != "" && !meetsFloor(state.floor, state.minimum) {
+	// written.
+	if floorRefused(state) {
 		return []reconcile.Change{{
 			Item:     item,
 			Verdict:  reconcile.Stale,
@@ -207,16 +323,11 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 	if state.pinned == "" {
 		return changes
 	}
-	// The floor this module will hold once the change above lands, which is what
-	// decides whether a toolchain line is wanted at all.
-	floor := module.goVersion
-	if state.floor != "" {
-		floor = state.floor
-	}
-	want := "go" + state.pinned
+	floor := convergedFloor(state, module.goVersion)
+	want := owedToolchain(state, module.goVersion)
 
 	switch {
-	case meetsFloor(floor, state.pinned):
+	case want == "":
 		// Already building against the pinned standard library, so a toolchain
 		// line would be a second copy of the same fact.
 		if module.toolchain != "" {
@@ -248,6 +359,92 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 	return changes
 }
 
+// imageChanges decides each Dockerfile beside one go.mod. A change names a
+// file, so a multi-stage build naming golang twice is one change.
+func imageChanges(state gomodState, module goModule) []reconcile.Change {
+	want := buildGo(state, module)
+	if want == "" {
+		return nil
+	}
+	var changes []reconcile.Change
+	for _, image := range module.dockerfiles {
+		if change, drifted := imageChange(image, want); drifted {
+			changes = append(changes, change)
+		}
+	}
+	return changes
+}
+
+func imageChange(image dockerfile, want string) (reconcile.Change, bool) {
+	var stale string
+	for _, m := range golangFromRE.FindAllStringSubmatch(image.body, -1) {
+		line, tag, digest := strings.TrimSpace(m[0]), m[2], m[3]
+		if goImageTag(tag, want) == tag {
+			continue
+		}
+		// A digest outranks the tag beside it, and a build argument is filled
+		// by whoever runs the build. Rewriting the tag reaches neither.
+		switch {
+		case digest != "":
+			return reconcile.Change{
+				Item: image.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
+				Detail:   "pinned by a digest whose Go cannot be read offline; CI tests " + want,
+				Observed: line,
+			}, true
+		case strings.Contains(tag, "$"):
+			return reconcile.Change{
+				Item: image.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
+				Detail:   "takes its tag from a build argument; CI tests " + want,
+				Observed: line,
+			}, true
+		}
+		if stale == "" {
+			stale = line
+		}
+	}
+	if stale == "" {
+		return reconcile.Change{}, false
+	}
+	return reconcile.Change{
+		Item:     image.rel,
+		Verdict:  reconcile.Stale,
+		Repair:   reconcile.Automatic,
+		Detail:   "CI tests Go " + want + ", and the official image ignores go.mod's toolchain line",
+		Observed: stale,
+	}, true
+}
+
+// pinGolangImages sets the Go release in every golang FROM line it can rewrite,
+// keeping the platform flag, the variant and the stage name.
+func pinGolangImages(body, want string) (string, bool) {
+	changed := false
+	updated := golangFromRE.ReplaceAllStringFunc(body, func(line string) string {
+		m := golangFromRE.FindStringSubmatch(line)
+		prefix, tag, digest, rest := m[1], m[2], m[3], m[4]
+		next := goImageTag(tag, want)
+		if digest != "" || strings.Contains(tag, "$") || next == tag {
+			return line
+		}
+		changed = true
+		return prefix + ":" + next + rest
+	})
+	return updated, changed
+}
+
+// goImageTag is tag with its Go release set to want and its variant kept:
+// alpine becomes 1.26.9-alpine and 1.26-alpine3.22 becomes 1.26.9-alpine3.22.
+func goImageTag(tag, want string) string {
+	if tag == "" || tag == "latest" {
+		return want
+	}
+	release := goImageReleaseRE.FindString(tag)
+	variant := strings.TrimPrefix(tag[len(release):], "-")
+	if variant == "" {
+		return want
+	}
+	return want + "-" + variant
+}
+
 func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	if !change.Actionable() {
 		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
@@ -260,6 +457,9 @@ func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.O
 	state := observed.(gomodState)
 	if state.floor == "" && state.pinned == "" {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "the declaration pins no Go version"}, nil
+	}
+	if filepath.Base(change.Item) != "go.mod" {
+		return performImage(t, state, change)
 	}
 
 	// Converges the whole module rather than the one directive this change
@@ -279,31 +479,56 @@ func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.O
 			updated, did = []byte(next), append(did, "floored at "+state.floor)
 		}
 	}
-	if state.pinned != "" {
-		floor := state.floor
-		if floor == "" {
-			floor = goDirectiveOf(string(updated))
-		}
-		// A floor that already reaches the pin needs no toolchain line; where it
-		// does not, that line is what carries the fixed standard library.
-		if !meetsFloor(floor, state.pinned) {
-			if next, changed := setToolchain(string(updated), "go"+state.pinned); changed {
-				updated, did = []byte(next), append(did, "pinned toolchain "+state.pinned)
-			}
+	// A floor that already reaches the pin needs no toolchain line; where it
+	// does not, that line is what carries the fixed standard library.
+	if owed := owedToolchain(state, goDirectiveOf(string(updated))); owed != "" {
+		if next, changed := setToolchain(string(updated), owed); changed {
+			updated, did = []byte(next), append(did, "pinned toolchain "+state.pinned)
 		}
 	}
 
 	if len(did) == 0 {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already converged"}, nil
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return reconcile.Outcome{}, err
-	}
-	if err := os.WriteFile(path, updated, info.Mode().Perm()); err != nil {
+	if err := rewrite(path, updated); err != nil {
 		return reconcile.Outcome{}, err
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: strings.Join(did, ", ")}, nil
+}
+
+// performImage rewrites one Dockerfile's golang tags to the Go its module's CI
+// tests. buildGo reads the declaration rather than the go.mod on disk, so the
+// result is the same whichever of the module's changes lands first.
+func performImage(t reconcile.Target, state gomodState, change reconcile.Change) (reconcile.Outcome, error) {
+	if floorRefused(state) {
+		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "the declared floor is refused"}, nil
+	}
+	for _, module := range state.modules {
+		for _, image := range module.dockerfiles {
+			if image.rel != change.Item {
+				continue
+			}
+			want := buildGo(state, module)
+			pinned, changed := pinGolangImages(image.body, want)
+			if !changed {
+				return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already converged"}, nil
+			}
+			if err := rewrite(t.Path(image.rel), []byte(pinned)); err != nil {
+				return reconcile.Outcome{}, err
+			}
+			return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "builds with Go " + want}, nil
+		}
+	}
+	return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "builds from no golang image"}, nil
+}
+
+// rewrite replaces a file's content and keeps its permissions.
+func rewrite(path string, content []byte) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, content, info.Mode().Perm())
 }
 
 // setGoDirective rewrites the `go` line, in either direction. Lowering a floor

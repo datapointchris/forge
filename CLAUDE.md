@@ -294,6 +294,18 @@ second copy of the same fact — and an existing one there is reported `Undeclar
 deleted, because forge does not remove what it did not put there. Changes are itemized per module
 directory, because a triad repo has three and a row saying `go.mod` could not say which.
 
+**The same die pins the golang image in each module's Dockerfiles.** Every `FROM golang:` line in a
+declared Go component directory takes the release CI's setup-go reads from the converged go.mod:
+the toolchain directive where there is one, and the floor where there is not. The official image
+sets `GOTOOLCHAIN=local`, which ignores go.mod's toolchain line. So the tag alone decides what
+compiles the shipped binary, and a floating `golang:alpine` follows Go's newest release, which no
+CI run tested. The rewrite keeps the variant, `--platform` and the stage name. A digest or a
+build-argument tag is reported `ByHand`, because rewriting the tag reaches neither. `buildGo`
+reads the declaration rather than the go.mod on disk, so the image and go.mod agree whichever
+change applies first. A Dockerfile outside a component directory is not read. A raise made on the
+day of a Go release can fail the image job until Docker Hub publishes `golang:<pin>-<variant>`,
+and production keeps the previous image meanwhile.
+
 `Perform` converges the whole module rather than the one directive its `Change` names. A `Change`
 carries the file, not the line, and a module can drift on both at once — so the second change for
 one `go.mod` arrives after the first settled it and reports `Skipped`.

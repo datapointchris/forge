@@ -4,6 +4,7 @@ import (
 	"maps"
 	"testing"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/reconcile"
 )
 
@@ -12,10 +13,7 @@ import (
 // that is actually doing work rather than one bailing out early.
 func driftedFixture(t *testing.T) reconcile.Target {
 	t.Helper()
-	return fixture(t, stacks("python"), map[string]string{
-		"README.md":      "# fixture\n",
-		"pyproject.toml": "[project]\nname = \"fixture\"\n",
-	})
+	return fixture(t, driftedStacks(), driftedFiles())
 }
 
 // driftedDirectory is the same drift in a target git does not version, so the
@@ -24,10 +22,24 @@ func driftedFixture(t *testing.T) reconcile.Target {
 // that measured it.
 func driftedDirectory(t *testing.T) reconcile.Target {
 	t.Helper()
-	return unversionedFixture(t, stacks("python"), map[string]string{
+	return unversionedFixture(t, driftedStacks(), driftedFiles())
+}
+
+// driftedStacks puts a Go module beside the Python project, with a Dockerfile
+// on a floating golang tag, so gomod reads both files it can write.
+func driftedStacks() *config.Toolchain {
+	declared := stacks("python")
+	declared.Components = append(declared.Components, config.Component{Stack: "go", Dir: "api"})
+	return declared
+}
+
+func driftedFiles() map[string]string {
+	return map[string]string{
 		"README.md":      "# fixture\n",
 		"pyproject.toml": "[project]\nname = \"fixture\"\n",
-	})
+		"api/go.mod":     "module fixture/api\n\ngo 1.26.5\n",
+		"api/Dockerfile": "FROM golang:alpine AS builder\n",
+	}
 }
 
 // shapes are the two kinds of target forge reconciles. Every property holds for
