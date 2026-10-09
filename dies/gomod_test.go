@@ -248,9 +248,8 @@ func TestAFlooredRepoIsPulledDownToTheDeclaration(t *testing.T) {
 }
 
 func TestAModuleWhoseCIGoTheLinterCannotBuildIsRefused(t *testing.T) {
-	// CI sets up the owed toolchain, go1.24.9, under GOTOOLCHAIN=local and then
-	// installs golangci-lint, which needs 1.25.0. Converging would fail Lint in
-	// every Go repo at once, with nothing wrong in any of them.
+	// CI would set up the owed go1.24.9 and then fail to install golangci-lint,
+	// which needs 1.25.0.
 	target := declared(t, "1.24.0", "1.24.9", "1.25.0", map[string]string{
 		".": "module x\n\ngo 1.26.5\n",
 	})
@@ -283,7 +282,7 @@ func TestAModuleWhoseCIGoTheLinterCannotBuildIsRefused(t *testing.T) {
 
 func TestAFloorBelowTheLinterIsWrittenWhereTheToolchainCarriesCIAboveIt(t *testing.T) {
 	// setup-go installs the toolchain directive, so CI runs go1.26.6 and the
-	// linter builds. The floor is only who may consume the module.
+	// linter builds. The 1.24.0 floor only bounds who may consume the module.
 	target := declared(t, "1.24.0", "1.26.6", "1.25.0", map[string]string{
 		".": "module x\n\ngo 1.26.5\n",
 	})
@@ -376,7 +375,7 @@ const apiImage = "FROM golang:alpine AS builder\nWORKDIR /build\nRUN go build -o
 
 func TestAFloatingGolangTagTakesTheGoCITests(t *testing.T) {
 	// The official image sets GOTOOLCHAIN=local, so the toolchain line below
-	// never reaches a build from golang:alpine. The tag is all that decides.
+	// never reaches a build from golang:alpine.
 	target := withFiles(t, goTarget(t, "1.26.9", map[string]string{
 		"api": "module x/api\n\ngo 1.26.5\n\ntoolchain go1.26.9\n",
 	}), map[string]string{"api/Dockerfile": apiImage})
@@ -428,8 +427,8 @@ func TestAnImageTakesTheFloorWhereNoToolchainLineIsOwed(t *testing.T) {
 }
 
 func TestAnImageWhoseGoTheTagCannotSetIsReportedNotRewritten(t *testing.T) {
-	// A distro release in the variant is here because Docker Hub publishes a
-	// new Go only on the newest ones, so the rewritten tag may not exist.
+	// Docker Hub publishes a new Go only on the newest distro releases, so a
+	// rewritten alpine3.22 or bookworm tag may not exist.
 	for _, from := range []string{
 		"FROM golang@sha256:0abc AS builder\n",
 		"ARG GO_VERSION\nFROM golang:${GO_VERSION}-alpine AS builder\n",
