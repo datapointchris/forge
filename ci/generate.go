@@ -39,6 +39,10 @@ const WorkflowPath = ".github/workflows/validate.yml"
 // workflow in it is per-repo and deliberately not generated.
 const workflowsDir = ".github/workflows"
 
+// NodeVersionFile is the file at the repo root the vue job hands setup-node.
+// The ci die refuses to write the job where it is missing.
+const NodeVersionFile = ".nvmrc"
+
 // ActionlintConfigPath is where actionlint reads its own configuration, and the
 // only spelling forge writes.
 const ActionlintConfigPath = ".github/actionlint.yaml"

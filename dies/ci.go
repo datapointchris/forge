@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/datapointchris/forge/ci"
@@ -173,6 +174,15 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			"a hand-written pipeline sits beside the generated one — reconcile them before relying on either"))
 	}
 
+	// The vue job reads its Node version from this file, and setup-node fails
+	// before installing anything when it is missing. A job that can never start
+	// reports as a red run, so the workflow is not written until the file is.
+	if declaresStack(components, "vue") && !fileExists(filepath.Join(root, ci.NodeVersionFile)) {
+		state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
+			"a vue component is declared with no "+ci.NodeVersionFile+" at the repo root, and the vue job "+
+				"reads its Node version from there — add one naming the major the Dockerfile builds on"))
+	}
+
 	// Only where the repo takes the self-hosted runner. A public repo's custom
 	// section naming something else is that section's business, and a hosted
 	// job there runs.
@@ -193,6 +203,15 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	return state, nil
+}
+
+func declaresStack(components []config.Component, stack string) bool {
+	return slices.ContainsFunc(components, func(c config.Component) bool { return c.Stack == stack })
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // committedPreCommit is the pre-commit config a repo carries where forge

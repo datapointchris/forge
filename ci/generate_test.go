@@ -532,6 +532,21 @@ func TestTheBatsStepRunsTheSuitesAgainstTheDeclaredJq(t *testing.T) {
 	}
 }
 
+// The ci die refuses a vue repo missing NodeVersionFile. A block reading any
+// other file would pass that check and fail at setup-node.
+func TestTheVueJobTakesNodeFromTheFileTheDieRequires(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("vue", "web"), "", nil, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(workflow, "node-version-file: "+NodeVersionFile+"\n") {
+		t.Errorf("the vue job does not read %s:\n%s", NodeVersionFile, workflow)
+	}
+	if strings.Contains(workflow, "node-version:") {
+		t.Errorf("the vue job carries a Node version of its own:\n%s", workflow)
+	}
+}
+
 func TestTheRustJobAuditsTheLockfileAtTheDeclaredRelease(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("rust", "."), "", nil, Ungated, Hosted)
 	if err != nil {

@@ -2,7 +2,11 @@
 # covers: vue-eslint vue-prettier vue-typecheck
       - uses: actions/setup-node@{{pin}}
         with:
-          node-version: "{{pin}}"
+          # The repo's own file, at the workspace root, because the Node major
+          # also lives in each Dockerfile's FROM line and a pin here would be a
+          # third copy. The ci die refuses to write this job without the file,
+          # since setup-node fails before installing anything.
+          node-version-file: .nvmrc
           cache: npm
           # A glob rather than {{dir}}/package-lock.json, because the two
           # layouts in use keep the lock in different places: one lock per

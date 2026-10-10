@@ -151,6 +151,29 @@ func TestAHandWrittenWorkflowIsRefusedRatherThanOverwritten(t *testing.T) {
 	}
 }
 
+func TestAVueRepoWithoutANodeVersionFileIsRefusedRatherThanGivenAJobThatCannotStart(t *testing.T) {
+	target := fixture(t, stacks("vue"), nil)
+
+	changes := reconcile.Assess(target, CI{}).Changes
+	if !slices.ContainsFunc(changes, func(c reconcile.Change) bool {
+		return c.Item == ci.WorkflowPath && c.Repair == reconcile.ByHand && strings.Contains(c.Detail, ci.NodeVersionFile)
+	}) {
+		t.Fatalf("no by-hand finding names the missing %s: %+v", ci.NodeVersionFile, changes)
+	}
+	applyAll(t, target, CI{})
+	if _, err := os.Stat(target.Path(ci.WorkflowPath)); !os.IsNotExist(err) {
+		t.Errorf("a workflow whose vue job cannot start was written")
+	}
+
+	if err := os.WriteFile(target.Path(ci.NodeVersionFile), []byte("24\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	applyAll(t, target, CI{})
+	if _, err := os.Stat(target.Path(ci.WorkflowPath)); err != nil {
+		t.Errorf("the workflow was not written once %s exists: %v", ci.NodeVersionFile, err)
+	}
+}
+
 // The two files are gated on their own blockers rather than on one shared
 // verdict. A hand-written lint config is no reason to stop regenerating the
 // workflow, and a repo can be in exactly that state.
