@@ -2,10 +2,12 @@
 # command reads the file `versions_file` names, and a machine naming none is an
 # error rather than a fallback to this.
 #
-# The values name their tool rather than a release, so a generated file built
-# from this cannot pass for one built from the real pins. Every remote repo,
-# action and tool a block names must appear here, or rendering that block in a
-# test leaves its {{pin}} behind and the generator refuses it.
+# The values cannot pass for real pins, so neither can a file generated from
+# them: each names its tool. Load accepts a third-party action only with an
+# exact release beside a full commit, so those two hold placeholders of that
+# shape. Every remote repo, action and tool a block names must appear here, or
+# rendering that block in a test leaves its {{pin}} behind and the generator
+# refuses it.
 version: 1
 
 # No GitHub image carries this release, so a workflow naming it came from here.
@@ -56,8 +58,6 @@ actions:
     version: fixture-setup-node
   - uses: actions/setup-python
     version: fixture-setup-python
-  # A third-party action loads only with a commit beside an exact release, so
-  # these two name a placeholder of each instead of their tool.
   - uses: astral-sh/setup-uv
     version: v0.0.1
     sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

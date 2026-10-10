@@ -137,8 +137,9 @@ with `dies.StampedFiles`, which fleet reads at run time instead of keeping a cop
 forge runs outside its hook takes the release that hook pins, as `hookPinnedTools` maps them: a uvx
 line in a workflow, a Python repo's dev pin, the uv that writes a lock. A `binaries` entry for one is
 refused as a second copy.
-`toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its values name
-tools rather than releases.
+`toolchain/testdata/toolchain.yml` is the test fixture, read by no command. Its values cannot pass
+for real pins: each names its tool, except a third-party action's, which load holds to an exact
+release and a full commit, so it carries a placeholder of each.
 
 **A hook whose tool is a Go module never runs it from `PATH`.** A hook doing so passes or fails by what that
 machine last installed, and gofumpt writes, so two releases rewrite each other. A hook whose tool is
