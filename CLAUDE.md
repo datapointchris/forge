@@ -156,6 +156,12 @@ reads it, and a file at a managed path without it is reported rather than overwr
   already runs, since a template nothing conforms to cannot measure drift. A rule joins it after
   the sweep that makes the fleet pass it, as `ICN` did with its import aliases (`dt`, `sa`, `sf`,
   `st`). Those sit under `extend-aliases`, because `aliases` replaces ruff's defaults.
+  flake8-bandit joins one rule at a time, never as `S`. Across the Python repos the family reported
+  hundreds of findings, nearly all of them S603 and S607 on subprocess calls a CLI makes on purpose,
+  and S101 on every pytest assert. Selecting the family would take an ignore list that grows with
+  each repo. The rules selected are the hazards with no deliberate use in the fleet: `exec`, `eval`,
+  pickle, an HTTP request with no timeout, md5 or sha1 for security, and TLS verification off. S506
+  stays out because it flags `yaml.BaseLoader`, which constructs no objects.
 - `golangci.yml` goes to Go repos, and `.sqlfluff` — narrowed and lint-only, so it never reformats —
   wherever a `sql_dialect` is declared.
 
