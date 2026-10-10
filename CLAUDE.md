@@ -132,8 +132,9 @@ a repo (`toolchain.Unpinned`, `TestBlocksNameNoVersion`). Generation stamps the 
 `version` as `# forge-toolchain: N`; bump it on any pin change, because the stamp is what staged
 rollout reads. `toolchain.StampPrefix` is its one definition. `forge stamp spec --json` prints it
 with `dies.StampedFiles`, which fleet reads at run time instead of keeping a copy, and
-`TestStampedFilesAreExactlyTheFilesTheDiesStamp` holds that list to what the dies write. A tool CI runs whose pre-commit hook pins its release takes that release, as
-`hookPinnedTools` maps them, and a `binaries` entry for one is refused as a second copy.
+`TestStampedFilesAreExactlyTheFilesTheDiesStamp` holds that list to what the dies write. A tool CI
+runs whose pre-commit hook pins its release takes that release, as `hookPinnedTools` maps them, and
+a `binaries` entry for one is refused as a second copy.
 `toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its values name
 tools rather than releases.
 
