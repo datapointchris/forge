@@ -1,8 +1,11 @@
 # Python
 # covers: uv-lock ruff-format ruff-check mypy
+      # enable-cache is left at setup-uv's `auto`, which caches on a hosted
+      # runner only. Every repo's self-hosted runner shares one ~/.cache/uv
+      # that outlives the job, so there the post step's prune and upload are
+      # work the disk already did, and two jobs pruning at once collide on the
+      # same files.
       - uses: astral-sh/setup-uv@{{pin}}
-        with:
-          enable-cache: true
 
       # Before the sync, which would rewrite a stale lock rather than fail on
       # it. uvx, so the uv is the one the uv-lock hook pins.
