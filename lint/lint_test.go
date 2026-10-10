@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -316,14 +317,34 @@ func TestAnInterruptedRunRemovesItsCloneAndSaysWhereItStopped(t *testing.T) {
 	}
 }
 
+// expiresWhenTold reaches its deadline when expire is called, so a test can
+// put the limit inside a hook rather than racing the clone made before it.
+type expiresWhenTold struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func (c *expiresWhenTold) expire()               { c.once.Do(func() { close(c.done) }) }
+func (c *expiresWhenTold) Done() <-chan struct{} { return c.done }
+
+func (c *expiresWhenTold) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
 // Hooks skipped once the time ran out were reported as could-not-run, and
 // nothing said the time had run out.
 func TestARepoOutOfTimeSaysSoAndNamesTheHookItStoppedIn(t *testing.T) {
 	repo := repoWith(t, map[string]string{precommit.ConfigPath: twoHooks})
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
+	parent := &expiresWhenTold{Context: context.Background(), done: make(chan struct{})}
 
-	result := RunWith(ctx, repo, func(ctx context.Context, _, _ string) (int, string) {
+	result := RunWith(parent, repo, func(ctx context.Context, _, _ string) (int, string) {
+		parent.expire()
 		<-ctx.Done()
 		return 1, ""
 	})
