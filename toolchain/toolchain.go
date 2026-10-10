@@ -168,6 +168,13 @@ func (a Action) firstParty() bool {
 	return owner == firstPartyOwner
 }
 
+// repo is the GitHub repository holding the action, without the path an
+// action inside a subdirectory adds.
+func (a Action) repo() string {
+	parts := strings.SplitN(a.Uses, "/", 3)
+	return strings.Join(parts[:min(2, len(parts))], "/")
+}
+
 // refuseUnpinnedActions rejects a third-party action declared without the
 // commit its tag points at, and a commit that is not a full id or whose tag
 // names no single release.
@@ -175,7 +182,10 @@ func (t *Toolchain) refuseUnpinnedActions() error {
 	for _, action := range t.Actions {
 		if action.Sha == "" {
 			if !action.firstParty() {
-				return fmt.Errorf("actions pins %s by tag alone — add the commit %s tags as sha, because a third-party tag can be moved after review", action.Uses, action.Version)
+				return fmt.Errorf("actions pins %s by tag alone, and a third-party tag can be moved after review — "+
+					"set version to an exact release such as v1.2.3, and sha to the commit it tags, "+
+					"which `git ls-remote https://github.com/%s 'refs/tags/<release>^{}' 'refs/tags/<release>'` prints, "+
+					"on the ^{} line where there is one", action.Uses, action.repo())
 			}
 			continue
 		}

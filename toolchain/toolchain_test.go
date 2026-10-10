@@ -259,6 +259,19 @@ func TestADeclaredCommitReplacesWhateverRefTheLineHeld(t *testing.T) {
 	}
 }
 
+func TestTheRefusalOfATagAloneAsksForBothFields(t *testing.T) {
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nactions:\n  - uses: github/codeql-action/init\n    version: v3\n")}}
+	_, err := Load(fixture)
+	if err == nil {
+		t.Fatal("loaded without complaint")
+	}
+	for _, want := range []string{"set version to an exact release", "sha to the commit it tags", "https://github.com/github/codeql-action '"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, err)
+		}
+	}
+}
+
 func TestOnlyTheDownloadingActionsOwnInputIsRewritten(t *testing.T) {
 	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: hookPinnedTools["uv"], Rev: "0.9.1"}}}
 	workflow := strings.Join([]string{
