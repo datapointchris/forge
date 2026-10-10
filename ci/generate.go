@@ -70,18 +70,19 @@ const RunnerLabel = "private-ci"
 // repo at a private network.
 type Runner string
 
-const (
-	// Hosted is GitHub's own image. Actions is unmetered on a public repo, so
-	// the minutes it spends cost nothing.
-	Hosted Runner = "ubuntu-latest"
-	// SelfHosted is a runner inside a private network. GitHub bills Actions
-	// minutes for hosted runners only, so a private repo has no other way to
-	// run CI at all.
-	//
-	// Linux and X64 are added by GitHub and are not written here. The
-	// self-hosted label is, and it is the first token of this value.
-	SelfHosted Runner = "[self-hosted, " + RunnerLabel + "]"
-)
+// SelfHosted is a runner inside a private network. GitHub bills Actions
+// minutes for hosted runners only, so a private repo has no other way to run CI
+// at all.
+//
+// Linux and X64 are added by GitHub and are not written here. The self-hosted
+// label is, and it is the first token of this value.
+const SelfHosted Runner = "[self-hosted, " + RunnerLabel + "]"
+
+// Hosted is GitHub's own image, at the release the declaration pins. Actions is
+// unmetered on a public repo, so the minutes it spends cost nothing.
+func Hosted(manifest *toolchain.Toolchain) Runner {
+	return Runner(manifest.HostedRunner)
+}
 
 // RunnerFor picks the runner a repo's generated workflows may name.
 //
@@ -90,31 +91,36 @@ const (
 // on a public repo runs the fork's own code on whatever runner it lands on, and
 // a self-hosted runner sits inside a private network. A repo the registry does
 // not describe therefore stays hosted.
-func RunnerFor(private bool) Runner {
+func RunnerFor(private bool, manifest *toolchain.Toolchain) Runner {
 	if private {
 		return SelfHosted
 	}
-	return Hosted
+	return Hosted(manifest)
 }
 
-// ActionlintConfig declares the self-hosted label to actionlint.
+// ActionlintConfig declares to actionlint the runner labels it cannot discover.
 //
-// actionlint discovers GitHub's hosted labels and nothing else, so a runs-on
-// naming the pool is reported as an unknown label and the repo's actionlint
-// hook fails on the next commit.
+// actionlint knows the hosted images that existed at its release, so a pinned
+// image newer than the pinned actionlint is reported as an unknown label. The
+// self-hosted pool is on no list at all. Either one fails the repo's actionlint
+// hook on the next commit.
 //
-// Written only into repos whose workflows name the label. Declaring it in a
-// public repo would retire the one check that catches a hand-written workflow
-// there reaching the self-hosted runner.
-func ActionlintConfig(stampVersion int) string {
+// The pool is declared only where the repo takes the self-hosted runner.
+// Declaring it in a public repo would retire the one check that catches a
+// hand-written workflow there reaching the self-hosted runner.
+func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner) string {
+	labels := "    - " + manifest.HostedRunner + "\n"
+	if runner == SelfHosted {
+		labels += "    - " + RunnerLabel + "\n"
+	}
 	return fmt.Sprintf(`%s
-# Labels actionlint cannot discover, because they belong to a self-hosted
-# runner rather than to one of GitHub's hosted images. Without this every
-# runs-on naming one is reported as a typo and the actionlint hook fails.
+# Labels actionlint cannot discover. Its list of GitHub's hosted images is the
+# one its release shipped with, and a self-hosted runner's labels are on no
+# list. Without this every runs-on naming one is reported as a typo and the
+# actionlint hook fails.
 self-hosted-runner:
   labels:
-    - %s
-`, toolchain.StampFor(stampVersion), RunnerLabel)
+%s`, toolchain.StampFor(manifest.Version), labels)
 }
 
 // releaseGateRef matches a reusable-workflow call naming this workflow, the
@@ -127,7 +133,7 @@ var releaseGateRef = regexp.MustCompile(`uses:\s*\./` + regexp.QuoteMeta(Workflo
 // ReleaseGating says whether a release workflow already runs this one as a job.
 //
 // A named type for the same reason Runner is one. The two sit adjacent in
-// Generate's signature, and a call site reading `nil, false, Hosted` puts a
+// Generate's signature, and a call site reading `nil, false, SelfHosted` puts a
 // bare literal beside a self-naming constant — where the literal decides
 // whether main is validated at all.
 type ReleaseGating bool
@@ -247,13 +253,6 @@ func Generate(
 	releaseGated ReleaseGating,
 	runner Runner,
 ) (string, error) {
-	// The zero value would emit a bare `runs-on:`, which is an invalid workflow
-	// GitHub rejects at dispatch rather than at lint. Folded in here so no
-	// caller can reach that state by leaving the argument off.
-	if runner == "" {
-		runner = Hosted
-	}
-
 	shared, err := loadBlock(blocksFS, "checkout")
 	if err != nil {
 		return "", err
@@ -557,5 +556,5 @@ func applyDir(content, dir string) string {
 // log before reporting the cache as not found. One such step reached 153k lines
 // and 29 MB, which is then a log the ingest webhook downloads and parses.
 func applyGoCache(content string, runner Runner) string {
-	return strings.ReplaceAll(content, "{{gocache}}", strconv.FormatBool(runner == Hosted))
+	return strings.ReplaceAll(content, "{{gocache}}", strconv.FormatBool(runner != SelfHosted))
 }

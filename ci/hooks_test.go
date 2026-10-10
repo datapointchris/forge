@@ -127,7 +127,7 @@ func TestTheHooksJobRunsEveryHookNoStackJobCarries(t *testing.T) {
 }
 
 func TestACoversLineStaysOutOfTheWorkflow(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestALocalHookCallingUVRunsInTheHooksJob(t *testing.T) {
 // gets.
 func TestAStackWithNoCIBlockStillGetsItsHooksRun(t *testing.T) {
 	components := comps("docker", ".")
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), components, owedConfig(t, components), nil, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), components, owedConfig(t, components), nil, Ungated, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestAStackWithNoCIBlockStillGetsItsHooksRun(t *testing.T) {
 }
 
 func TestARepoWithNoPreCommitConfigGetsNoHooksJob(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestARepoWithNoPreCommitConfigGetsNoHooksJob(t *testing.T) {
 // Its pre-commit config carries the vue block's hooks, which are local, so no
 // job but a stack job can run them.
 func TestANodeComponentGetsTheVueJob(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("node", "server"), "", nil, Ungated, Hosted)
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("node", "server"), "", nil, Ungated, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}

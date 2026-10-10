@@ -54,6 +54,9 @@ type declaration struct {
 	Binaries struct {
 		Pins []Binary `json:"pins"`
 	} `json:"binaries"`
+	Runners struct {
+		Hosted string `json:"hosted"`
+	} `json:"runners"`
 }
 
 // LoadFile reads the declaration at path into the same shape Load produces, so
@@ -73,12 +76,13 @@ func LoadFile(path string) (*Toolchain, error) {
 	}
 
 	manifest := &Toolchain{
-		Version:   d.Stamp.Version,
-		Hooks:     d.Hooks.Pins,
-		Actions:   d.Actions.Pins,
-		Tools:     d.Tools.Pins,
-		Binaries:  d.Binaries.Pins,
-		Languages: map[string]Language{},
+		Version:      d.Stamp.Version,
+		Hooks:        d.Hooks.Pins,
+		Actions:      d.Actions.Pins,
+		Tools:        d.Tools.Pins,
+		Binaries:     d.Binaries.Pins,
+		HostedRunner: d.Runners.Hosted,
+		Languages:    map[string]Language{},
 	}
 
 	// Every language entry carries prose alongside its versions, so the two
@@ -109,6 +113,9 @@ func LoadFile(path string) (*Toolchain, error) {
 	sortRuntimes(manifest.Runtimes)
 	if err := manifest.refuseDerivedBinaries(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := manifest.refuseFloatingRunner(); err != nil {
+		return nil, fmt.Errorf("%s: runners.hosted: %w", path, err)
 	}
 	return manifest, nil
 }

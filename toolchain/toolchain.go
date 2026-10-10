@@ -104,6 +104,11 @@ type Toolchain struct {
 	// whatever the runner image happens to ship, which is the floating-version
 	// problem the rest of this manifest exists to prevent.
 	Binaries []Binary `yaml:"binaries"`
+	// HostedRunner is the GitHub-hosted image a public repo's workflows run on,
+	// named by the label for one image release. `ubuntu-latest` moves to a new
+	// release on GitHub's schedule, so a job that passed the day before can
+	// fail with nothing in the repo changed.
+	HostedRunner string `yaml:"hosted_runner"`
 	// Languages holds each language's floor and, where the language separates
 	// them, the toolchain its builds use. Populated only by LoadFile — the
 	// embedded YAML predates the declaration and carries runtimes alone, so a
@@ -159,7 +164,20 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 	if err := manifest.refuseDerivedBinaries(); err != nil {
 		return nil, fmt.Errorf("%s: %w", File, err)
 	}
+	if err := manifest.refuseFloatingRunner(); err != nil {
+		return nil, fmt.Errorf("%s: hosted_runner: %w", File, err)
+	}
 	return &manifest, nil
+}
+
+// refuseFloatingRunner rejects a hosted runner that is not one image release.
+// Empty would write a bare runs-on, and `ubuntu-latest` is the floating label
+// the pin exists to replace.
+func (t *Toolchain) refuseFloatingRunner() error {
+	if !pinnedImageRE.MatchString(t.HostedRunner) {
+		return fmt.Errorf("must name one Ubuntu image release such as ubuntu-26.04, got %q", t.HostedRunner)
+	}
+	return nil
 }
 
 // refuseDerivedBinaries rejects a binaries entry for a tool whose CI version
@@ -363,11 +381,122 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 }
 
 // ApplyWorkflowPins rewrites the pins a workflow forge did not write shares
-// with the one it did: actions, `go install` tools, uvx tools and binaries.
-// A runtime version is left alone, because a hand-written matrix may test
-// several on purpose.
+// with the one it did: actions, `go install` tools, uvx tools, binaries and the
+// hosted runner image. A runtime version is left alone, because a hand-written
+// matrix may test several on purpose.
 func (t *Toolchain) ApplyWorkflowPins(content string) string {
-	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionVersions(content))))
+	return t.ApplyRunnerLabels(t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionVersions(content)))))
+}
+
+var (
+	// pinnedImageRE is a label naming one Ubuntu image release.
+	pinnedImageRE = regexp.MustCompile(`^ubuntu-[0-9]{2}\.[0-9]{2}$`)
+	// labelTokenRE is a maximal run of the characters a runner label is made
+	// of, so `ubuntu-24.04-arm` and `my-ubuntu-latest` arrive whole and are
+	// never mistaken for the label inside them.
+	labelTokenRE = regexp.MustCompile(`[A-Za-z0-9._-]+`)
+	// listItemRE is a YAML block-list item, capturing its indent.
+	listItemRE = regexp.MustCompile(`^( *)-(\s|$)`)
+)
+
+// ApplyRunnerLabels rewrites every general-purpose Ubuntu label in a workflow,
+// `ubuntu-latest` or a release such as `ubuntu-24.04`, to the declared hosted
+// image. That covers runs-on values and OS matrices alike.
+//
+// Left alone: a variant such as `ubuntu-24.04-arm`, which names a different
+// machine; a label right after `:` or `/`, which is an image tag such as
+// `base:ubuntu-22.04`; a comment line, which is prose about a runner; and a
+// list naming two distinct labels, which tests several releases on purpose
+// and would collapse into one release named twice.
+func (t *Toolchain) ApplyRunnerLabels(content string) string {
+	if t.HostedRunner == "" {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	held := multiReleaseLists(lines)
+	for i, line := range lines {
+		if held[i] {
+			continue
+		}
+		spans := runnerLabelSpans(line)
+		for j := len(spans) - 1; j >= 0; j-- {
+			line = line[:spans[j][0]] + t.HostedRunner + line[spans[j][1]:]
+		}
+		lines[i] = line
+	}
+	return strings.Join(lines, "\n")
+}
+
+// runnerLabelSpans is where each label ApplyRunnerLabels may rewrite sits in
+// one line, and none on a comment line.
+func runnerLabelSpans(line string) [][]int {
+	if strings.HasPrefix(strings.TrimSpace(line), "#") {
+		return nil
+	}
+	var spans [][]int
+	for _, loc := range labelTokenRE.FindAllStringIndex(line, -1) {
+		if loc[0] > 0 && (line[loc[0]-1] == ':' || line[loc[0]-1] == '/') {
+			continue
+		}
+		if token := line[loc[0]:loc[1]]; token == "ubuntu-latest" || pinnedImageRE.MatchString(token) {
+			spans = append(spans, loc)
+		}
+	}
+	return spans
+}
+
+// listItemIndent is the indent of a YAML block-list item, and whether the line
+// is one.
+func listItemIndent(line string) (int, bool) {
+	match := listItemRE.FindStringSubmatch(line)
+	if len(match) < 2 {
+		return 0, false
+	}
+	return len(match[1]), true
+}
+
+// multiReleaseLists marks every line of a flow list or block list that names
+// two or more distinct labels. A block list runs from an item to the last line
+// indented under it or beside it at the same indent.
+func multiReleaseLists(lines []string) map[int]bool {
+	held := map[int]bool{}
+	labelsIn := func(from, to int) map[string]bool {
+		labels := map[string]bool{}
+		for _, line := range lines[from:to] {
+			for _, span := range runnerLabelSpans(line) {
+				labels[line[span[0]:span[1]]] = true
+			}
+		}
+		return labels
+	}
+	for i := range lines {
+		if len(labelsIn(i, i+1)) > 1 {
+			held[i] = true
+		}
+	}
+	for i := 0; i < len(lines); {
+		indent, isItem := listItemIndent(lines[i])
+		if !isItem {
+			i++
+			continue
+		}
+		end := i + 1
+		for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
+			nextIndent, nextIsItem := listItemIndent(lines[end])
+			deeper := len(lines[end])-len(strings.TrimLeft(lines[end], " ")) > indent
+			if !deeper && (!nextIsItem || nextIndent != indent) {
+				break
+			}
+			end++
+		}
+		if len(labelsIn(i, end)) > 1 {
+			for j := i; j < end; j++ {
+				held[j] = true
+			}
+		}
+		i = end
+	}
+	return held
 }
 
 // ApplyAll runs every substitution a generated file may need.

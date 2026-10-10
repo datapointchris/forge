@@ -3,10 +3,10 @@ package toolchain
 import (
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
-	"testing/fstest"
 )
 
 func loadManifest(t *testing.T) *Toolchain {
@@ -94,13 +94,6 @@ func TestShfmtTakesTheReleaseItsHookWraps(t *testing.T) {
 	}
 }
 
-func TestLoadRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
-	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nbinaries:\n  - name: shellcheck\n    version: \"0.10.0\"\n")}}
-	if _, err := Load(fixture); err == nil {
-		t.Error("a second copy of shellcheck's version loaded without complaint")
-	}
-}
-
 // The tflint hook installs the module at its tools pin, and CI downloads the
 // release binary. Both read the one entry, so they cannot name two releases.
 func TestTflintInCITakesTheReleaseItsHookInstalls(t *testing.T) {
@@ -110,13 +103,6 @@ func TestTflintInCITakesTheReleaseItsHookInstalls(t *testing.T) {
 
 	if !strings.Contains(got, `tflint_version="0.64.0"`) {
 		t.Errorf("tflint not derived from its module pin: %q", got)
-	}
-}
-
-func TestLoadRefusesABinariesEntryForAModulePinnedTool(t *testing.T) {
-	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nbinaries:\n  - name: terraform_docs\n    version: \"0.24.0\"\n")}}
-	if _, err := Load(fixture); err == nil {
-		t.Error("a second copy of terraform-docs' version loaded without complaint")
 	}
 }
 
@@ -272,5 +258,104 @@ func TestAWorkflowForgeDidNotWriteKeepsItsRuntimes(t *testing.T) {
 	}
 	if !strings.Contains(got, `go-version: "1.21"`) {
 		t.Errorf("the runtime was rewritten: %q", got)
+	}
+}
+
+// GitHub moves ubuntu-latest to a new release on its own schedule, so a
+// workflow forge did not write is pinned the same as one it did. A matrix and
+// the condition reading it move together, or the condition stops matching.
+func TestAWorkflowForgeDidNotWriteRunsOnTheDeclaredImage(t *testing.T) {
+	manifest := &Toolchain{Version: 1, HostedRunner: "ubuntu-99.04"}
+	workflow := "jobs:\n" +
+		"  build:\n" +
+		"    runs-on: ubuntu-latest\n" +
+		"  old:\n" +
+		"    runs-on: ubuntu-22.04\n" +
+		"  cross:\n" +
+		"    strategy:\n" +
+		"      matrix:\n" +
+		"        os: [ubuntu-latest, macos-latest, windows-latest]\n" +
+		"    if: matrix.os == 'ubuntu-latest'\n"
+
+	got := manifest.ApplyWorkflowPins(workflow)
+
+	want := strings.NewReplacer("ubuntu-latest", "ubuntu-99.04", "ubuntu-22.04", "ubuntu-99.04").Replace(workflow)
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// Each of these names a machine the pin does not describe, or is prose about a
+// runner rather than a choice of one.
+func TestARunnerLabelThePinDoesNotDescribeIsLeftAlone(t *testing.T) {
+	manifest := &Toolchain{Version: 1, HostedRunner: "ubuntu-99.04"}
+	for _, line := range []string{
+		"    runs-on: ubuntu-24.04-arm\n",
+		"    runs-on: ubuntu-latest-4-cores\n",
+		"    runs-on: ubuntu-slim\n",
+		"    runs-on: [self-hosted, private-ci]\n",
+		"    runs-on: macos-latest\n",
+		"    # ubuntu-latest moves to a new release on GitHub's schedule\n",
+		"    container: my-ubuntu-latest\n",
+	} {
+		if got := manifest.ApplyRunnerLabels(line); got != line {
+			t.Errorf("rewritten: %q became %q", line, got)
+		}
+	}
+}
+
+// writeDeclaration writes a declaration holding a stamp and the sections the
+// fragment adds, each written with a leading comma.
+func writeDeclaration(t *testing.T, fragment string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "pinned-versions.json")
+	if err := os.WriteFile(path, []byte(`{"stamp": {"version": 1}`+fragment+`}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+const hostedImage = `, "runners": {"hosted": "ubuntu-26.04"}`
+
+// Every command loads the declaration through LoadFile, so a second copy of a
+// version CI already takes from a hook pin is refused there.
+func TestLoadFileRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
+	_, err := LoadFile(writeDeclaration(t, hostedImage+`, "binaries": {"pins": [{"name": "shellcheck", "version": "0.10.0"}]}`))
+	if err == nil || !strings.Contains(err.Error(), "shellcheck") {
+		t.Errorf("LoadFile = %v, want a refusal naming shellcheck", err)
+	}
+}
+
+// Every command loads the declaration through LoadFile, so a second copy of a
+// version CI already takes from a tools pin is refused there.
+func TestLoadFileRefusesABinariesEntryForAModulePinnedTool(t *testing.T) {
+	_, err := LoadFile(writeDeclaration(t, hostedImage+`, "binaries": {"pins": [{"name": "terraform_docs", "version": "0.24.0"}]}`))
+	if err == nil || !strings.Contains(err.Error(), "terraform_docs") {
+		t.Errorf("LoadFile = %v, want a refusal naming terraform_docs", err)
+	}
+}
+
+func TestLoadFileReadsTheHostedImage(t *testing.T) {
+	manifest, err := LoadFile(writeDeclaration(t, `, "runners": {"reason": "why", "hosted": "ubuntu-26.04"}`))
+	if err != nil {
+		t.Fatalf("LoadFile: %v", err)
+	}
+	if manifest.HostedRunner != "ubuntu-26.04" {
+		t.Errorf("HostedRunner = %q, want ubuntu-26.04", manifest.HostedRunner)
+	}
+}
+
+// No image would write a bare runs-on into every workflow, and a floating
+// label is the thing the pin replaces.
+func TestLoadFileRefusesAHostedImageThatIsNotOneRelease(t *testing.T) {
+	for name, runners := range map[string]string{
+		"absent":    "",
+		"empty":     `, "runners": {"hosted": ""}`,
+		"floating":  `, "runners": {"hosted": "ubuntu-latest"}`,
+		"a variant": `, "runners": {"hosted": "ubuntu-24.04-arm"}`,
+	} {
+		if _, err := LoadFile(writeDeclaration(t, runners)); err == nil || !strings.Contains(err.Error(), "runners.hosted") {
+			t.Errorf("%s: LoadFile = %v, want a refusal naming runners.hosted", name, err)
+		}
 	}
 }
