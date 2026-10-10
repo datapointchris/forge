@@ -172,6 +172,16 @@ pair `cd`s into each declared directory, and golangci-lint must start beside the
 anyway. The tekwizely hooks walk every go.mod themselves and
 stay one copy.
 
+**stylua runs StyLua's release binary, installed from npm, never StyLua's own hook.** That hook is
+`language: rust`, and pre-commit's cargo build takes the crate's default features, which leave out
+the Lua 5.2 and LuaJIT syntaxes. Its `--syntax` accepts `All` and `Lua51` only, so a `goto` label,
+which Neovim's LuaJIT runs, fails to parse. `stylua-github` installs the release binary, but finds
+it through GitHub's API unauthenticated, and a spent hourly budget blocks every commit. So the lua
+block is a `repo: local`, `language: node` hook installing `"@johnnymorganz/stylua-bin@{{pin}}"`,
+whose per-platform packages carry the release binary from the npm registry. The StyLua repo's rev in
+`hooks` stays the one declaration of the release: `hookPinnedTools` maps the package to that repo,
+and `ApplyDependencyVersions` fills the quoted item with its rev.
+
 **Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
 reads it, and a file at a managed path without it is reported rather than overwritten
 (`TestEveryDeployedToolConfigCarriesTheManagedMarker`). What each deployed config has learned:

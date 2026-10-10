@@ -54,6 +54,10 @@ var (
 	// A YAML list item naming a Go module at a version, which is how a
 	// `language: golang` hook's additional_dependencies spells what it installs.
 	dependencyLineRE = regexp.MustCompile(`^(\s*-\s+)([A-Za-z0-9._~/-]+)@(\S+)\s*$`)
+	// A quoted list item naming an npm package at a version, which is how a
+	// `language: node` hook's additional_dependencies spells one. YAML reads a
+	// bare leading @ as reserved, so a scoped package is always quoted.
+	packageLineRE = regexp.MustCompile(`^(\s*-\s+)"((?:@[a-z0-9._~-]+/)?[a-z0-9._~-]+)@([^"\s]+)"\s*$`)
 	// A full commit id, which is a stronger pin than any tag the manifest names.
 	commitRefRE = regexp.MustCompile(`@[0-9a-f]{40}\b`)
 	commitRE    = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -80,9 +84,14 @@ const firstPartyOwner = "actions"
 // the uv that writes a lock. Each takes the hook's release rather than a
 // version of its own, so none can disagree with the hook: a second entry could
 // drift, and a derived one cannot.
+//
+// StyLua's entry is the npm package of its release binary, which the lua block
+// installs in place of the repo's own hook. The repo's rev stays the one place
+// that release is declared.
 var hookPinnedTools = map[string]string{
-	"ruff": "https://github.com/astral-sh/ruff-pre-commit",
-	"uv":   "https://github.com/astral-sh/uv-pre-commit",
+	"ruff":                      "https://github.com/astral-sh/ruff-pre-commit",
+	"uv":                        "https://github.com/astral-sh/uv-pre-commit",
+	"@johnnymorganz/stylua-bin": "https://github.com/JohnnyMorganz/StyLua",
 }
 
 // releaseInput is the input an action takes naming the release of the tool it
@@ -388,11 +397,19 @@ func (t *Toolchain) RuntimeVersion(name string) (string, bool) {
 
 // ApplyDependencyVersions rewrites each `- <module>@<ref>` list item to the
 // tools pin for that module, which is how a `language: golang` hook installs
-// the release CI does. A module the manifest does not pin is left alone.
+// the release CI does. A quoted `- "<package>@<ref>"` takes the release the
+// package's hook repo pins. A module or package the manifest does not pin is
+// left alone.
 func (t *Toolchain) ApplyDependencyVersions(content string) string {
 	lines := strings.Split(content, "\n")
 
 	for i, line := range lines {
+		if m := packageLineRE.FindStringSubmatch(line); m != nil {
+			if version, derived := t.HookPinnedVersion(m[2]); derived {
+				lines[i] = m[1] + `"` + m[2] + "@" + version + `"`
+			}
+			continue
+		}
 		m := dependencyLineRE.FindStringSubmatch(line)
 		if len(m) < 4 {
 			continue
