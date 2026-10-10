@@ -155,7 +155,7 @@ reads it, and a file at a managed path without it is reported rather than overwr
   basedpyright runs in every editor and is what drifts. Its ruff `select` is the rules every repo
   already runs, since a template nothing conforms to cannot measure drift. A rule joins it after
   the sweep that makes the fleet pass it, as `ICN` did with its import aliases (`dt`, `sa`, `sf`,
-  `st`). Those sit under `extend-aliases`, because `aliases` replaces ruff's defaults.
+  `st`, `dc`). Those sit under `extend-aliases`, because `aliases` replaces ruff's defaults.
   flake8-bandit joins one rule at a time, never as `S`. Across the Python repos the family reported
   hundreds of findings, nearly all of them S603 and S607 on subprocess calls a CLI makes on purpose,
   and S101 on every pytest assert. Selecting the family would take an ignore list that grows with

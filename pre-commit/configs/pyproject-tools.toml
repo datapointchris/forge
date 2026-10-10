@@ -56,9 +56,12 @@ banned-from = ["datetime", "pyspark.sql.functions", "pyspark.sql.types"]
 # `np`, `plt` and the rest) rather than adding to them. The Spark pair is
 # lowercase because PEP 8 reserves a capital for a class, and `F.col` reads as a
 # method on one. `sqlalchemy` is aliased and not banned, because SQLAlchemy's
-# own documentation imports `select` and `Session` by name.
+# own documentation imports `select` and `Session` by name. `dataclasses` is
+# aliased and not banned, because none of its names collides with anything, so
+# `from dataclasses import dataclass` stays legal.
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 datetime = "dt"
+dataclasses = "dc"
 sqlalchemy = "sa"
 "pyspark.sql.functions" = "sf"
 "pyspark.sql.types" = "st"
