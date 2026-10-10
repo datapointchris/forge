@@ -140,13 +140,15 @@ tools rather than releases.
 
 **No hook runs a linter or formatter from `PATH` where CI pins one.** A hook doing so passes or
 fails by what that machine last installed, and gofumpt writes, so two releases rewrite each other.
-gofumpt, golangci-lint, tflint and terraform-docs run as `repo: local` hooks with `language:
-golang`, and pre-commit installs each from an `additional_dependencies` item `- <module>@{{pin}}`,
-which `ApplyDependencyVersions` fills from the `tools` pin. CI's `go install` reads the same entry.
-CI downloads tflint and terraform-docs as release binaries instead, because a self-hosted runner has
-no Go, and takes their version from the module pin through `modulePinnedBinaries`. golangci-lint
-loads packages from the go.mod it starts beside, so those blocks render once per declared
-directory, apart from the tekwizely hooks, which walk every go.mod themselves.
+A hook whose tool CI pins runs as a `repo: local`, `language: golang` hook. pre-commit installs it
+from an `additional_dependencies` item `- <module>@{{pin}}`, which `ApplyDependencyVersions` fills
+from the `tools` pin. CI reads the same entry. It installs most tools with `go install`. For a tool
+in `modulePinnedBinaries` it downloads the release binary instead, because a self-hosted runner has
+no Go. Each such hook runs over the files CI's step checks, never only the staged ones: a formatter
+fed the staged files passes a commit CI then fails on a file nobody touched. So the Go pair `cd`s
+into each declared directory and runs over its whole module, as CI does, and golangci-lint must
+start beside the go.mod it loads anyway. The tekwizely hooks walk every go.mod themselves and stay
+one copy.
 
 **Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
 reads it, and a file at a managed path without it is reported rather than overwritten

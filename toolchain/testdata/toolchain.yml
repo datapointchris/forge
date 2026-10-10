@@ -72,8 +72,8 @@ tools:
   - module: github.com/terraform-docs/terraform-docs
     version: fixture-terraform-docs
 
-# shellcheck, shfmt, tflint and terraform_docs are absent on purpose: CI takes
-# each one's release from its hook, and Load refuses a binaries entry for any.
+# Every tool in hookPinnedTools or modulePinnedBinaries is absent on purpose: CI
+# takes its release from its hook, and Load refuses a binaries entry for one.
 binaries:
   - name: bats
     version: fixture-bats

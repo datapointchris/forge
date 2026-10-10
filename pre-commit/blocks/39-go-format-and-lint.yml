@@ -4,17 +4,20 @@
   # running the copy on PATH passes or fails by what that machine last
   # installed, and gofumpt writes, so two releases rewrite each other's output.
   #
-  # One pair per declared Go directory, because golangci-lint loads packages
-  # from the go.mod it starts beside. Filenames are never passed to it for the
-  # same reason as the vue block: they arrive repo-root-relative.
+  # One pair per declared Go directory, each run over its whole module from
+  # inside it, as CI runs them. A gofumpt fed only the staged files passes a
+  # commit that CI then fails on a file nobody touched, after any pin raise
+  # adding a rule. golangci-lint loads packages from the go.mod it starts
+  # beside. Filenames are never passed, so files only decides when they fire.
   - repo: local
     hooks:
       - id: gofumpt
         name: gofumpt
-        entry: gofumpt -w
+        entry: bash -c 'cd {{dir}} && exec gofumpt -l -w .'
         language: golang
         additional_dependencies:
           - mvdan.cc/gofumpt@{{pin}}
+        pass_filenames: false
         types: [go]
         files: '^{{dirprefix}}'
 

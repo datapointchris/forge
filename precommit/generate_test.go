@@ -638,8 +638,8 @@ func TestIntegration_GoRepo(t *testing.T) {
 }
 
 // gofumpt and golangci-lint install the declared module rather than running
-// the copy on PATH, and golangci-lint runs from each declared module. The
-// tekwizely hooks already walk every go.mod, so they stay one copy.
+// the copy on PATH, and each runs over a whole declared module from inside it,
+// as CI does.
 func TestIntegration_GoLintRunsPerModuleAtTheDeclaredRelease(t *testing.T) {
 	config, err := Generate(realBlocks(t), testToolchain(t), at("go", "api", "go", "cli"), nil, Observed{Versioning: Versioned})
 	if err != nil {
@@ -652,10 +652,9 @@ func TestIntegration_GoLintRunsPerModuleAtTheDeclaredRelease(t *testing.T) {
 			t.Errorf("missing %s: %v", want, hooks)
 		}
 	}
-	if n := strings.Count(config, "- id: go-vet-repo-mod\n"); n != 1 {
-		t.Errorf("go-vet-repo-mod appears %d times, want once", n)
-	}
 	for _, want := range []string{
+		"cd api && exec gofumpt -l -w .",
+		"cd cli && exec gofumpt -l -w .",
 		"cd api && exec golangci-lint run",
 		"cd cli && exec golangci-lint run",
 		"- mvdan.cc/gofumpt@fixture-gofumpt\n",

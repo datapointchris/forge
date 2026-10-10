@@ -92,7 +92,10 @@ type Toolchain struct {
 	// Actions pins GitHub Actions used by generated CI workflows, so an action
 	// version is declared in the same place as a pre-commit hook version.
 	Actions []Action `yaml:"actions"`
-	// Tools pins CLIs that generated CI installs with `go install`.
+	// Tools pins Go modules installed as CLIs. Generated CI installs each with
+	// `go install`, except a tool in modulePinnedBinaries, whose release binary
+	// it downloads at this version. A `language: golang` hook installs the
+	// same version from its additional_dependencies.
 	Tools []Tool `yaml:"tools"`
 	// Runtimes pins language runtimes generated CI sets up.
 	Runtimes []Runtime `yaml:"runtimes"`
