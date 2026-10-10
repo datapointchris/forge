@@ -60,12 +60,11 @@ type reconcileNoun struct {
 
 // command builds the noun's whole subtree.
 func (n *reconcileNoun) command() *cobra.Command {
-	root := &cobra.Command{
+	root := goclikit.AsNamespace(&cobra.Command{
 		Use:   n.name,
 		Short: n.short,
 		Long:  n.long,
-		RunE:  requireSubcommand,
-	}
+	})
 	// Every verb under either noun resolves its targets from the registry, so
 	// the flag belongs to the namespace rather than being repeated on each.
 	addRegistryFlag(root)

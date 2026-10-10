@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/datapointchris/goclikit"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
@@ -26,7 +27,7 @@ var (
 // repos. `dies run` was the one verb crossing that line, and it is
 // `forge repos apply` now — a die is what gets applied, not what does the
 // applying.
-var diesCmd = &cobra.Command{
+var diesCmd = goclikit.AsNamespace(&cobra.Command{
 	Use:   "dies",
 	Short: "Browse the reusable repo operations",
 	Long: `Browse the dies — the reusable operations forge applies to repos.
@@ -36,8 +37,7 @@ This is the library. To run one, use a reconcile verb, which takes a die name:
   forge repos plan <die>     what apply would change
   forge repos check <die>    what is wrong that apply cannot fix
   forge repos apply <die>    make it so`,
-	RunE: requireSubcommand,
-}
+})
 
 var diesListCmd = &cobra.Command{
 	Use:   "list",

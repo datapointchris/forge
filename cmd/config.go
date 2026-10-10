@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/datapointchris/goclikit"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
@@ -20,13 +21,12 @@ var configJSON bool
 // `config init|example|path|edit`, so the second verb is foreseeable rather
 // than hypothetical, and the rename is free only until someone types the bare
 // form.
-var configCmd = &cobra.Command{
+var configCmd = goclikit.AsNamespace(&cobra.Command{
 	Use:   "config",
 	Short: "The machine config",
 	Long: `Inspect the machine config — the directories forge maintains that git does
 not version, and the paths forge resolves for its own files.`,
-	RunE: requireSubcommand,
-}
+})
 
 var configShowCmd = &cobra.Command{
 	Use:   "show",

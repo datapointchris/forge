@@ -14,7 +14,7 @@ import (
 	"github.com/datapointchris/forge/cliaudit"
 )
 
-var cliCmd = &cobra.Command{
+var cliCmd = goclikit.AsNamespace(&cobra.Command{
 	Use:   "cli",
 	Short: "Read the fleet's command surfaces and compare them",
 	Long: `Read what the installed CLIs actually present, and compare it two ways:
@@ -37,8 +37,7 @@ yet.
 that does bind: a command or flag that was there and is not is a broken
 contract for whatever called it, which is why it is worth keeping a surface
 around to subtract from.`,
-	RunE: requireSubcommand,
-}
+})
 
 var cliSpecCmd = &cobra.Command{
 	Use:   "spec [tool...]",

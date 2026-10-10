@@ -23,20 +23,6 @@ var (
 	embeddedCI        fs.FS
 )
 
-// requireSubcommand is the RunE for a command that only groups others: bare
-// shows help and exits 0, an unknown subcommand is a usage error naming the
-// subcommands near it and exits 2.
-//
-// Without it cobra treats the unknown word as an argument, prints the group's
-// help, and exits 0 — so `forge dies nope` reported success and no caller could
-// tell that from a real run.
-func requireSubcommand(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return cmd.Help()
-	}
-	return goclikit.UnknownCommand(cmd, args[0])
-}
-
 // SetEmbeddedAssets stores the embedded filesystems for use by subcommands.
 func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
 	embeddedPreCommit = preCommit
@@ -79,9 +65,15 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
+// run drives the command tree through the shared bootstrap and returns its
+// error. Separate from Execute, which exits the process, so a test can run a
+// whole command line with the version check suppressed and read the error.
+func run(config autoupdate.Config) error {
+	return goclikit.Execute(context.Background(), rootCmd, config)
+}
+
 func Execute() {
-	autoConfig := autoupdate.Config{Update: updateConfig()}
-	if err := goclikit.Execute(context.Background(), rootCmd, autoConfig); err != nil {
+	if err := run(autoupdate.Config{Update: updateConfig()}); err != nil {
 		// A reconcile verb has already printed its rows, so what is left is the
 		// number, not a message. Checked before the printer below: `plan` that
 		// found drift exits 1 and prints nothing extra, because pending changes

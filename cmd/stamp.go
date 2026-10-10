@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"text/tabwriter"
 
+	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/dies"
 	"github.com/datapointchris/forge/toolchain"
 )
 
-var stampCmd = &cobra.Command{
+var stampCmd = goclikit.AsNamespace(&cobra.Command{
 	Use:   "stamp",
 	Short: "The version stamp forge writes into every file it generates",
 	Long: `Every file forge generates from the version declaration opens with a stamp
@@ -22,8 +23,7 @@ current standard from one behind it.
 
 A tool reading stamps takes both from here at run time, so the installed forge
 is the one authority on where stamps live.`,
-	RunE: requireSubcommand,
-}
+})
 
 var stampSpecJSON bool
 

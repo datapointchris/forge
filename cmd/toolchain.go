@@ -3,6 +3,7 @@ package cmd
 import (
 	"strings"
 
+	"github.com/datapointchris/goclikit"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
@@ -21,7 +22,7 @@ import (
 // `stamp.version` bump, fanned out by `forge repos apply precommit`. Both halves
 // matter: the rev is what a repo installs and the stamp is what makes "is this
 // repo current" answerable.
-var toolchainCmd = &cobra.Command{
+var toolchainCmd = goclikit.AsNamespace(&cobra.Command{
 	Use:   "toolchain",
 	Short: "The pinned tool versions every generated config rolls out",
 	Long: `The pinned versions every generated config rolls out, and where they are declared.
@@ -33,8 +34,7 @@ names, bumping its ` + "`stamp.version`" + `, then rolling out to one repo befor
 fanning out:
 
   forge repos apply precommit -F <repo>`,
-	RunE: requireSubcommand,
-}
+})
 
 var toolchainShowCmd = &cobra.Command{
 	Use:   "show",
