@@ -989,6 +989,30 @@ func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {
 	}
 }
 
+// StyLua's cargo hook parses Lua 5.1 only, so a goto label, which Neovim's
+// LuaJIT runs, failed every commit touching it. A Lua repo installs the release
+// binary instead, at the release the StyLua rev declares, and a raised rev
+// moves it.
+func TestALuaRepoInstallsStyLuasReleaseAtTheDeclaredRev(t *testing.T) {
+	manifest := testToolchain(t)
+	for i, hook := range manifest.Hooks {
+		if hook.Repo == "https://github.com/JohnnyMorganz/StyLua" {
+			manifest.Hooks[i].Rev = "v9.9.9"
+		}
+	}
+
+	config, err := Generate(os.DirFS("../pre-commit/blocks"), manifest, detected("lua"), nil, Observed{Versioning: Versioned})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if want := `- "@johnnymorganz/stylua-bin@9.9.9"`; !strings.Contains(config, want) {
+		t.Errorf("the lua config does not install %s:\n%s", want, config)
+	}
+	if strings.Contains(config, "repo: https://github.com/JohnnyMorganz/StyLua") {
+		t.Error("the lua config still runs StyLua's cargo hook")
+	}
+}
+
 func TestGeneratedConfigCarriesToolchainVersion(t *testing.T) {
 	manifest := testToolchain(t)
 	blocks := os.DirFS("../pre-commit/blocks")
