@@ -186,7 +186,7 @@ forge test -j 4                # repos at once; default is half the CPUs
 
 The command per stack is the one `ci/blocks/` generates into that repo's own
 workflow, so a local run and CI cannot disagree about what "the tests" means. Vue is
-the exception — its block builds and lints without testing — so the component's own
+the exception — its block builds without testing — so the component's own
 `package.json` says what to run, and the unit script wins over the one wanting a
 browser.
 

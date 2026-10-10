@@ -20,7 +20,7 @@ var testCmd = &cobra.Command{
 
 The command per stack is the one ci/blocks/ generates into that repo's own
 workflow, so a local run and CI cannot disagree about what "the tests" means.
-Vue is the exception — its CI block builds and lints without testing — so there
+Vue is the exception — its CI block builds without testing — so there
 the component's own package.json says what to run.
 
 Four outcomes, not two. ` + "`no_suite`" + ` is a repo with no tests yet, which is not a
