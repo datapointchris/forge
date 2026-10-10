@@ -103,7 +103,7 @@ never a filesystem probe. Stack blocks carry `{{dir}}` and `{{dirprefix}}`. Iden
 collapse; differing ones get their hook ids suffixed with the directory. A block must appear in
 `categoryMap` or `genericBlocks`, and one in neither is an error rather than a silent default.
 
-Three categories are seeded by `Generate` rather than by a component:
+Four categories are seeded by `Generate` rather than by a component:
 
 - `sql` follows a declared `sql_dialect`, because nothing in a `.sql` file says which dialect it is.
 - `git` (conventional-commits) follows whether the target is versioned. On an unversioned target it
@@ -115,6 +115,12 @@ Three categories are seeded by `Generate` rather than by a component:
   `--scripts-are-modules` so two apps in one commit do not collide as `__main__`. It is omitted when
   the scan finds nothing, since a hook matching no files reports passing. The scan is detection,
   deliberately: a new app landing undeclared is the gap it closes, and a registry key cannot.
+- `go-release` (the major-marker hook) follows a declared Go component in a versioned repo whose
+  workflow `uses:` go-semantic-release, read by `ci.InvokesGoSemanticRelease`. That analyzer majors
+  on the marker unanchored, and a major on a Go module strands every install. A Go repo tagging
+  with svu `--v0` or releasing through python-semantic-release gets no hook, since the marker cuts
+  nothing there and the hook's remedy is wrong. An unreadable workflow answers yes: a spurious hook
+  refuses a commit, a missing one ships the major.
 
 **The shell block's bats hook is guarded both ways.** A repo with no `tests/*.bats` passes; a repo
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck

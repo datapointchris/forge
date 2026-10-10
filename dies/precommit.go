@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/datapointchris/forge/ci"
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/reconcile"
@@ -400,7 +401,7 @@ type owedPreCommit struct {
 	declared       *config.Toolchain
 	basis          maintenance
 	customSections map[string]string
-	scripts        []string
+	observed       precommit.Observed
 	// wanted is "" where the basis is not applicable.
 	wanted string
 }
@@ -421,8 +422,12 @@ func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 	}
 
 	owed.customSections = precommit.ExtractCustomSections(owed.existing)
-	owed.scripts = shebangScripts(t.Repo.Path, t.Versioned())
-	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, precommit.Versioning(t.Versioned()), owed.scripts)
+	owed.observed = precommit.Observed{
+		Versioning:        precommit.Versioning(t.Versioned()),
+		Scripts:           shebangScripts(t.Repo.Path, t.Versioned()),
+		GoSemanticRelease: ci.InvokesGoSemanticRelease(t.Repo.Path),
+	}
+	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, owed.observed)
 	if err != nil {
 		return owedPreCommit{}, err
 	}
@@ -460,7 +465,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// Its own item, so the config is still regenerated: that keeps the
 	// override as it is, and only a person can say whether it should go.
 	if len(owed.customSections) > 0 {
-		standard, err := precommit.Generate(owed.blocksFS, t.Assets.Manifest, declared, nil, precommit.Versioning(t.Versioned()), owed.scripts)
+		standard, err := precommit.Generate(owed.blocksFS, t.Assets.Manifest, declared, nil, owed.observed)
 		if err != nil {
 			return nil, err
 		}

@@ -158,11 +158,46 @@ const (
 // many repos in one process, where a relative path answers about whichever repo
 // the process happens to be standing in.
 func ReleaseGatesOnValidate(root string) ReleaseGating {
+	if gated, _ := handWrittenWorkflowsMatch(root, releaseGateRef); gated {
+		return Gated
+	}
+	return Ungated
+}
+
+// goSemanticReleaseRef matches a step or job invoking go-semantic-release, by its
+// action or by the shared reusable workflow. Matching `uses:` is what tells an
+// invocation from a comment explaining why a repo does not use it.
+var goSemanticReleaseRef = regexp.MustCompile(`uses:\s*\S*go-semantic-release(/action|\.yml)@`)
+
+// InvokesGoSemanticRelease reports whether a workflow cuts the repo's releases
+// with go-semantic-release, whose analyzer majors a release on a marker in any
+// commit message.
+//
+// A workflow it cannot read answers true, the opposite of ReleaseGatesOnValidate.
+// What it gates is a hook refusing that marker: a spurious one refuses a commit,
+// and a missing one lets the marker through to a Go module, where a major
+// strands every install.
+func InvokesGoSemanticRelease(root string) bool {
+	invokes, err := handWrittenWorkflowsMatch(root, goSemanticReleaseRef)
+	return invokes || err != nil
+}
+
+// handWrittenWorkflowsMatch reports whether any workflow but the generated one
+// matches ref, with the first error reading one. A repo with no workflows
+// directory has none to read, which is no error.
+//
+// The generated workflow is skipped so a documentation example inside its own
+// comments cannot match.
+func handWrittenWorkflowsMatch(root string, ref *regexp.Regexp) (bool, error) {
 	entries, err := os.ReadDir(filepath.Join(root, workflowsDir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
 	if err != nil {
-		return Ungated
+		return false, err
 	}
 
+	var unread error
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -171,22 +206,22 @@ func ReleaseGatesOnValidate(root string) ReleaseGating {
 		if ext := filepath.Ext(name); ext != ".yml" && ext != ".yaml" {
 			continue
 		}
-		// The generated workflow does not gate itself, and skipping it keeps a
-		// documentation example inside its own comments from matching.
 		if filepath.Join(workflowsDir, name) == WorkflowPath {
 			continue
 		}
 
 		data, err := os.ReadFile(filepath.Join(root, workflowsDir, name))
 		if err != nil {
+			if unread == nil {
+				unread = err
+			}
 			continue
 		}
-		if releaseGateRef.Match(data) {
-			return Gated
+		if ref.Match(data) {
+			return true, nil
 		}
 	}
-
-	return Ungated
+	return false, unread
 }
 
 // Generate composes the workflow from the repo's declared components.

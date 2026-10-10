@@ -182,6 +182,72 @@ func TestReleaseGatesOnValidate(t *testing.T) {
 	}
 }
 
+func TestInvokesGoSemanticRelease(t *testing.T) {
+	cases := []struct {
+		name      string
+		workflows map[string]string
+		// unreadable names a workflow entry whose read fails.
+		unreadable string
+		want       bool
+	}{
+		{name: "no workflows at all", want: false},
+		{
+			name:      "a step uses the action",
+			workflows: map[string]string{"release.yml": "      - uses: go-semantic-release/action@v1\n"},
+			want:      true,
+		},
+		{
+			name:      "a job uses the shared workflow",
+			workflows: map[string]string{"release.yml": "    uses: datapointchris/reusable-workflows/.github/workflows/go-semantic-release.yml@v1\n"},
+			want:      true,
+		},
+		{
+			// A repo tagging a nested CLI with svu explains in a comment why it
+			// does not use the analyzer, and that cannot cut a major.
+			name:      "a comment names it",
+			workflows: map[string]string{"release.yml": "# not go-semantic-release: it hardcodes the v tag prefix\n      - run: svu next --v0\n"},
+			want:      false,
+		},
+		{
+			name:      "a different releaser",
+			workflows: map[string]string{"release.yml": "      - uses: python-semantic-release/python-semantic-release@v10\n"},
+			want:      false,
+		},
+		{
+			name:       "a workflow it cannot read",
+			workflows:  map[string]string{"validate.yml": "jobs: {}\n"},
+			unreadable: "release.yml",
+			want:       true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, workflowsDir)
+			if tc.workflows != nil {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+			}
+			for name, body := range tc.workflows {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+					t.Fatalf("write %s: %v", name, err)
+				}
+			}
+			// A dangling symlink fails the read whatever user runs the test.
+			if tc.unreadable != "" {
+				if err := os.Symlink(filepath.Join(root, "absent"), filepath.Join(dir, tc.unreadable)); err != nil {
+					t.Fatalf("symlink: %v", err)
+				}
+			}
+			if got := InvokesGoSemanticRelease(root); got != tc.want {
+				t.Errorf("InvokesGoSemanticRelease = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // A root component is the common case and should not carry a redundant
 // working-directory or a directory suffix in its job name.
 func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {

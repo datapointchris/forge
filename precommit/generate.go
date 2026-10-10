@@ -51,21 +51,26 @@ const wholeScope = "after:all"
 
 // categoryMap maps a block to the declared stack category that pulls it in.
 //
-// Three categories are gated by something other than a component, and Generate
+// Four categories are gated by something other than a component, and Generate
 // seeds each one itself: sql by a declared dialect, git by the target being
-// versioned, and python-scripts by the scan finding a file identify cannot tag.
+// versioned, python-scripts by the scan finding a file identify cannot tag, and
+// go-release by a Go component whose releases go-semantic-release cuts.
 //
 // git is gated that way because its block hooks commit-msg, which only fires on
 // a commit. A target git does not version would carry a hook that can never run,
 // and nothing would say so, because uninstalledHooks reports no missing stages
 // where there is no .git to install them into.
+//
+// go-release needs both halves. The marker its hook refuses majors a release
+// only under go-semantic-release's analyzer, and a major strands installs only
+// for a Go module. Under python-semantic-release the hook's remedy cuts nothing.
 var categoryMap = map[string]string{
 	"conventional-commits": "git",
 	"python-format":        "python",
 	"python-lint":          "python",
 	"python-scripts":       ScriptCategory,
 	"go":                   "go",
-	"go-release-major":     "go",
+	"go-release-major":     goReleaseCategory,
 	"vue":                  "vue",
 	"rust":                 "rust",
 	"lua":                  "lua",
@@ -389,11 +394,14 @@ type block struct {
 	Desc    string
 }
 
+// goReleaseCategory is the seeded category of the block refusing a commit
+// message that would major a Go module.
+const goReleaseCategory = "go-release"
+
 // Versioning says whether git versions the target, which decides whether the
 // commit-stage blocks are generated for it.
 //
-// A named type so each call site says which. Generate takes it beside a nil
-// and a slice, where a bare true reads as nothing.
+// A named type so a call site says which, where a bare true reads as nothing.
 type Versioning bool
 
 const (
@@ -402,6 +410,16 @@ const (
 	// Unversioned targets get none, since a commit-msg hook there never fires.
 	Unversioned Versioning = false
 )
+
+// Observed is what the die read from the target itself, beside the registry's
+// declaration: facts no declaration can carry without going stale.
+type Observed struct {
+	Versioning Versioning
+	// Scripts are the tracked extensionless Python apps identify cannot tag.
+	Scripts []string
+	// GoSemanticRelease is whether a workflow invokes go-semantic-release.
+	GoSemanticRelease bool
+}
 
 // Generate composes a .pre-commit-config.yaml from blocks and custom sections.
 // Every rev comes from the manifest, and a block's pin it cannot fill is an
@@ -416,8 +434,7 @@ func Generate(
 	manifest *toolchain.Toolchain,
 	declared *config.Toolchain,
 	customSections map[string]string,
-	versioning Versioning,
-	scripts []string,
+	observed Observed,
 ) (string, error) {
 	dirs := dirsByCategory(declared.Components)
 	// The SQL block is gated by a declared dialect rather than by a component:
@@ -429,13 +446,16 @@ func Generate(
 	// The commit-stage blocks are gated by git being present, for the reason in
 	// categoryMap. Seeded exactly as sql is: neither has a build directory of
 	// its own, so both take the root.
-	if versioning == Versioned {
+	if observed.Versioning == Versioned {
 		dirs["git"] = []string{"."}
+		if _, goDeclared := dirs["go"]; goDeclared && observed.GoSemanticRelease {
+			dirs[goReleaseCategory] = []string{"."}
+		}
 	}
 	// Seeded from the scan for the same reason: an app identify cannot tag is
 	// not a build surface with a directory of its own, and no declaration can
 	// name it without going stale the next time one is added.
-	scriptsPattern := ScriptsPattern(scripts)
+	scriptsPattern := ScriptsPattern(observed.Scripts)
 	if scriptsPattern != "" {
 		dirs[ScriptCategory] = []string{"."}
 	}

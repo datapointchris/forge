@@ -75,7 +75,7 @@ func scriptBlocks() fstest.MapFS {
 func TestScriptBlockFollowsTheScan(t *testing.T) {
 	blocks := scriptBlocks()
 
-	without, err := Generate(blocks, testToolchain(t), detected("python"), nil, Versioned, nil)
+	without, err := Generate(blocks, testToolchain(t), detected("python"), nil, Observed{Versioning: Versioned})
 	if err != nil {
 		t.Fatalf("Generate: %s", err)
 	}
@@ -86,7 +86,7 @@ func TestScriptBlockFollowsTheScan(t *testing.T) {
 		t.Error("the script hooks reached a repo the scan found nothing in")
 	}
 
-	with, err := Generate(blocks, testToolchain(t), detected("python"), nil, Versioned, []string{"apps/common/worktree"})
+	with, err := Generate(blocks, testToolchain(t), detected("python"), nil, Observed{Versioning: Versioned, Scripts: []string{"apps/common/worktree"}})
 	if err != nil {
 		t.Fatalf("Generate: %s", err)
 	}
