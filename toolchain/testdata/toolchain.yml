@@ -90,6 +90,8 @@ binaries:
     version: fixture-jq
   - name: cargo_audit
     version: fixture-cargo-audit
+  - name: terraform
+    version: fixture-terraform
 
 runtimes:
   - name: node

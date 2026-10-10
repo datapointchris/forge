@@ -259,6 +259,39 @@ func TestADeclaredCommitReplacesWhateverRefTheLineHeld(t *testing.T) {
 	}
 }
 
+func TestOnlyTheDownloadingActionsOwnInputIsRewritten(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: hookPinnedTools["uv"], Rev: "0.9.1"}}}
+	workflow := strings.Join([]string{
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          version: 0.4.0",
+		"      - uses: goreleaser/goreleaser-action@v6",
+		"        with:",
+		"          version: v2.1.0",
+		"      - name: no input",
+		"        uses: astral-sh/setup-uv@v7",
+		"      - run: echo version: 1",
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          version: 0.9.1",
+	}, "\n")
+
+	got := strings.Split(manifest.ApplyActionReleaseInputs(workflow), "\n")
+
+	if got[2] != `          version: "0.9.1"` {
+		t.Errorf("setup-uv's input = %q, want the uv its hook pins", got[2])
+	}
+	if got[5] != "          version: v2.1.0" {
+		t.Errorf("another action's input was rewritten: %q", got[5])
+	}
+	if len(got) != 12 {
+		t.Errorf("an input was added to a step that had none:\n%s", strings.Join(got, "\n"))
+	}
+	if got[11] != "          version: 0.9.1" {
+		t.Errorf("an input already naming the release was rewritten: %q", got[11])
+	}
+}
+
 func TestAnActionPinnedToACommitKeepsItsCommit(t *testing.T) {
 	manifest := &Toolchain{Version: 1, Actions: []Action{{Uses: "actions/checkout", Version: "v9"}}}
 	line := "      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v4.1.1\n"

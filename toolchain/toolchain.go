@@ -62,6 +62,10 @@ var (
 	exactTagRE = regexp.MustCompile(`^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$`)
 	// The `# v1.2.3` after a commit-pinned `uses:`.
 	releaseCommentRE = regexp.MustCompile(`^\s*#\s*v?\d\S*`)
+	// A workflow step opens with a list item, and its `with:` holds the inputs.
+	stepStartRE = regexp.MustCompile(`^\s*-\s`)
+	withLineRE  = regexp.MustCompile(`^(\s*)with:\s*$`)
+	inputLineRE = regexp.MustCompile(`^(\s*)([A-Za-z0-9_-]+):\s*(\S+)\s*$`)
 )
 
 // firstPartyOwner owns the actions GitHub publishes. Those stay on tags: a
@@ -76,6 +80,19 @@ const firstPartyOwner = "actions"
 var hookPinnedTools = map[string]string{
 	"ruff": "https://github.com/astral-sh/ruff-pre-commit",
 	"uv":   "https://github.com/astral-sh/uv-pre-commit",
+}
+
+// releaseInput is the input an action takes naming the release of the tool it
+// downloads, and the binary that release resolves as.
+type releaseInput struct{ input, binary string }
+
+// downloadingActions maps an action that downloads its tool when it runs to
+// the input naming that tool's release. A commit fixes the action's code and
+// nothing it downloads: left empty, setup-uv installs the newest uv and
+// setup-terraform the newest terraform.
+var downloadingActions = map[string]releaseInput{
+	"astral-sh/setup-uv":        {input: "version", binary: "uv"},
+	"hashicorp/setup-terraform": {input: "terraform_version", binary: "terraform"},
 }
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
@@ -413,12 +430,46 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 	return strings.Join(lines, "\n")
 }
 
+// ApplyActionReleaseInputs rewrites the input naming the tool's release on
+// each step whose action downloads that tool, to the release the tool's binary
+// resolves as. Only an input inside that step's `with:` is read, so another
+// action's input of the same name is left alone. A step without the input
+// gets none: what an author left out of a workflow is not added here.
+func (t *Toolchain) ApplyActionReleaseInputs(content string) string {
+	lines := strings.Split(content, "\n")
+	var release releaseInput
+	withIndent := -1
+
+	for i, line := range lines {
+		if stepStartRE.MatchString(line) {
+			release, withIndent = releaseInput{}, -1
+		}
+		if m := usesLineRE.FindStringSubmatch(line); m != nil {
+			release = downloadingActions[m[2]]
+			continue
+		}
+		if m := withLineRE.FindStringSubmatch(line); m != nil {
+			withIndent = len(m[1])
+			continue
+		}
+		m := inputLineRE.FindStringSubmatch(line)
+		if m == nil || release.input == "" || withIndent < 0 || len(m[1]) <= withIndent || m[2] != release.input {
+			continue
+		}
+		// A value already naming the release stays as written, quoted or not.
+		if version, managed := t.BinaryVersion(release.binary); managed && strings.Trim(m[3], `"'`) != version {
+			lines[i] = fmt.Sprintf("%s%s: %q", m[1], m[2], version)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ApplyWorkflowPins rewrites the pins a workflow forge did not write shares
-// with the one it did: actions, `go install` tools, uvx tools, binaries and the
-// hosted runner image. A runtime version is left alone, because a hand-written
-// matrix may test several on purpose.
+// with the one it did: actions and the release each downloads, `go install`
+// tools, uvx tools, binaries and the hosted runner image. A runtime version is
+// left alone, because a hand-written matrix may test several on purpose.
 func (t *Toolchain) ApplyWorkflowPins(content string) string {
-	return t.ApplyRunnerLabels(t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionVersions(content)))))
+	return t.ApplyRunnerLabels(t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionReleaseInputs(t.ApplyActionVersions(content))))))
 }
 
 var (
@@ -534,7 +585,7 @@ func multiReleaseLists(lines []string) map[int]bool {
 
 // ApplyAll runs every substitution a generated file may need.
 func (t *Toolchain) ApplyAll(content string) string {
-	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyPreCommitPins(content))))))
+	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionReleaseInputs(t.ApplyActionVersions(t.ApplyPreCommitPins(content)))))))
 }
 
 // HookPinnedVersion is the upstream release a tool's hook rev wraps, and whether

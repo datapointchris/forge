@@ -352,6 +352,24 @@ func TestGenerateUsesAThirdPartyActionByItsCommit(t *testing.T) {
 	}
 }
 
+// A commit fixes setup-uv's and setup-terraform's code, and each still
+// installs whatever its tool released last unless an input names the release.
+func TestEveryJobInstallsTheDeclaredUvAndTerraform(t *testing.T) {
+	workflow := generateFor(t, comps("python", ".", "terraform", "infra"))
+	for job, want := range map[string]string{
+		"python":          `version: "fixture-uv-pre-commit"`,
+		HooksJob:          `version: "fixture-uv-pre-commit"`,
+		"terraform-infra": `terraform_version: "fixture-terraform"`,
+	} {
+		if !strings.Contains(jobSteps(workflow, job), want) {
+			t.Errorf("the %s job does not install the declared release (%s):\n%s", job, want, jobSteps(workflow, job))
+		}
+	}
+	if !strings.Contains(jobSteps(workflow, HooksJob), `terraform_version: "fixture-terraform"`) {
+		t.Errorf("the hooks job's terraform is not the declared release:\n%s", jobSteps(workflow, HooksJob))
+	}
+}
+
 // A block's pin the versions file cannot fill would reach the runner as a
 // literal `{{pin}}` and fail at dispatch, so generation refuses it instead.
 func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {
