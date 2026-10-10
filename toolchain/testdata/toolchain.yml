@@ -67,16 +67,16 @@ tools:
     version: fixture-govulncheck
   - module: mvdan.cc/gofumpt
     version: fixture-gofumpt
+  - module: github.com/terraform-linters/tflint
+    version: fixture-tflint
+  - module: github.com/terraform-docs/terraform-docs
+    version: fixture-terraform-docs
 
-# shellcheck and shfmt are absent on purpose: their CI version is the release
-# their hook pin wraps, and Load refuses a binaries entry for either.
+# Every tool in hookPinnedTools or modulePinnedBinaries is absent on purpose: CI
+# takes its release from its hook, and Load refuses a binaries entry for one.
 binaries:
   - name: bats
     version: fixture-bats
-  - name: tflint
-    version: fixture-tflint
-  - name: terraform_docs
-    version: fixture-terraform-docs
   - name: bats_support
     version: fixture-bats-support
   - name: bats_assert

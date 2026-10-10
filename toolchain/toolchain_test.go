@@ -24,7 +24,7 @@ func loadManifest(t *testing.T) *Toolchain {
 // as an action's version input, is a copy no substitution updates at all.
 func TestBlocksNameNoVersion(t *testing.T) {
 	literal := regexp.MustCompile(`\bv?\d+\.\d+\.\d+\b`)
-	versioned := []*regexp.Regexp{revLineRE, usesLineRE, goInstallRE, runtimeLineRE, binaryLineRE, uvxLineRE, literal}
+	versioned := []*regexp.Regexp{revLineRE, usesLineRE, goInstallRE, runtimeLineRE, binaryLineRE, uvxLineRE, dependencyLineRE, literal}
 	for _, dir := range []string{"../pre-commit/blocks", "../ci/blocks"} {
 		err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
@@ -98,6 +98,41 @@ func TestLoadRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
 	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nbinaries:\n  - name: shellcheck\n    version: \"0.10.0\"\n")}}
 	if _, err := Load(fixture); err == nil {
 		t.Error("a second copy of shellcheck's version loaded without complaint")
+	}
+}
+
+// The tflint hook installs the module at its tools pin, and CI downloads the
+// release binary. Both read the one entry, so they cannot name two releases.
+func TestTflintInCITakesTheReleaseItsHookInstalls(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Tools: []Tool{{Module: modulePinnedBinaries["tflint"], Version: "v0.64.0"}}}
+
+	got := manifest.ApplyBinaryVersions("          tflint_version=\"" + Pin + "\"\n")
+
+	if !strings.Contains(got, `tflint_version="0.64.0"`) {
+		t.Errorf("tflint not derived from its module pin: %q", got)
+	}
+}
+
+func TestLoadRefusesABinariesEntryForAModulePinnedTool(t *testing.T) {
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nbinaries:\n  - name: terraform_docs\n    version: \"0.24.0\"\n")}}
+	if _, err := Load(fixture); err == nil {
+		t.Error("a second copy of terraform-docs' version loaded without complaint")
+	}
+}
+
+func TestApplyDependencyVersionsPinsADeclaredModuleOnly(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Tools: []Tool{{Module: "mvdan.cc/gofumpt", Version: "v0.12.0"}}}
+	block := "        additional_dependencies:\n" +
+		"          - mvdan.cc/gofumpt@" + Pin + "\n" +
+		"          - example.com/undeclared@v1.0.0\n"
+
+	got := manifest.ApplyDependencyVersions(block)
+
+	if !strings.Contains(got, "- mvdan.cc/gofumpt@v0.12.0\n") {
+		t.Errorf("the declared module did not take its pin: %q", got)
+	}
+	if !strings.Contains(got, "- example.com/undeclared@v1.0.0\n") {
+		t.Errorf("an undeclared module was rewritten: %q", got)
 	}
 }
 

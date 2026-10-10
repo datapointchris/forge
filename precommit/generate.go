@@ -65,19 +65,21 @@ const wholeScope = "after:all"
 // only under go-semantic-release's analyzer, and a major strands installs only
 // for a Go module. Under python-semantic-release the hook's remedy cuts nothing.
 var categoryMap = map[string]string{
-	"conventional-commits": "git",
-	"python-format":        "python",
-	"python-lint":          "python",
-	"python-scripts":       ScriptCategory,
-	"go":                   "go",
-	"go-release-major":     goReleaseCategory,
-	"vue":                  "vue",
-	"rust":                 "rust",
-	"lua":                  "lua",
-	"docker":               "docker",
-	"sql":                  "sql",
-	"github-actions":       "actions",
-	"terraform":            "terraform",
+	"conventional-commits":    "git",
+	"python-format":           "python",
+	"python-lint":             "python",
+	"python-scripts":          ScriptCategory,
+	"go":                      "go",
+	"go-format-and-lint":      "go",
+	"go-release-major":        goReleaseCategory,
+	"vue":                     "vue",
+	"rust":                    "rust",
+	"lua":                     "lua",
+	"docker":                  "docker",
+	"sql":                     "sql",
+	"github-actions":          "actions",
+	"terraform":               "terraform",
+	"terraform-lint-and-docs": "terraform",
 }
 
 // genericBlocks apply to every target regardless of stack. Membership is
@@ -119,9 +121,13 @@ var knownAliases = map[string]bool{
 	"stylelint":        true,
 	"typecheck":        true,
 	"typescript-check": true,
-	// Same tool, different id, in the go block.
-	"gofmt":   true,
-	"gofumpt": true,
+	// Same tool, different id, in the go-format-and-lint block.
+	"gofmt":                  true,
+	"go-fumpt-repo":          true,
+	"golangci-lint-repo-mod": true,
+	// Same tool, different id, in the terraform-lint-and-docs block.
+	"terraform_tflint": true,
+	"terraform_docs":   true,
 	// Same tool, different id, in the lua block.
 	"stylua-github": true,
 }
@@ -480,14 +486,14 @@ func Generate(
 			"{{dialect}}", declared.SQLDialect,
 			"{{scripts}}", scriptsPattern,
 		).Replace(renderForDirs(b, dirs[categoryMap[b.Name]]))
-		content := manifest.ApplyRevs(StripHooksFromBlock(rendered, customIDs))
+		content := manifest.ApplyPreCommitPins(StripHooksFromBlock(rendered, customIDs))
 		content = dropEmptyRepoEntries(content)
 		desc := BlockDescription(content)
 
 		// Insert custom hooks that go BEFORE this block
 		if section, ok := customSections["before:"+b.Name]; ok {
 			lines = append(lines, "")
-			lines = append(lines, manifest.ApplyRevs(section))
+			lines = append(lines, manifest.ApplyPreCommitPins(section))
 		}
 
 		// Strip leading description comment (it's moved to the generated: header)
@@ -510,16 +516,16 @@ func Generate(
 		// Insert custom hooks that go AFTER this block
 		if section, ok := customSections["after:"+b.Name]; ok {
 			lines = append(lines, "")
-			lines = append(lines, manifest.ApplyRevs(section))
+			lines = append(lines, manifest.ApplyPreCommitPins(section))
 		}
 	}
 
 	// Custom hooks after everything. Every section is the repo's own apart from
-	// the revs of repos the manifest declares, which a bump would otherwise
-	// leave behind in it.
+	// the revs of repos the manifest declares and the versions of modules it
+	// pins, which a bump would otherwise leave behind in it.
 	if section, ok := customSections["after:all"]; ok {
 		lines = append(lines, "")
-		lines = append(lines, manifest.ApplyRevs(section))
+		lines = append(lines, manifest.ApplyPreCommitPins(section))
 	}
 
 	lines = append(lines, "")
