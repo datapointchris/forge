@@ -630,8 +630,40 @@ func TestIntegration_GoRepo(t *testing.T) {
 	}
 
 	hooks := getHookIDs(config)
-	if !contains(hooks, "go-fumpt-repo") {
-		t.Error("missing go-fumpt-repo hook")
+	for _, want := range []string{"gofumpt", "golangci-lint", "go-vet-repo-mod"} {
+		if !contains(hooks, want) {
+			t.Errorf("missing %s hook", want)
+		}
+	}
+}
+
+// gofumpt and golangci-lint install the declared module rather than running
+// the copy on PATH, and golangci-lint runs from each declared module. The
+// tekwizely hooks already walk every go.mod, so they stay one copy.
+func TestIntegration_GoLintRunsPerModuleAtTheDeclaredRelease(t *testing.T) {
+	config, err := Generate(realBlocks(t), testToolchain(t), at("go", "api", "go", "cli"), nil, Observed{Versioning: Versioned})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hooks := getHookIDs(config)
+	for _, want := range []string{"gofumpt-api", "gofumpt-cli", "golangci-lint-api", "golangci-lint-cli"} {
+		if !contains(hooks, want) {
+			t.Errorf("missing %s: %v", want, hooks)
+		}
+	}
+	if n := strings.Count(config, "- id: go-vet-repo-mod\n"); n != 1 {
+		t.Errorf("go-vet-repo-mod appears %d times, want once", n)
+	}
+	for _, want := range []string{
+		"cd api && exec golangci-lint run",
+		"cd cli && exec golangci-lint run",
+		"- mvdan.cc/gofumpt@fixture-gofumpt\n",
+		"- github.com/golangci/golangci-lint/v2/cmd/golangci-lint@fixture-golangci-lint\n",
+	} {
+		if !strings.Contains(config, want) {
+			t.Errorf("config lacks %q:\n%s", want, config)
+		}
 	}
 }
 
@@ -903,14 +935,14 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 	if !contains(hooks, "my-test-runner") {
 		t.Fatal("custom hook not found")
 	}
-	if !contains(hooks, "go-fumpt-repo") {
+	if !contains(hooks, "go-test-repo-mod") {
 		t.Fatal("go hook not found")
 	}
 	if !contains(hooks, "actionlint") {
 		t.Fatal("actionlint hook not found")
 	}
 
-	if indexOf(hooks, "golangci-lint-repo-mod") >= indexOf(hooks, "my-test-runner") {
+	if indexOf(hooks, "go-test-repo-mod") >= indexOf(hooks, "my-test-runner") {
 		t.Error("my-test-runner should be after go hooks")
 	}
 	if indexOf(hooks, "my-test-runner") >= indexOf(hooks, "actionlint") {

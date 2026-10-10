@@ -3,9 +3,4 @@
     rev: "{{pin}}"
     hooks:
       - id: terraform_validate
-      - id: terraform_tflint
       - id: terraform_fmt
-      - id: terraform_docs
-        args:
-          - --args=--anchor=false
-          - --args=--html=false

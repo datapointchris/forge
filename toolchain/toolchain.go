@@ -51,6 +51,9 @@ var (
 	// block happens to name — the exact drift the manifest exists to prevent.
 	binaryLineRE = regexp.MustCompile(`^(\s*)([a-z0-9_]+)_version="\S+"\s*$`)
 	uvxLineRE    = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
+	// A YAML list item naming a Go module at a version, which is how a
+	// `language: golang` hook's additional_dependencies spells what it installs.
+	dependencyLineRE = regexp.MustCompile(`^(\s*-\s+)([A-Za-z0-9._~/-]+)@(\S+)\s*$`)
 	// A full commit id, which is a stronger pin than any tag the manifest names.
 	commitRefRE = regexp.MustCompile(`@[0-9a-f]{40}\b`)
 )
@@ -65,6 +68,15 @@ var hookPinnedTools = map[string]string{
 	"shfmt":      "https://github.com/scop/pre-commit-shfmt",
 	"stylua":     "https://github.com/JohnnyMorganz/StyLua",
 	"uv":         "https://github.com/astral-sh/uv-pre-commit",
+}
+
+// modulePinnedBinaries maps a tool generated CI downloads to the Go module its
+// pre-commit hook installs. The hook takes the tools pin for that module, so CI
+// takes the same release from it rather than from a binaries entry that could
+// drift from the hook.
+var modulePinnedBinaries = map[string]string{
+	"tflint":         "github.com/terraform-linters/tflint",
+	"terraform_docs": "github.com/terraform-docs/terraform-docs",
 }
 
 // hookRevisionSuffix is the counter a wrapper repo appends when it re-tags one
@@ -148,12 +160,15 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 }
 
 // refuseDerivedBinaries rejects a binaries entry for a tool whose CI version
-// comes from its hook pin. The entry would be a second copy of that version,
+// comes from its hook's pin. The entry would be a second copy of that version,
 // and ApplyBinaryVersions would never read it.
 func (t *Toolchain) refuseDerivedBinaries() error {
 	for _, binary := range t.Binaries {
 		if repo, derived := hookPinnedTools[binary.Name]; derived {
 			return fmt.Errorf("binaries pins %s, whose CI version is the release its hook pin %s wraps — remove the binaries entry", binary.Name, repo)
+		}
+		if module, derived := modulePinnedBinaries[binary.Name]; derived {
+			return fmt.Errorf("binaries pins %s, whose CI version is the tools pin for %s that its hook installs — remove the binaries entry", binary.Name, module)
 		}
 	}
 	return nil
@@ -280,6 +295,30 @@ func (t *Toolchain) RuntimeVersion(name string) (string, bool) {
 	return "", false
 }
 
+// ApplyDependencyVersions rewrites each `- <module>@<ref>` list item to the
+// tools pin for that module, which is how a `language: golang` hook installs
+// the release CI does. A module the manifest does not pin is left alone.
+func (t *Toolchain) ApplyDependencyVersions(content string) string {
+	lines := strings.Split(content, "\n")
+
+	for i, line := range lines {
+		m := dependencyLineRE.FindStringSubmatch(line)
+		if len(m) < 4 {
+			continue
+		}
+		if version, managed := t.ToolVersion(m[2]); managed {
+			lines[i] = m[1] + m[2] + "@" + version
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ApplyPreCommitPins runs every substitution a pre-commit config takes: hook
+// revs, and the modules a local Go hook installs.
+func (t *Toolchain) ApplyPreCommitPins(content string) string {
+	return t.ApplyDependencyVersions(t.ApplyRevs(content))
+}
+
 // ApplyRuntimeVersions rewrites `<name>-version: X` inputs to the manifest's
 // pinned version. `<name>-version-file:` does not match — that points at a file
 // in the repo, which is the repo's business, not the manifest's.
@@ -330,7 +369,7 @@ func (t *Toolchain) ApplyWorkflowPins(content string) string {
 
 // ApplyAll runs every substitution a generated file may need.
 func (t *Toolchain) ApplyAll(content string) string {
-	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyRevs(content))))))
+	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyPreCommitPins(content))))))
 }
 
 // HookPinnedVersion is the upstream release a tool's hook rev wraps, and whether
@@ -348,10 +387,15 @@ func (t *Toolchain) HookPinnedVersion(tool string) (string, bool) {
 }
 
 // BinaryVersion returns the pinned version for a released binary, and whether
-// it is managed. A tool with a hook takes the release that hook pins.
+// it is managed. A tool with a hook takes the release that hook pins, or the
+// release of the module its hook installs.
 func (t *Toolchain) BinaryVersion(name string) (string, bool) {
 	if version, derived := t.HookPinnedVersion(name); derived {
 		return version, true
+	}
+	if module, derived := modulePinnedBinaries[name]; derived {
+		version, managed := t.ToolVersion(module)
+		return strings.TrimPrefix(version, "v"), managed
 	}
 	for _, binary := range t.Binaries {
 		if binary.Name == name {

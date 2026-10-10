@@ -138,6 +138,16 @@ a `binaries` entry for one is refused as a second copy.
 `toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its values name
 tools rather than releases.
 
+**No hook runs a linter or formatter from `PATH` where CI pins one.** A hook doing so passes or
+fails by what that machine last installed, and gofumpt writes, so two releases rewrite each other.
+gofumpt, golangci-lint, tflint and terraform-docs run as `repo: local` hooks with `language:
+golang`, and pre-commit installs each from an `additional_dependencies` item `- <module>@{{pin}}`,
+which `ApplyDependencyVersions` fills from the `tools` pin. CI's `go install` reads the same entry.
+CI downloads tflint and terraform-docs as release binaries instead, because a self-hosted runner has
+no Go, and takes their version from the module pin through `modulePinnedBinaries`. golangci-lint
+loads packages from the go.mod it starts beside, so those blocks render once per declared
+directory, apart from the tekwizely hooks, which walk every go.mod themselves.
+
 **Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
 reads it, and a file at a managed path without it is reported rather than overwritten
 (`TestEveryDeployedToolConfigCarriesTheManagedMarker`). What each deployed config has learned:
@@ -203,7 +213,8 @@ writes. A Python release's `build_command` reads the rev out of the committed
 
 The generator preserves these across re-runs. A safety check aborts if unrecognized hooks exist without markers.
 
-A custom section naming a repo the versions file declares takes the declared rev on every run.
+A custom section naming a repo the versions file declares takes the declared rev on every run, and a
+`- <module>@<ref>` item naming a declared module takes the declared version.
 
 A custom hook sharing a standard hook's id replaces that hook whole, so the declared rev and args never
 reach it. `check` reports each one as `ByHand` under its own item, and the config still regenerates.

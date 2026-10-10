@@ -4,8 +4,6 @@
   - repo: https://github.com/tekwizely/pre-commit-golang
     rev: "{{pin}}"
     hooks:
-      - id: go-fumpt-repo
-        args: [-w]
       - id: go-vet-repo-mod
       - id: go-build-repo-mod
       - id: go-mod-tidy-repo
@@ -13,4 +11,3 @@
         # A commit gate runs the fast tests; CI runs everything. Without this a
         # repo with DB integration tests has to keep a hook of its own.
         args: [-short]
-      - id: golangci-lint-repo-mod

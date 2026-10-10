@@ -146,7 +146,7 @@ func TestTheHooksJobRunsWhatNoStackJobCovers(t *testing.T) {
 	}
 	for _, skipped := range []string{
 		"go-vet-repo-mod",         // the go job runs it
-		"go-fumpt-repo",           // so too, though no other job has the Go it needs
+		"gofumpt",                 // so too, and local besides
 		"bats",                    // local, and its tool is installed only by the shell job
 		"conventional-pre-commit", // grades a commit message, which a pushed tree lacks
 	} {
