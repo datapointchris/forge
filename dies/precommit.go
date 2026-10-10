@@ -422,7 +422,7 @@ func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 
 	owed.customSections = precommit.ExtractCustomSections(owed.existing)
 	owed.scripts = shebangScripts(t.Repo.Path, t.Versioned())
-	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, t.Versioned(), owed.scripts)
+	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, precommit.Versioning(t.Versioned()), owed.scripts)
 	if err != nil {
 		return owedPreCommit{}, err
 	}
@@ -460,7 +460,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// Its own item, so the config is still regenerated: that keeps the
 	// override as it is, and only a person can say whether it should go.
 	if len(owed.customSections) > 0 {
-		standard, err := precommit.Generate(owed.blocksFS, t.Assets.Manifest, declared, nil, t.Versioned(), owed.scripts)
+		standard, err := precommit.Generate(owed.blocksFS, t.Assets.Manifest, declared, nil, precommit.Versioning(t.Versioned()), owed.scripts)
 		if err != nil {
 			return nil, err
 		}

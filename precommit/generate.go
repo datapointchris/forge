@@ -389,6 +389,20 @@ type block struct {
 	Desc    string
 }
 
+// Versioning says whether git versions the target, which decides whether the
+// commit-stage blocks are generated for it.
+//
+// A named type so each call site says which. Generate takes it beside a nil
+// and a slice, where a bare true reads as nothing.
+type Versioning bool
+
+const (
+	// Versioned targets get the commit-stage blocks.
+	Versioned Versioning = true
+	// Unversioned targets get none, since a commit-msg hook there never fires.
+	Unversioned Versioning = false
+)
+
 // Generate composes a .pre-commit-config.yaml from blocks and custom sections.
 // Every rev comes from the manifest, and a block's pin it cannot fill is an
 // error rather than a config pre-commit would reject at install.
@@ -402,7 +416,7 @@ func Generate(
 	manifest *toolchain.Toolchain,
 	declared *config.Toolchain,
 	customSections map[string]string,
-	versioned bool,
+	versioning Versioning,
 	scripts []string,
 ) (string, error) {
 	dirs := dirsByCategory(declared.Components)
@@ -415,7 +429,7 @@ func Generate(
 	// The commit-stage blocks are gated by git being present, for the reason in
 	// categoryMap. Seeded exactly as sql is: neither has a build directory of
 	// its own, so both take the root.
-	if versioned {
+	if versioning == Versioned {
 		dirs["git"] = []string{"."}
 	}
 	// Seeded from the scan for the same reason: an app identify cannot tag is
