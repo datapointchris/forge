@@ -14,13 +14,13 @@ func applyAll(t *testing.T, target reconcile.Target, die reconcile.Die) []reconc
 	return reconcile.Apply(reconcile.Assess(target, die))
 }
 
-func TestGitignorePythonRepoGetsCoverageAndBuildArtifacts(t *testing.T) {
+func TestGitignorePythonRepoGetsBytecodeCoverageAndBuildArtifacts(t *testing.T) {
 	target := fixture(t, stacks("python"), map[string]string{".gitignore": ".planning\n"})
 
 	applyAll(t, target, Gitignore{})
 
 	present := lines(t, target.Path(".gitignore"))
-	for _, entry := range []string{".coverage", "coverage.xml", "dist/", "*.egg-info/"} {
+	for _, entry := range []string{"__pycache__/", ".coverage", "coverage.xml", "dist/", "*.egg-info/"} {
 		if !has(present, entry) {
 			t.Errorf("missing entry: %s", entry)
 		}

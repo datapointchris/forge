@@ -63,6 +63,7 @@ var universalIgnores = []wanted{
 // .pytest_cache, .ruff_cache, .mypy_cache. Listing them would be dead weight
 // that reads as necessary.
 var pythonIgnores = []wanted{
+	{"__pycache__/", "bytecode Python writes beside each module it imports, wherever PYTHONPYCACHEPREFIX is unset"},
 	{".coverage", "coverage data file — a bare file, so unlike htmlcov/ it self-ignores nothing"},
 	{"coverage.xml", "coverage report, written by the CI run"},
 	{"dist/", "build output"},
