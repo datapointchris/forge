@@ -9,6 +9,23 @@ import (
 	"testing"
 )
 
+func TestCacheHomeFollowsXDG(t *testing.T) {
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	if got, want := CacheHome(), filepath.Join(cacheHome, "forge"); got != want {
+		t.Errorf("CacheHome() = %q, want %q", got, want)
+	}
+
+	t.Setenv("XDG_CACHE_HOME", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory")
+	}
+	if got, want := CacheHome(), filepath.Join(home, ".cache", "forge"); got != want {
+		t.Errorf("CacheHome() = %q, want %q", got, want)
+	}
+}
+
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yml")

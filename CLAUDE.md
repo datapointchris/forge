@@ -26,12 +26,31 @@ something.
 - **`directories` targets live in forge's own config, never the registry.** The registry is read by
   other tools, and each takes an entry there to be a git repo with a GitHub remote. Both nouns come
   from one `reconcileNoun` factory, and `TestBothNounsSpellTheSharedVerbsIdentically` keeps them level.
-- **`-c` is declared on `repos`, `directories`, `cli`, `config` and `test`, never on the root.** A root
+- **`-c` is declared on `repos`, `directories`, `cli`, `config`, `test` and `lint`, never on the root.** A root
   persistent flag is advertised on every subcommand, including ones that never open the registry.
   `loadRepos` refuses a command that has not declared it, and `cmd/flagscope_test.go` pins the set.
 - **`cli` reads installed CLIs from the outside only** — `--help`, plus cobra's `__complete` where a
   tool has one. It never runs a bare subcommand, because a noun that performs a read with no verb
   would fire that read against a live API. It reports variation and exits 0 whatever it finds.
+- **`lint` runs the hooks CI runs, over every file, in a throwaway clone of HEAD.** The list is
+  `ci.HooksToRun` of the committed config, so a local run and CI run the same hooks. CI runs them
+  over what a push changed, and `lint` runs them over every file, so `lint` can fail where CI
+  passes. Several hooks rewrite what they check, so each repo is cloned with `--shared` under the
+  cache. That borrows the repo's objects and writes nothing into its `.git`, where a worktree would
+  register itself and outlive a killed run.
+- **The clone gets each package's `node_modules` as a mirror, never a link to the directory.** The
+  vue hooks resolve their tools there. Top-level dot-directories other than `.bin` are left out,
+  because vue-tsc, jiti and Vue's global types write caches there, and a whole-directory link would
+  send those writes into the checkout. A link npm made is recreated rather than followed: a
+  workspace package such as `node_modules/shared -> ../shared` points at the clone's copy, which is
+  HEAD's, and `.bin` and `@scope` entries are rebuilt the same way. A package's `postinstall` then
+  runs in the clone, as `npm ci` runs it in CI. Nuxt's generates the types its typecheck reads.
+- **A `lint` run stops whole.** pre-commit and npm lead their own process groups, and a timeout or
+  Ctrl-C kills the group, so no tool outlives the clone it runs in. The run catches the signal
+  itself for that reason, and removes each clone before it exits. A hook whose tool is missing
+  reports `unknown`, from the shell's 127 or pre-commit's "Executable not found", and so does
+  pre-commit's own exit 3, which is a hook environment it could not set up. None moves the exit
+  code.
 - **Nothing in forge writes a pin.** `toolchain show` reads the file `versions_file` names and prints
   the path beside the version. A pin is chosen, not discovered.
 
@@ -66,7 +85,7 @@ because pre-commit re-invokes git. `git init` refuses while `GIT_WORK_TREE` is s
 drops it. Hook environments install first in a clean throwaway repo, because a build backend runs its
 own git — check-json5 builds with poetry — and trips on the inherited variables.
 
-**Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach.
+**Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach. A name that matches nothing is a usage error, exit 2, on every command that takes names, because a run that dropped it would report the rest and a caller would read the dropped name as passing.
 
 **Selection is not the only gate, and the second one decides what a die may do.** Reaching a repo is `SelectRepos`; acting on it is each die's own applicability test, and for `precommit` that test is `maintained`. A declaration answers for a repo somebody works in. Forge's own `# forge-toolchain:` stamp answers for one nobody does: forge wrote those files, so it owns keeping them right, and a registry silent about the repo's stacks has not unwritten them. A stamped repo with no declaration generates as if it declared no components, which is the spelling a declaration of no components already has. That is not the same as "the generic blocks only": `Generate` seeds `git` from the target being versioned and `python-scripts` from the shebang scan, and neither is gated on a component. **The stamp authorizes correcting what forge wrote and nothing else**: first deployment still needs a declaration, and git hooks forge never installed are not installed by it. Those hooks are still *measured* there and reported `ByHand`, because a stage the config names with no hook installed is broken whether or not forge may fix it. Without both gates, every repo forge has written to but does not track holds whatever it last generated, and every verb reports converged because nothing looked.
 

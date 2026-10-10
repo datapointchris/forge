@@ -21,15 +21,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/gitenv"
+	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/toolchain"
 )
-
-// ConfigPath is the generated file whose hooks a run executes.
-const ConfigPath = ".pre-commit-config.yaml"
 
 // Index is a throwaway git index over a directory git does not version.
 type Index struct {
@@ -38,55 +36,27 @@ type Index struct {
 	WorkTree string
 }
 
-// CacheHome is where the indexes live.
-//
-// Cache, by data.md's own test: losing one costs a `git init` and a
-// `git add -A`, which is seconds of recompute and no change in behavior. It is
-// also per-machine by construction — an index over a replicated tree is wrong
-// on every machine but the one that built it — and that section's closing line
-// is exactly why a replicated cache does not belong in a synced directory.
-func CacheHome() string {
-	if dir := os.Getenv("XDG_CACHE_HOME"); dir != "" {
-		return filepath.Join(dir, "forge")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "forge")
-	}
-	return filepath.Join(home, ".cache", "forge")
-}
-
 // IndexFor addresses the index for one maintained directory.
 //
 // Keyed on the declared name rather than the basename: basenames are not unique
 // across the fleet, and two directories sharing one index would each see the
 // other's files.
+//
+// The index is cache, by data.md's own test: losing one costs a `git init` and
+// a `git add -A`, which is seconds of recompute and no change in behavior. It
+// is also per-machine by construction — an index over a replicated tree is
+// wrong on every machine but the one that built it — and that section's closing
+// line is exactly why a replicated cache does not belong in a synced directory.
 func IndexFor(target config.Repo) Index {
 	return Index{
 		Name:     target.Name,
-		GitDir:   filepath.Join(CacheHome(), "directories", target.Name+".git"),
+		GitDir:   filepath.Join(config.CacheHome(), "directories", target.Name+".git"),
 		WorkTree: target.Path,
 	}
 }
 
-// gitVars are the inherited variables that would aim git somewhere else.
-//
-// Stripped rather than trusted to be absent: pre-commit sets GIT_DIR and
-// GIT_INDEX_FILE when it runs as a hook, so a forge invoked from inside one
-// would otherwise index whatever repo started it.
-var gitVars = []string{"GIT_DIR=", "GIT_WORK_TREE=", "GIT_INDEX_FILE=", "GIT_COMMON_DIR="}
-
 func baseEnv() []string {
-	var kept []string
-	for _, entry := range os.Environ() {
-		if slices.ContainsFunc(gitVars, func(prefix string) bool {
-			return strings.HasPrefix(entry, prefix)
-		}) {
-			continue
-		}
-		kept = append(kept, entry)
-	}
-	return kept
+	return gitenv.WithoutRepoTarget(os.Environ())
 }
 
 // Env carries the index into every git process in the run.
@@ -255,7 +225,7 @@ var ErrNotGenerated = errors.New("no generated .pre-commit-config.yaml")
 // account for, and running a missing one would report a green pass for a
 // directory nothing has ever checked — the worse of the two.
 func CheckGenerated(workTree string) error {
-	data, err := os.ReadFile(filepath.Join(workTree, ConfigPath))
+	data, err := os.ReadFile(filepath.Join(workTree, precommit.ConfigPath))
 	if err != nil {
 		return fmt.Errorf("%w in %s: run `forge directories apply precommit` first", ErrNotGenerated, workTree)
 	}
@@ -263,7 +233,7 @@ func CheckGenerated(workTree string) error {
 	// blind, for the same reason the ci die refuses an unstamped validate.yml.
 	if !strings.HasPrefix(string(data), toolchain.StampPrefix) {
 		return fmt.Errorf("%s in %s has no %s stamp, so it was hand-written: run `forge directories apply precommit` to adopt the standard",
-			ConfigPath, workTree, strings.TrimSpace(toolchain.StampPrefix))
+			precommit.ConfigPath, workTree, strings.TrimSpace(toolchain.StampPrefix))
 	}
 	return nil
 }
@@ -285,7 +255,7 @@ func CheckGenerated(workTree string) error {
 // `forge toolchain plan` uses to ask pre-commit a question about a config that
 // is not checked out anywhere.
 func ensureHookEnvironments(workTree string, stderr io.Writer) error {
-	config, err := os.ReadFile(filepath.Join(workTree, ConfigPath))
+	config, err := os.ReadFile(filepath.Join(workTree, precommit.ConfigPath))
 	if err != nil {
 		return err
 	}
@@ -303,7 +273,7 @@ func ensureHookEnvironments(workTree string, stderr io.Writer) error {
 		}
 	}()
 
-	if err := os.WriteFile(filepath.Join(staging, ConfigPath), config, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(staging, precommit.ConfigPath), config, 0o644); err != nil {
 		return err
 	}
 

@@ -14,6 +14,10 @@ import (
 	"github.com/datapointchris/forge/toolchain"
 )
 
+// ConfigPath is the config this package generates, relative to the repo or
+// directory it governs.
+const ConfigPath = ".pre-commit-config.yaml"
+
 // Both marker regexes tolerate leading whitespace because the same extractor
 // serves .pre-commit-config.yaml, where markers sit at column zero, and
 // validate.yml, where everything inside a job is indented six spaces. Anchored

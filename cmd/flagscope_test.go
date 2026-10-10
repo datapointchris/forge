@@ -60,7 +60,7 @@ func TestTheRegistryFlagIsOnEveryCommandThatReadsTheRegistryAndNoOther(t *testin
 	// Four namespaces own it, so every command under one carries it: repos and
 	// directories resolve their targets from the registry, cli discovers its
 	// tools there when none is named, and config show answers which registry
-	// was resolved. test has no subtree and declares it alone.
+	// was resolved. test and lint have no subtree and declare it alone.
 	//
 	// dies, toolchain, version and update are the commands that never open one,
 	// and their absence here is the point.
@@ -78,6 +78,7 @@ func TestTheRegistryFlagIsOnEveryCommandThatReadsTheRegistryAndNoOther(t *testin
 		"directories list",
 		"directories plan",
 		"directories run",
+		"lint",
 		"repos",
 		"repos apply",
 		"repos check",

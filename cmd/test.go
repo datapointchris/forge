@@ -9,7 +9,6 @@ import (
 	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/runner"
 	"github.com/datapointchris/forge/suites"
 )
 
@@ -20,7 +19,7 @@ var testCmd = &cobra.Command{
 
 The command per stack is the one ci/blocks/ generates into that repo's own
 workflow, so a local run and CI cannot disagree about what "the tests" means.
-Vue is the exception — its CI block builds and lints without testing — so there
+Vue is the exception — its CI block builds without testing — so there
 the component's own package.json says what to run.
 
 Four outcomes, not two. ` + "`no_suite`" + ` is a repo with no tests yet, which is not a
@@ -55,7 +54,10 @@ func runTest(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("load repo registry: %w", err)
 	}
-	selected := runner.SelectRepos(runner.ActiveRepos(cfg.Repos), args)
+	selected, err := selectRepos(cfg.Repos, args)
+	if err != nil {
+		return err
+	}
 	sort.Slice(selected, func(i, j int) bool { return selected[i].Name < selected[j].Name })
 
 	started := time.Now()

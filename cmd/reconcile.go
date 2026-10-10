@@ -163,14 +163,10 @@ func (n *reconcileNoun) selected(cmd *cobra.Command) ([]config.Repo, *config.Syn
 	if err != nil {
 		return nil, nil, err
 	}
+	if missing := unmatched(selected, n.filterNames); len(missing) > 0 {
+		return nil, nil, noneMatched(n.many, missing)
+	}
 	if len(selected) == 0 {
-		// A usage error, not a runtime one: naming something that does not exist
-		// is the one failure worth retrying with different arguments, and it is
-		// almost always a typo or a shell that did not split the list.
-		if len(n.filterNames) > 0 {
-			return nil, nil, goclikit.UsageError(fmt.Errorf("no %s matched: %s",
-				n.many, strings.Join(n.filterNames, ", ")))
-		}
 		return nil, nil, goclikit.UsageError(fmt.Errorf("no %s are declared", n.many))
 	}
 	return selected, cfg, nil

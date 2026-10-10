@@ -3,8 +3,8 @@
 Reconcile each git repository in a registry against a set of standards.
 
 Forge reads a repo list from config and operates on each repo: reconciling it with
-reusable operations called **dies**, running an ad-hoc command in it, or running its
-declared test suites.
+reusable operations called **dies**, running an ad-hoc command in it, running its
+declared test suites, or running its standard pre-commit hooks over every file.
 
 **Forge's unit of work is one repo.** Running an operation across the whole portfolio is machinery
 for reaching many repos, not a different kind of operation. A question about the estate as a whole
@@ -44,8 +44,8 @@ config, and `forge config show` prints which layer answered.
 
 Override a single run with `-c <path>`. It is declared on the commands that read
 the registry and on no others, so `forge repos`, `forge directories`, `forge cli`
-and `forge config` take it anywhere under them, and `forge test` takes it
-directly. `forge version` and `forge dies` do not, because neither opens one.
+and `forge config` take it anywhere under them, and `forge test` and `forge lint`
+take it directly. `forge version` and `forge dies` do not, because neither opens one.
 
 Dies are Go, compiled into the binary, so a development build is the current dies — there is no filesystem mode to switch into.
 
@@ -186,7 +186,7 @@ forge test -j 4                # repos at once; default is half the CPUs
 
 The command per stack is the one `ci/blocks/` generates into that repo's own
 workflow, so a local run and CI cannot disagree about what "the tests" means. Vue is
-the exception — its block builds and lints without testing — so the component's own
+the exception — its block builds without testing — so the component's own
 `package.json` says what to run, and the unit script wins over the one wanting a
 browser.
 
@@ -212,6 +212,29 @@ jobs=16    60.2s elapsed, 264.8s
 Everything is won by four, and sixteen is slower in wall clock while spending 19%
 more suite time. At eight the run is as long as the single slowest suite, so going
 below a minute means splitting that rather than adding workers.
+
+### Run the hooks
+
+```bash
+forge lint                     # every active repo's standard hooks, over every file
+forge lint alpha beta          # just these
+forge lint --failed            # print each failing hook's output
+forge lint --json              # for a caller
+forge lint -j 4                # repos at once; default is half the CPUs
+```
+
+The hooks are the ones the repo's generated CI runs: every hook a standard block
+put in the committed `.pre-commit-config.yaml`. A hook in a custom section is the
+repo's own and is not run. CI runs them over what a push changed, so `lint` can
+fail on a file CI never checked. Each repo is linted in a throwaway clone of its HEAD,
+because several hooks rewrite what they check, so the checkout is never written and
+an uncommitted change is not linted. A package's installed dependencies are linked
+into the clone, and its `postinstall` script runs there, as `npm ci` runs it in CI.
+
+The outcomes follow `forge test`. `no_hooks` is a repo with no committed config or
+none of forge's hooks in it. `unknown` is a hook whose tool is not on this machine,
+a hook environment pre-commit could not set up, or a repo that ran out of time, and
+it does not move the exit code. A name that matches no repo exits 2.
 
 ### Command surfaces
 

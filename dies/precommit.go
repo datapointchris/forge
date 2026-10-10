@@ -20,8 +20,6 @@ import (
 	"github.com/datapointchris/forge/toolchain"
 )
 
-const preCommitConfigPath = ".pre-commit-config.yaml"
-
 // PreCommit generates .pre-commit-config.yaml and deploys the tool configs the
 // generated hooks read.
 //
@@ -130,7 +128,7 @@ func (s preCommitState) Summary() string {
 		// converged row that reads as broken.
 		if len(s.blockers) > 0 {
 			return fmt.Sprintf("declares no toolchain, and %s forge deploys sit here with no stamped %s beside them; `check` names them",
-				plural(len(s.blockers), "file", "files"), preCommitConfigPath)
+				plural(len(s.blockers), "file", "files"), precommit.ConfigPath)
 		}
 		return s.basis.reason()
 	}
@@ -178,7 +176,7 @@ func (m maintenance) reason() string {
 	case unmaintained:
 		return "declares no toolchain, and forge has written nothing here to maintain"
 	case unstamped:
-		return "declares no toolchain, and the " + preCommitConfigPath + " here carries no " +
+		return "declares no toolchain, and the " + precommit.ConfigPath + " here carries no " +
 			stampMark + " stamp, so forge did not write it"
 	case byDeclaration, byStamp:
 	}
@@ -265,7 +263,7 @@ func strandedToolConfigs(root string, basis maintenance) []reconcile.Change {
 
 	var changes []reconcile.Change
 	for _, rel := range generic {
-		changes = append(changes, blocker(rel, "forge deploys this beside "+preCommitConfigPath+
+		changes = append(changes, blocker(rel, "forge deploys this beside "+precommit.ConfigPath+
 			", and that file is gone, so nothing left here carries the "+stampMark+
 			" stamp that says whether forge wrote it — declare the repo's toolchain to have forge maintain it again, or remove it"))
 	}
@@ -418,7 +416,7 @@ func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 		return owedPreCommit{}, err
 	}
 	owed := owedPreCommit{blocksFS: blocksFS}
-	if data, err := os.ReadFile(filepath.Join(t.Repo.Path, preCommitConfigPath)); err == nil {
+	if data, err := os.ReadFile(filepath.Join(t.Repo.Path, precommit.ConfigPath)); err == nil {
 		owed.existing = string(data)
 	}
 
@@ -451,7 +449,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return preCommitState{basis: owed.basis, blockers: strandedToolConfigs(root, owed.basis)}, nil
 	}
 
-	state := preCommitState{basis: owed.basis, config: readGenerated(root, preCommitConfigPath, wanted)}
+	state := preCommitState{basis: owed.basis, config: readGenerated(root, precommit.ConfigPath, wanted)}
 
 	// Unmarked hooks abort a real sync rather than being destroyed. Surfacing
 	// them is the whole point: the fix is adding markers, not letting the sync
@@ -462,7 +460,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			return nil, err
 		}
 		if len(unknown) > 0 {
-			state.blockers = append(state.blockers, blocker(preCommitConfigPath,
+			state.blockers = append(state.blockers, blocker(precommit.ConfigPath,
 				fmt.Sprintf("%s need a # > custom: marker or a sync would delete them: %s",
 					plural(len(unknown), "hook", "hooks"), strings.Join(unknown, ", "))))
 		}
@@ -537,7 +535,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// A schema-valid config can still fail on the first commit, which is the
 	// check `pre-commit validate-config` cannot make.
 	for _, missing := range unresolvedNpmScripts(root, wanted) {
-		state.blockers = append(state.blockers, blocker(preCommitConfigPath, "hook would fail on first use: "+missing))
+		state.blockers = append(state.blockers, blocker(precommit.ConfigPath, "hook would fail on first use: "+missing))
 	}
 	if finding := validateConfig(wanted); finding != "" {
 		state.blockers = append(state.blockers, blocker("generated config", "pre-commit validate-config: "+finding))
@@ -678,7 +676,7 @@ func validateConfig(generated string) string {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	path := filepath.Join(dir, preCommitConfigPath)
+	path := filepath.Join(dir, precommit.ConfigPath)
 	if err := os.WriteFile(path, []byte(generated), 0o644); err != nil {
 		return ""
 	}
@@ -699,7 +697,7 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 	// An unmarked hook aborts the sync, so the config is not offered as an
 	// automatic repair while one is outstanding — the plan would otherwise
 	// promise a write that Perform refuses.
-	if !hasItem(state.blockers, preCommitConfigPath) {
+	if !hasItem(state.blockers, precommit.ConfigPath) {
 		if change, drifted := state.config.change("regenerate from the standard blocks"); drifted {
 			changes = append(changes, change)
 		}
@@ -763,8 +761,8 @@ func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return installHooks(t.Repo.Path, change)
 	}
 
-	if change.Item == preCommitConfigPath {
-		if hasItem(state.blockers, preCommitConfigPath) {
+	if change.Item == precommit.ConfigPath {
+		if hasItem(state.blockers, precommit.ConfigPath) {
 			return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "an unmarked custom hook appeared since the plan"}, nil
 		}
 		return writeIfStale(t.Repo.Path, state.config, change)
