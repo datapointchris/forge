@@ -6,11 +6,15 @@
         args: [--fix]
 
   # Python: type checking (uses uv for full dependency visibility)
+  #
+  # --all-extras, because some repos keep mypy itself in a `dev` extra, and a
+  # plain `uv run` installs no extras. In a fresh checkout, such as CI's, mypy
+  # would then fail to spawn. It also gives mypy the types an extra brings.
   - repo: local
     hooks:
       - id: mypy
         name: mypy
-        entry: uv run mypy . --install-types --non-interactive
+        entry: uv run --all-extras mypy . --install-types --non-interactive
         language: system
         types: [python]
         pass_filenames: false

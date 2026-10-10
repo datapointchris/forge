@@ -519,25 +519,22 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobLandsInADirectoryMadeForIt(t *test
 	}
 
 	if persistent == 0 {
-		t.Fatal("no clone outside $RUNNER_TEMP found; the shell block's bats step clones its helpers under $HOME")
+		t.Fatal("no clone outside $RUNNER_TEMP found; the hooks block's bats setup clones its helpers under $HOME")
 	}
 }
 
 // The runner image ships its own jq, and a jq program that parses on one
 // release can be rejected whole by another. The suites only run against the
-// declared jq if it is first on PATH by the time bats starts.
-func TestTheBatsStepRunsTheSuitesAgainstTheDeclaredJq(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("shell", "."), "", nil, Ungated, hostedRunner(t))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
+// declared jq if it is first on PATH by the time the bats hook starts.
+func TestTheBatsHookRunsTheSuitesAgainstTheDeclaredJq(t *testing.T) {
+	hooks := jobSteps(generateFor(t, comps("shell", ".")), HooksJob)
+	if !strings.Contains(hooks, `jq_version="fixture-jq"`) {
+		t.Fatalf("the bats setup does not take jq's declared version:\n%s", hooks)
 	}
-	if !strings.Contains(workflow, `jq_version="fixture-jq"`) {
-		t.Fatalf("the bats step does not take jq's declared version:\n%s", workflow)
-	}
-	onPath := strings.Index(workflow, `export PATH="$RUNNER_TEMP/jq:$PATH"`)
-	suites := strings.Index(workflow, "bats tests/\n")
-	if onPath < 0 || suites < 0 || onPath > suites {
-		t.Errorf("the declared jq is not first on PATH before bats runs (export at %d, bats at %d)", onPath, suites)
+	onPath := strings.Index(hooks, `echo "$RUNNER_TEMP/jq" >> "$GITHUB_PATH"`)
+	run := strings.Index(hooks, "name: Run the hooks over the change")
+	if onPath < 0 || run < 0 || onPath > run {
+		t.Errorf("the declared jq is not on PATH before the hooks run (path at %d, run at %d)", onPath, run)
 	}
 }
 

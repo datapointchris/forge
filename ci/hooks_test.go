@@ -2,6 +2,7 @@ package ci
 
 import (
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -23,174 +24,132 @@ func owedConfig(t *testing.T, components []config.Component, scripts ...string) 
 	return cfg
 }
 
-// coveredBy is what the named stacks' jobs declare they run, read from their
-// real blocks.
-func coveredBy(t *testing.T, stacks ...string) map[string]bool {
+// generateFor is the workflow for these components, with the pre-commit config
+// the precommit die owes them committed.
+func generateFor(t *testing.T, components []config.Component) string {
 	t.Helper()
-	covered := make(map[string]bool)
-	for _, stack := range stacks {
-		block, err := loadBlock(os.DirFS("blocks"), stack)
-		if err != nil || block == "" {
-			t.Fatalf("no %s block: %v", stack, err)
-		}
-		hooks, _ := splitCovers(block)
-		for _, hook := range hooks {
-			covered[hook] = true
-		}
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), components, owedConfig(t, components), nil, Ungated, hostedRunner(t))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
 	}
-	return covered
+	return workflow
 }
 
-// preCommitHooks is every hook the real pre-commit blocks run at the pre-commit
-// stage, by the category that pulls each block in.
-func preCommitHooks(t *testing.T) map[string][]precommit.GeneratedHook {
-	t.Helper()
+var nextJobRE = regexp.MustCompile(`(?m)^  [A-Za-z0-9_-]+:\s*$`)
+
+// jobSteps is the named job's text, up to the next job.
+func jobSteps(workflow, job string) string {
+	_, steps, found := strings.Cut(workflow, "\n  "+job+":\n")
+	if !found {
+		return ""
+	}
+	if next := nextJobRE.FindStringIndex(steps); next != nil {
+		return steps[:next[0]]
+	}
+	return steps
+}
+
+// Every hook a standard block carries at the pre-commit stage, whatever its
+// stack, is one the hooks job runs. No stack job runs a copy of any of them.
+func TestTheHooksJobRunsEveryHookAStandardBlockCarries(t *testing.T) {
 	entries, err := os.ReadDir("../pre-commit/blocks")
 	if err != nil {
 		t.Fatal(err)
 	}
-	byCategory := make(map[string][]precommit.GeneratedHook)
 	for _, entry := range entries {
 		data, err := os.ReadFile("../pre-commit/blocks/" + entry.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
-		name := precommit.BlockName(entry.Name())
-		for _, hook := range precommit.GeneratedHooks("# generated:" + name + "\n" + string(data)) {
-			if len(hook.Stages) == 0 || slices.Contains(hook.Stages, "pre-commit") {
-				byCategory[precommit.BlockCategory(name)] = append(byCategory[precommit.BlockCategory(name)], hook)
-			}
-		}
-	}
-	return byCategory
-}
-
-// stackBlocks names every CI block a declared stack selects.
-func stackBlocks(t *testing.T) []string {
-	t.Helper()
-	entries, err := os.ReadDir("blocks")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stacks []string
-	for _, entry := range entries {
-		if name := precommit.BlockName(entry.Name()); name != "checkout" && name != HooksJob {
-			stacks = append(stacks, name)
-		}
-	}
-	return stacks
-}
-
-// A hook its stack's job leaves out falls to the hooks job, which has none of
-// Go, terraform or node to run it with, or to nothing where it is local.
-func TestAStackJobRunsEveryHookItsStackCarries(t *testing.T) {
-	hooks := preCommitHooks(t)
-	for _, stack := range stackBlocks(t) {
-		covered := coveredBy(t, stack)
-		carried := make(map[string]bool)
-		for _, hook := range hooks[precommit.StackToCategory(stack)] {
-			carried[hook.Selector()] = true
-			if !covered[hook.Selector()] {
-				t.Errorf("the %s job does not run %s from the %s block", stack, hook.Selector(), hook.Block)
-			}
-		}
-		for hook := range covered {
-			if !carried[hook] {
-				t.Errorf("the %s block covers %s, which no %s pre-commit block carries", stack, hook, stack)
+		config := "# generated:" + precommit.BlockName(entry.Name()) + "\n" + string(data)
+		got := HooksToRun(config)
+		for _, hook := range precommit.GeneratedHooks(config) {
+			atCommit := len(hook.Stages) == 0 || slices.Contains(hook.Stages, "pre-commit")
+			if atCommit != slices.Contains(got, hook.ID) {
+				t.Errorf("%s from %s: run = %v, at the pre-commit stage = %v", hook.ID, entry.Name(), !atCommit, atCommit)
 			}
 		}
 	}
 }
 
-func TestTheHooksJobRunsEveryHookNoStackJobCarries(t *testing.T) {
-	stacks := make(map[string]bool)
-	for _, stack := range stackBlocks(t) {
-		stacks[precommit.StackToCategory(stack)] = true
-	}
-	for category, hooks := range preCommitHooks(t) {
-		if stacks[category] {
-			continue
-		}
-		for _, hook := range hooks {
-			config := "# generated:" + hook.Block + "\n  - repo: " + hook.Repo + "\n    hooks:\n      - id: " + hook.ID + "\n"
-			if hook.Alias != "" {
-				config += "        alias: " + hook.Alias + "\n"
-			}
-			if hook.Entry != "" {
-				config += "        entry: " + hook.Entry + "\n"
-			}
-			if got := HooksToRun(config, nil); !slices.Equal(got, []string{hook.Selector()}) {
-				t.Errorf("%s from the %s block runs in no job", hook.Selector(), hook.Block)
-			}
-		}
+func TestACustomHookStaysOutOfTheHooksJob(t *testing.T) {
+	config := owedConfig(t, comps("python", ".")) +
+		"\n# > custom:after:all - Needs a workstation\n  - repo: local\n    hooks:\n      - id: e2e\n        entry: ./run-e2e\n        language: system\n"
+	if got := HooksToRun(config); slices.Contains(got, "e2e") {
+		t.Errorf("a custom hook runs in CI: %v", got)
 	}
 }
 
-func TestACoversLineStaysOutOfTheWorkflow(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, hostedRunner(t))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if strings.Contains(workflow, "covers:") {
-		t.Errorf("a covers line reached the workflow:\n%s", workflow)
+// ruff-format's id also selects the scripts hook, which carries it under an
+// alias, so running both selectors would run that hook twice.
+func TestAnAliasedHookRunsUnderItsID(t *testing.T) {
+	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"))
+	if !slices.Contains(got, "ruff-format") || slices.Contains(got, "ruff-format-scripts") {
+		t.Errorf("hooks = %v, want ruff-format and not ruff-format-scripts", got)
 	}
 }
 
-func TestTheHooksJobRunsWhatNoStackJobCovers(t *testing.T) {
-	got := HooksToRun(owedConfig(t, comps("go", ".")), coveredBy(t, "go"))
+// The tekwizely Go hooks call the go on PATH, so a Go repo's hooks job sets up
+// each module's toolchain, as its go job does.
+func TestTheHooksJobSetsUpGoForEachModule(t *testing.T) {
+	hooks := jobSteps(generateFor(t, comps("go", "api", "go", "cli")), HooksJob)
+	for _, module := range []string{"api", "cli"} {
+		if !strings.Contains(hooks, `go-version-file: "`+module+`/go.mod"`) {
+			t.Errorf("no Go set up from %s/go.mod:\n%s", module, hooks)
+		}
+	}
+	// The first setup-go exports GOTOOLCHAIN=local, and under it the second
+	// ignores cli's toolchain line.
+	toolchain := strings.Index(hooks, "export GOTOOLCHAIN=auto")
+	if toolchain < 0 || toolchain > strings.Index(hooks, "uvx pre-commit run") {
+		t.Errorf("the hooks run under setup-go's GOTOOLCHAIN=local:\n%s", hooks)
+	}
+}
 
-	for _, want := range []string{"check-yaml", "check-json5", "markdownlint", "shellcheck", "shfmt", "codespell", "refcheck"} {
+// The vue hooks run npm scripts inside the component, so each component's
+// packages are installed in the hooks job too.
+func TestTheHooksJobInstallsEveryNodeComponent(t *testing.T) {
+	hooks := jobSteps(generateFor(t, comps("vue", "web", "node", "server")), HooksJob)
+	for _, dir := range []string{"web", "server"} {
+		if !strings.Contains(hooks, `- working-directory: "`+dir+`"`) {
+			t.Errorf("no install in %s:\n%s", dir, hooks)
+		}
+	}
+	if !strings.Contains(hooks, "node-version-file: .nvmrc") {
+		t.Errorf("no Node set up:\n%s", hooks)
+	}
+}
+
+// setup-terraform names no directory, so two components render it identically.
+func TestTwoComponentsRenderingOneSetupGetItOnce(t *testing.T) {
+	hooks := jobSteps(generateFor(t, comps("terraform", "infra", "terraform", "modules/net")), HooksJob)
+	if got := strings.Count(hooks, "hashicorp/setup-terraform@"); got != 1 {
+		t.Errorf("setup-terraform appears %d times, want 1:\n%s", got, hooks)
+	}
+}
+
+// Every check the shell and lua stacks had is a hook, so the hooks job is all
+// either gets.
+func TestAStackWhoseEveryCheckIsAHookGetsNoJobOfItsOwn(t *testing.T) {
+	workflow := generateFor(t, comps("shell", ".", "lua", "nvim"))
+	for _, job := range []string{"shell", "lua-nvim"} {
+		if jobSteps(workflow, job) != "" {
+			t.Errorf("a %s job:\n%s", job, workflow)
+		}
+	}
+	got := HooksToRun(owedConfig(t, comps("shell", ".", "lua", "nvim")))
+	for _, want := range []string{"shellcheck", "shfmt", "bats", "stylua"} {
 		if !slices.Contains(got, want) {
 			t.Errorf("%s is not run: %v", want, got)
 		}
-	}
-	for _, skipped := range []string{
-		"go-vet-repo-mod",         // the go job runs it
-		"bats",                    // local, and its tool is installed only by the shell job
-		"conventional-pre-commit", // grades a commit message, which a pushed tree lacks
-	} {
-		if slices.Contains(got, skipped) {
-			t.Errorf("%s is run: %v", skipped, got)
-		}
-	}
-}
-
-// The shell block is generic, so every repo's config has it, but only a repo
-// declaring a shell component has a shell job to run it.
-func TestShellHooksRunHereOnlyWithoutAShellJob(t *testing.T) {
-	got := HooksToRun(owedConfig(t, comps("shell", ".")), coveredBy(t, "shell"))
-	if slices.Contains(got, "shellcheck") || slices.Contains(got, "shfmt") {
-		t.Errorf("the shell job's hooks run twice: %v", got)
-	}
-}
-
-// ruff-format alone would select the python block's hook as well as the
-// scripts one, and the python job runs that already.
-func TestAScriptsHookIsRunByItsAlias(t *testing.T) {
-	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"), coveredBy(t, "python"))
-	if !slices.Contains(got, "ruff-format-scripts") || slices.Contains(got, "ruff-format") {
-		t.Errorf("hooks = %v, want ruff-format-scripts and not ruff-format", got)
-	}
-}
-
-// The python job's mypy never sees a uv script, and uv is the one tool the
-// hooks job sets up.
-func TestALocalHookCallingUVRunsInTheHooksJob(t *testing.T) {
-	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"), coveredBy(t, "python"))
-	if !slices.Contains(got, "mypy-scripts") {
-		t.Errorf("mypy-scripts is not run: %v", got)
 	}
 }
 
 // Docker has no CI block, so the hooks job is the only job a docker-only repo
 // gets.
 func TestAStackWithNoCIBlockStillGetsItsHooksRun(t *testing.T) {
-	components := comps("docker", ".")
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), components, owedConfig(t, components), nil, Ungated, hostedRunner(t))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if !strings.Contains(workflow, "\n  hooks:\n") || !strings.Contains(workflow, "\n            hadolint-docker\n") {
+	workflow := generateFor(t, comps("docker", "."))
+	if !strings.Contains(jobSteps(workflow, HooksJob), "\n            hadolint-docker\n") {
 		t.Errorf("no hooks job running hadolint:\n%s", workflow)
 	}
 }
@@ -205,14 +164,29 @@ func TestARepoWithNoPreCommitConfigGetsNoHooksJob(t *testing.T) {
 	}
 }
 
-// Its pre-commit config carries the vue block's hooks, which are local, so no
-// job but a stack job can run them.
+// after:all closes the file rather than a job, so no workflow can orphan it.
+func TestOnlyASectionBesideAMissingJobIsOrphaned(t *testing.T) {
+	workflow := generateFor(t, comps("shell", ".", "go", "."))
+	sections := map[string]string{
+		"before:shell": "      - run: echo yq\n",
+		"before:hooks": "      - run: echo yq\n",
+		"after:go":     "      - run: echo done\n",
+		"after:all":    "      - run: echo done\n",
+	}
+
+	if got := OrphanedSections(sections, workflow); !slices.Equal(got, []string{"before:shell"}) {
+		t.Errorf("OrphanedSections = %v, want [before:shell]", got)
+	}
+}
+
+// A node component lints with the vue block's hooks, and builds in the vue job.
 func TestANodeComponentGetsTheVueJob(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("node", "server"), "", nil, Ungated, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if !strings.Contains(workflow, "working-directory: server") || !strings.Contains(workflow, "npm run lint:fix") {
+	vue := jobSteps(workflow, "node-server")
+	if !strings.Contains(vue, "working-directory: server") || !strings.Contains(vue, "npm run build") {
 		t.Errorf("no vue job for the node component:\n%s", workflow)
 	}
 }

@@ -21,11 +21,9 @@ hooks:
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: fixture-markdownlint-cli
   - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.0.1
-  # Tagged like the real wrapper, so the derived shfmt release is tested
-  # stripping the wrapper's counter.
+    rev: fixture-shellcheck-precommit
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: v0.0.2-1
+    rev: fixture-pre-commit-shfmt
   - repo: https://github.com/codespell-project/codespell
     rev: fixture-codespell
   - repo: https://github.com/datapointchris/refcheck
@@ -75,8 +73,8 @@ tools:
   - module: github.com/terraform-docs/terraform-docs
     version: fixture-terraform-docs
 
-# Every tool in hookPinnedTools or modulePinnedBinaries is absent on purpose: CI
-# takes its release from its hook, and Load refuses a binaries entry for one.
+# Every tool in hookPinnedTools is absent on purpose: it takes its release from
+# its hook, and Load refuses a binaries entry for one.
 binaries:
   - name: bats
     version: fixture-bats

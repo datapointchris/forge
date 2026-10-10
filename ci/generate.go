@@ -25,9 +25,9 @@ import (
 )
 
 // ErrNoJobs is Generate's answer for a repo with no job to run: none of its
-// components has a CI block, and its pre-commit config leaves no hook for
-// HooksJob. That repo is owed no workflow, which is not a failure to generate
-// one.
+// components has a CI block, and it has no pre-commit config of forge's for
+// HooksJob to run. That repo is owed no workflow, which is not a failure to
+// generate one.
 var ErrNoJobs = errors.New("no component has a CI block and no hook is left for the hooks job: nothing to generate")
 
 // WorkflowPath is where the generated workflow lands. Deliberately not ci.yml:
@@ -39,8 +39,8 @@ const WorkflowPath = ".github/workflows/validate.yml"
 // workflow in it is per-repo and deliberately not generated.
 const workflowsDir = ".github/workflows"
 
-// NodeVersionFile is the file at the repo root the vue job hands setup-node.
-// The ci die refuses to write the job where it is missing.
+// NodeVersionFile is the file at the repo root the vue setup hands setup-node.
+// The ci die refuses to write the workflow where it is missing.
 const NodeVersionFile = ".nvmrc"
 
 // ActionlintConfigPath is where actionlint reads its own configuration, and the
@@ -241,9 +241,12 @@ func handWrittenWorkflowsMatch(root string, ref *regexp.Regexp) (bool, error) {
 // that are both Go modules, deliberately isolated. One serial job would hide
 // which one failed and force them to share a setup step.
 //
-// preCommitConfig is the repo's committed pre-commit config, or "" where forge
-// maintains none. Its hooks that no stack job covers become one more job,
-// HooksJob.
+// A stack job runs only what no hook runs, such as a whole test suite or an
+// advisory scan. preCommitConfig is the repo's committed pre-commit config, or
+// "" where forge maintains none, and HooksJob runs its hooks.
+//
+// A stack's setup block puts on PATH what its hooks call, so it opens both the
+// stack's own job and HooksJob. A stack with no checks of its own gets no job.
 func Generate(
 	blocksFS fs.FS,
 	manifest *toolchain.Toolchain,
@@ -253,10 +256,11 @@ func Generate(
 	releaseGated ReleaseGating,
 	runner Runner,
 ) (string, error) {
-	shared, err := loadBlock(blocksFS, "checkout")
+	checkout, err := loadBlock(blocksFS, "checkout")
 	if err != nil {
 		return "", err
 	}
+	shared := stripDescription(checkout)
 
 	var lines []string
 	lines = append(
@@ -296,31 +300,39 @@ func Generate(
 	)
 
 	jobs := 0
-	covered := make(map[string]bool)
+	var hookSetups []string
 	for _, component := range components {
 		// By the category that lints the stack, as its pre-commit hooks are: a
-		// node component carries the vue block's hooks, and its job has to run
-		// them.
-		block, err := loadBlock(blocksFS, precommit.StackToCategory(component.Stack))
+		// node component carries the vue block's hooks, and needs node for them.
+		category := precommit.StackToCategory(component.Stack)
+		setup, err := loadBlock(blocksFS, category+SetupSuffix)
 		if err != nil {
 			return "", err
 		}
-		// A declared stack with no CI block, such as docker, leaves its hooks to
-		// the hooks job. Skipping keeps the map free to declare more than CI
-		// builds.
-		if block == "" {
+		checks, err := loadBlock(blocksFS, category)
+		if err != nil {
+			return "", err
+		}
+		// Rendered for its directory here, because the hooks job carries one
+		// for every component and has no directory of its own. Two components
+		// rendering the same setup need it once.
+		if setup != "" {
+			if rendered := applyDir(stripDescription(setup), component.Dir); !slices.Contains(hookSetups, rendered) {
+				hookSetups = append(hookSetups, rendered)
+			}
+		}
+		// A stack whose every check is a hook, such as shell, leaves them all to
+		// the hooks job. So does a declared stack with no CI block, such as
+		// docker, which keeps the map free to declare more than CI builds.
+		if checks == "" {
 			continue
 		}
-		covers, block := splitCovers(block)
-		for _, hook := range covers {
-			covered[hook] = true
-		}
 		jobs++
-		job := workflowJob{name: JobName(component), dir: component.Dir, checkout: shared, block: block}
+		job := workflowJob{name: JobName(component), dir: component.Dir, checkout: shared, block: joinSteps(stripDescription(setup), stripDescription(checks))}
 		lines = append(lines, job.render(manifest, customSections, runner)...)
 	}
 
-	if hooks := HooksToRun(preCommitConfig, covered); len(hooks) > 0 {
+	if hooks := HooksToRun(preCommitConfig); len(hooks) > 0 {
 		block, err := loadBlock(blocksFS, HooksJob)
 		if err != nil {
 			return "", err
@@ -329,7 +341,8 @@ func Generate(
 			return "", fmt.Errorf("no %s block to run %s in", HooksJob, strings.Join(hooks, ", "))
 		}
 		jobs++
-		job := workflowJob{name: HooksJob, checkout: shared, block: applyHooks(block, hooks)}
+		steps := append(slices.Clone(hookSetups), applyHooks(stripDescription(block), hooks))
+		job := workflowJob{name: HooksJob, checkout: shared, block: joinSteps(steps...)}
 		lines = append(lines, job.render(manifest, customSections, runner)...)
 	}
 
@@ -384,7 +397,28 @@ func ForeignRunners(workflow string, runner Runner) []string {
 	return foreign
 }
 
-// workflowJob is one job's worth of workflow: the shared checkout, then a block.
+// OrphanedSections names each custom section keyed to a job the workflow does
+// not have, sorted. Generate renders a section beside its job, so one whose job
+// is gone would be dropped by the next regeneration, with nothing said.
+func OrphanedSections(customSections map[string]string, workflow string) []string {
+	jobs := make(map[string]bool)
+	for _, line := range strings.Split(workflow, "\n") {
+		if match := precommit.JobHeader.FindStringSubmatch(line); match != nil {
+			jobs[match[1]] = true
+		}
+	}
+	var orphaned []string
+	for key := range customSections {
+		if _, job, _ := strings.Cut(key, ":"); job != "all" && !jobs[job] {
+			orphaned = append(orphaned, key)
+		}
+	}
+	slices.Sort(orphaned)
+	return orphaned
+}
+
+// workflowJob is one job's worth of workflow: the shared checkout, then a
+// block's steps, each without the description line its file opens with.
 type workflowJob struct {
 	name     string
 	dir      string
@@ -405,63 +439,51 @@ func (j workflowJob) render(manifest *toolchain.Toolchain, customSections map[st
 	// secrets out of secrets/ in one of these, which cannot work against a
 	// workspace that has not been checked out. Nothing has wanted to run ahead
 	// of checkout.
-	lines = append(lines, "", applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(j.checkout))), j.dir, runner))
+	lines = append(lines, "", applyPlaceholders(indentComment(manifest.ApplyAll(j.checkout)), j.dir, runner))
 	if section, ok := customSections["before:"+j.name]; ok {
 		lines = append(lines, "", manifest.ApplyWorkflowPins(section))
 	}
-	lines = append(lines, "", fmt.Sprintf("      # generated:%s", j.name), applyPlaceholders(indentComment(stripDescription(manifest.ApplyAll(j.block))), j.dir, runner))
+	lines = append(lines, "", fmt.Sprintf("      # generated:%s", j.name), applyPlaceholders(indentComment(manifest.ApplyAll(j.block)), j.dir, runner))
 	if section, ok := customSections["after:"+j.name]; ok {
 		lines = append(lines, "", manifest.ApplyWorkflowPins(section))
 	}
 	return lines
 }
 
-// HooksJob names the job running the pre-commit hooks no stack job covers, and
-// the block it is built from.
+// HooksJob names the job running the repo's pre-commit hooks, and the block it
+// is built from.
 const HooksJob = "hooks"
 
+// SetupSuffix names a stack's setup block after its category: go-setup is the
+// go stack's.
+const SetupSuffix = "-setup"
+
 // HooksToRun lists what the hooks job runs: every hook a standard block put in
-// the config, less three kinds.
+// the config, by id, at the pre-commit stage.
 //
-//   - A hook a stack job here runs the check of, as its block's covers line
-//     names it. covered is keyed by Selector.
-//   - A local hook calls a tool the runner has only where a stack job
-//     installed it, in another job. uv is the exception, because this job
-//     sets it up.
-//   - A hook off the pre-commit stage grades something a pushed tree does not
-//     carry, such as a commit message.
-func HooksToRun(preCommitConfig string, covered map[string]bool) []string {
+// A hook in a custom section is the repo's own and stays out. Some need a
+// workstation, such as one that drives an editor or a local stack, and a repo
+// runs the rest in a custom step of its own. A hook off the pre-commit stage
+// grades something a pushed tree does not carry, such as a commit message.
+//
+// By id rather than by Selector, because `pre-commit run <id>` also runs every
+// hook carrying that id under an alias, and all of them are wanted.
+func HooksToRun(preCommitConfig string) []string {
 	var hooks []string
 	for _, hook := range precommit.GeneratedHooks(preCommitConfig) {
-		if covered[hook.Selector()] {
-			continue
-		}
-		if hook.Repo == "meta" || (hook.Repo == "local" && !strings.HasPrefix(hook.Entry, "uv ")) {
-			continue
-		}
 		if len(hook.Stages) > 0 && !slices.Contains(hook.Stages, "pre-commit") {
 			continue
 		}
-		if !slices.Contains(hooks, hook.Selector()) {
-			hooks = append(hooks, hook.Selector())
+		if !slices.Contains(hooks, hook.ID) {
+			hooks = append(hooks, hook.ID)
 		}
 	}
 	return hooks
 }
 
-// coversLineRE is a stack block's line naming the pre-commit hooks its job runs
-// the checks of, each by the name `pre-commit run` selects it by. A long list
-// takes several lines.
-var coversLineRE = regexp.MustCompile(`(?m)^# covers:(.*)\n`)
-
-// splitCovers is the hooks a stack block covers, and the block without the
-// lines naming them.
-func splitCovers(block string) ([]string, string) {
-	var covers []string
-	for _, m := range coversLineRE.FindAllStringSubmatch(block, -1) {
-		covers = append(covers, strings.Fields(m[1])...)
-	}
-	return covers, coversLineRE.ReplaceAllString(block, "")
+// joinSteps is one job's steps from several blocks, a blank line apart.
+func joinSteps(blocks ...string) string {
+	return strings.Join(slices.DeleteFunc(blocks, func(block string) bool { return block == "" }), "\n\n")
 }
 
 // hooksLineRE is the line in the hooks block that becomes one line per hook.

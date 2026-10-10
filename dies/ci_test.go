@@ -148,26 +148,55 @@ func TestAHandWrittenWorkflowIsRefusedRatherThanOverwritten(t *testing.T) {
 	}
 }
 
-func TestAVueRepoWithoutANodeVersionFileIsRefusedRatherThanGivenAJobThatCannotStart(t *testing.T) {
-	target := fixture(t, stacks("vue"), nil)
+// A node component takes the vue setup, so it reads the same file.
+func TestANodeRepoWithoutANodeVersionFileIsRefusedRatherThanGivenAJobThatCannotStart(t *testing.T) {
+	for _, stack := range []string{"vue", "node"} {
+		t.Run(stack, func(t *testing.T) {
+			target := fixture(t, stacks(stack), nil)
+
+			changes := reconcile.Assess(target, CI{}).Changes
+			if !slices.ContainsFunc(changes, func(c reconcile.Change) bool {
+				return c.Item == ci.WorkflowPath && c.Repair == reconcile.ByHand && strings.Contains(c.Detail, ci.NodeVersionFile)
+			}) {
+				t.Fatalf("no by-hand finding names the missing %s: %+v", ci.NodeVersionFile, changes)
+			}
+			applyAll(t, target, CI{})
+			if _, err := os.Stat(target.Path(ci.WorkflowPath)); !os.IsNotExist(err) {
+				t.Errorf("a workflow whose setup cannot start was written")
+			}
+
+			if err := os.WriteFile(target.Path(ci.NodeVersionFile), []byte("24\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			applyAll(t, target, CI{})
+			if _, err := os.Stat(target.Path(ci.WorkflowPath)); err != nil {
+				t.Errorf("the workflow was not written once %s exists: %v", ci.NodeVersionFile, err)
+			}
+		})
+	}
+}
+
+// The shell job is gone, so a section set up for its suites has nowhere to go.
+// Regenerating anyway would delete the repo's own steps.
+func TestACustomSectionWhoseJobIsGoneHoldsTheWorkflowBack(t *testing.T) {
+	existing := "# forge-toolchain: 1\nname: CI\n\njobs:\n\n  shell:\n    runs-on: ubuntu-latest\n    steps:\n\n" +
+		"      - uses: actions/checkout@v1\n\n" +
+		"      # > custom:before:shell - yq, which the suites read frontmatter with\n" +
+		"      - run: echo installing yq\n\n" +
+		"      # generated:shell\n      - run: shellcheck bin/*\n"
+	committed := "# forge-toolchain: 1\nrepos:\n  # generated:shell\n" +
+		"  - repo: https://github.com/koalaman/shellcheck-precommit\n    rev: v0.10.0\n    hooks:\n      - id: shellcheck\n"
+	target := fixture(t, stacks("shell"), map[string]string{ci.WorkflowPath: existing, ".pre-commit-config.yaml": committed})
 
 	changes := reconcile.Assess(target, CI{}).Changes
 	if !slices.ContainsFunc(changes, func(c reconcile.Change) bool {
-		return c.Item == ci.WorkflowPath && c.Repair == reconcile.ByHand && strings.Contains(c.Detail, ci.NodeVersionFile)
+		return c.Item == ci.WorkflowPath && c.Repair == reconcile.ByHand && strings.Contains(c.Detail, "before:shell")
 	}) {
-		t.Fatalf("no by-hand finding names the missing %s: %+v", ci.NodeVersionFile, changes)
+		t.Fatalf("no by-hand finding names the orphaned section: %+v", changes)
 	}
 	applyAll(t, target, CI{})
-	if _, err := os.Stat(target.Path(ci.WorkflowPath)); !os.IsNotExist(err) {
-		t.Errorf("a workflow whose vue job cannot start was written")
-	}
-
-	if err := os.WriteFile(target.Path(ci.NodeVersionFile), []byte("24\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	applyAll(t, target, CI{})
-	if _, err := os.Stat(target.Path(ci.WorkflowPath)); err != nil {
-		t.Errorf("the workflow was not written once %s exists: %v", ci.NodeVersionFile, err)
+	if got := readFile(t, target.Path(ci.WorkflowPath)); got != existing {
+		t.Errorf("the workflow was rewritten, dropping the section:\n%s", got)
 	}
 }
 

@@ -40,7 +40,7 @@
     hooks:
       - id: mypy-scripts
         name: mypy (uv run scripts)
-        entry: uv run mypy --scripts-are-modules --install-types --non-interactive
+        entry: uv run --all-extras mypy --scripts-are-modules --install-types --non-interactive
         language: system
         types: [text]
         files: '{{scripts}}'

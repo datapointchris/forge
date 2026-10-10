@@ -34,7 +34,7 @@ type CI struct{}
 func (CI) Name() string { return "ci" }
 
 func (CI) Description() string {
-	return "Generate .github/workflows/validate.yml from the standard CI blocks: one job per declared component, and one running the pre-commit hooks none of those covers. Reports a hand-written pipeline rather than overwriting it."
+	return "Generate .github/workflows/validate.yml from the standard CI blocks: one job per declared component for what no hook checks, such as its tests, and one running every standard pre-commit hook. Reports a hand-written pipeline rather than overwriting it."
 }
 
 func (CI) Tags() []string { return []string{"ci", "actions", "standardization", "golden-path"} }
@@ -106,8 +106,9 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	runner := ci.RunnerFor(t.Repo.IsPrivate(), t.Assets.Manifest)
+	customSections := precommit.ExtractCustomSections(existing)
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommitConfig,
-		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root), runner)
+		customSections, ci.ReleaseGatesOnValidate(root), runner)
 	if errors.Is(err, ci.ErrNoJobs) {
 		return ciState{reason: "no component has a CI block, and no hook is left for the hooks job"}, nil
 	}
@@ -167,13 +168,23 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			"a hand-written pipeline sits beside the generated one — reconcile them before relying on either"))
 	}
 
-	// The vue job reads its Node version from this file, and setup-node fails
-	// before installing anything when it is missing. A job that can never start
-	// reports as a red run, so the workflow is not written until the file is.
-	if declaresStack(components, "vue") && !fileExists(filepath.Join(root, ci.NodeVersionFile)) {
+	// The vue setup reads its Node version from this file, and setup-node fails
+	// before installing anything when it is missing. A node component takes the
+	// same setup. A job that can never start reports as a red run, so the
+	// workflow is not written until the file is.
+	if declaresCategory(components, "vue") && !fileExists(filepath.Join(root, ci.NodeVersionFile)) {
 		state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
-			"a vue component is declared with no "+ci.NodeVersionFile+" at the repo root, and the vue job "+
-				"reads its Node version from there — add one naming the major the Dockerfile builds on"))
+			"a vue or node component is declared with no "+ci.NodeVersionFile+" at the repo root, and its "+
+				"setup reads the Node version from there — add one naming the major the Dockerfile builds on"))
+	}
+
+	// A custom section is the one part of the workflow nothing else can
+	// recreate, so the write waits until each one has a job to sit beside.
+	if orphaned := ci.OrphanedSections(customSections, wanted); len(orphaned) > 0 {
+		state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
+			"a custom section names a job this workflow no longer has, and regenerating would drop it: "+
+				strings.Join(orphaned, ", ")+" — rename the marker to a job that exists, such as before:"+ci.HooksJob+
+				" for setup the hooks need"))
 	}
 
 	// Only where the repo takes the self-hosted runner. A public repo's custom
@@ -237,8 +248,10 @@ func ownLintConfig(root string) (string, bool) {
 	return "", false
 }
 
-func declaresStack(components []config.Component, stack string) bool {
-	return slices.ContainsFunc(components, func(c config.Component) bool { return c.Stack == stack })
+// declaresCategory is whether a component lints with the category's blocks,
+// which a node component does with vue's.
+func declaresCategory(components []config.Component, category string) bool {
+	return slices.ContainsFunc(components, func(c config.Component) bool { return precommit.StackToCategory(c.Stack) == category })
 }
 
 func fileExists(path string) bool {
