@@ -95,6 +95,21 @@ func TestCheckNeverPrintsTheSummaryOverAPendingRepair(t *testing.T) {
 	}
 }
 
+// A custom section whose job is gone holds the workflow at its old stamp, and
+// the ci die's summary would call that file current.
+func TestPlanNeverPrintsTheSummaryOverAHeldBackWrite(t *testing.T) {
+	changes := []Change{{Item: ".github/workflows/validate.yml", Verdict: Stale, Repair: ByHand, Detail: "a custom section names a job this workflow no longer has"}}
+
+	result := Fold("infra", "ci", changes, "validate.yml current", LensPlan)
+
+	if result.Status != Converged {
+		t.Fatalf("status = %q, want converged: apply has nothing it may change", result.Status)
+	}
+	if result.Detail != "nothing for apply to change; 1 item(s) need attention — see check" {
+		t.Errorf("detail = %q, want the held-back finding named rather than the die's converged sentence", result.Detail)
+	}
+}
+
 func TestIssueOutranksDrift(t *testing.T) {
 	results := []Result{
 		{Repo: "a", Status: Drift},
