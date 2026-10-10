@@ -19,10 +19,11 @@ import (
 // exec all mean repos, and a maintained directory entering one of those sweeps
 // would be a target with no remote handed to something that assumes one.
 var repos = &reconcileNoun{
-	name:  "repos",
-	one:   "repo",
-	many:  "repos",
-	short: "Reconcile the repos against the standards",
+	name:   "repos",
+	one:    "repo",
+	many:   "repos",
+	member: "forge",
+	short:  "Reconcile the repos against the standards",
 	long: `Three verbs over one measurement, Terraform-shaped.
 
   check   what is wrong: findings apply cannot fix

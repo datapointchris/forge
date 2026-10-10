@@ -15,10 +15,11 @@ import (
 // filtering them out here would report a skipped die and a converged one
 // identically.
 var directories = &reconcileNoun{
-	name:  "directories",
-	one:   "directory",
-	many:  "directories",
-	short: "Reconcile the maintained directories against the standards",
+	name:   "directories",
+	one:    "directory",
+	many:   "directories",
+	member: "claude",
+	short:  "Reconcile the maintained directories against the standards",
 	long: `The same three verbs, over the directories git does not version.
 
 A directory held to the standard but kept by a file-sync tool rather than a

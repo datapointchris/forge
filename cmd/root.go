@@ -45,20 +45,32 @@ func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
 
 var rootCmd = &cobra.Command{
 	Use:   "forge",
-	Short: "Run commands across all your git repos",
+	Short: "Reconcile each repo in the registry against the standards",
 	Long: "forge reads the repo registry and operates on each repo: reconciling it\n" +
 		"against the standards, running a die or an arbitrary command in it, and\n" +
 		"testing what it declares it is built from.\n" +
 		"\n" +
-		"The unit of work is one repo. Reaching many of them is machinery, not a\n" +
-		"different kind of operation, so the test for a command is what it\n" +
-		"operates on rather than whether it writes.\n" +
+		"Start with `forge repos plan` for what apply would change, then\n" +
+		"`forge repos apply <die>` to make it so. Naming the die is the\n" +
+		"confirmation, so that form runs without asking.\n" +
+		"\n" +
+		"`forge repos check` asks a different question from plan. plan lists\n" +
+		"drift a die repairs; check lists what only a person can settle, such as\n" +
+		"a hand-written pipeline. A repo can be clean on one and not the other.\n" +
+		"\n" +
+		"Reach for `forge toolchain show` when a pinned version is the line that\n" +
+		"caught your eye. It names the file every generated pin comes from.\n" +
 		"\n" +
 		"Questions about the portfolio as a whole belong to fleet: `fleet status`\n" +
 		"for what each repo's planning says, `fleet info` for everything in\n" +
 		"flight on one page, `fleet stats` for the shape of the set.\n" +
 		"\n" +
 		"`forge config` prints the registry it resolved and which layer named it.",
+	Example: "  forge repos plan\n" +
+		"  forge repos apply precommit -F forge\n" +
+		"  forge repos check\n" +
+		"  forge dies list\n" +
+		"  forge toolchain show",
 	// Execute prints the error itself; cobra's own printer would double every line.
 	SilenceErrors: true,
 	// A command that fails at runtime — no registry entry, an aborting safety

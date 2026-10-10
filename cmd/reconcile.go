@@ -34,6 +34,8 @@ type reconcileNoun struct {
 	one, many string
 	short     string
 	long      string
+	// member is one target's name, as the verbs' examples pass it to -F.
+	member string
 	// resolve answers which targets this noun addresses, and the registry the
 	// dies read fleet-level facts from.
 	//
@@ -68,9 +70,18 @@ func (n *reconcileNoun) command() *cobra.Command {
 	// the flag belongs to the namespace rather than being repeated on each.
 	addRegistryFlag(root)
 
+	verb := "forge " + n.name + " "
 	check := &cobra.Command{
-		Use:               "check [die]",
-		Short:             "Report what is wrong, which apply cannot fix",
+		Use:   "check [die]",
+		Short: "Report what is wrong, which apply cannot fix",
+		Long: `Report the findings a die measures and cannot repair: a hand-written
+pipeline, an unmarked custom hook, a missing CLAUDE.md. Each needs a person,
+so check exits 3 when it finds one and never 1.
+
+Drift apply would repair is plan's answer, not this one.`,
+		Example: "  " + verb + "check\n" +
+			"  " + verb + "check precommit -F " + n.member + "\n" +
+			"  " + verb + "check --json",
 		Args:              atMostOneDie,
 		ValidArgsFunction: completeDieNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -79,8 +90,15 @@ func (n *reconcileNoun) command() *cobra.Command {
 	}
 
 	plan := &cobra.Command{
-		Use:               "plan [die]",
-		Short:             "Report what apply would change, writing nothing",
+		Use:   "plan [die]",
+		Short: "Report what apply would change, writing nothing",
+		Long: `Report every change apply would make, and write nothing. plan is apply's
+walk stopped before its last step, so what it prints is what apply acts on.
+
+Exits 1 when a change is pending, which is plan's answer rather than a failure.`,
+		Example: "  " + verb + "plan\n" +
+			"  " + verb + "plan precommit -F " + n.member + "\n" +
+			"  " + verb + "plan --json",
 		Args:              atMostOneDie,
 		ValidArgsFunction: completeDieNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -99,6 +117,9 @@ untypeable — the plan printed above the prompt is what you are confirming.
 
 Only Automatic repairs are ever performed. A finding check reports is
 structurally unreachable from here, whether or not a die was named.`,
+		Example: "  " + verb + "apply precommit -F " + n.member + "\n" +
+			"  " + verb + "apply precommit\n" +
+			"  " + verb + "apply --yes",
 		Args:              atMostOneDie,
 		ValidArgsFunction: completeDieNames,
 		RunE:              n.runApply,
@@ -111,6 +132,8 @@ structurally unreachable from here, whether or not a die was named.`,
 
 List is its own question — "which ` + n.many + `" — and not the same one as "what
 would change", which is ` + "`plan`" + `.`,
+		Example: "  " + verb + "list\n" +
+			"  " + verb + "list -F " + n.member + " --json",
 		Args: cobra.NoArgs,
 		RunE: n.runList,
 	}
