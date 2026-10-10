@@ -253,9 +253,15 @@ func TestADeclaredCommitReplacesWhateverRefTheLineHeld(t *testing.T) {
 		}
 	}
 
+	// The note says something about v6.0.0, so splicing it onto the new release
+	// would put words in the author's mouth.
 	note := "      - uses: astral-sh/setup-uv@v6.0.0 # v6.0.0 until the cache bug is fixed"
-	if got := manifest.ApplyActionVersions(note); got != want+" until the cache bug is fixed" {
-		t.Errorf("the note after the release was lost: %q", got)
+	got := manifest.ApplyActionVersions(note)
+	if got != want+" # v6.0.0 until the cache bug is fixed" {
+		t.Errorf("the note was not kept whole: %q", got)
+	}
+	if again := manifest.ApplyActionVersions(got); again != got {
+		t.Errorf("a second pass changed the line again: %q", again)
 	}
 }
 

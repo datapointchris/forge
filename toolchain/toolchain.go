@@ -60,8 +60,11 @@ var (
 	// One release, never a major that moves: the comment beside a commit says
 	// which code it is, and `v7` says only which line of releases.
 	exactTagRE = regexp.MustCompile(`^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$`)
-	// The `# v1.2.3` after a commit-pinned `uses:`.
-	releaseCommentRE = regexp.MustCompile(`^\s*#\s*v?\d\S*`)
+	// A comment after a `uses:` ref whose first segment is a release and nothing
+	// else, as in `# v1.2.3` or `# tag=v6`, and the comment after it. Any other
+	// note is the author's, and is kept whole rather than spliced onto the new
+	// release.
+	releaseCommentRE = regexp.MustCompile(`^\s*#\s*(?:tag=)?(?:v\d+(?:\.\d+)*|\d+(?:\.\d+)+)(?:[-+][0-9A-Za-z.-]+)?\s*(#.*)?$`)
 	// A workflow step opens with a list item, and its `with:` holds the inputs.
 	stepStartRE = regexp.MustCompile(`^\s*-\s`)
 	withLineRE  = regexp.MustCompile(`^(\s*)with:\s*$`)
@@ -331,7 +334,14 @@ func (t *Toolchain) ApplyActionVersions(content string) string {
 		switch {
 		case !managed:
 		case action.Sha != "":
-			lines[i] = m[1] + m[2] + "@" + action.Sha + " # " + action.Version + releaseCommentRE.ReplaceAllString(m[3], "")
+			note := strings.TrimRight(m[3], " \t")
+			if release := releaseCommentRE.FindStringSubmatch(note); release != nil {
+				note = ""
+				if release[1] != "" {
+					note = " " + release[1]
+				}
+			}
+			lines[i] = m[1] + m[2] + "@" + action.Sha + " # " + action.Version + note
 		case !commitRefRE.MatchString(line):
 			lines[i] = m[1] + m[2] + "@" + action.Version + m[3]
 		}

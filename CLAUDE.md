@@ -328,7 +328,8 @@ declares `sha` beside an exact `version`, and every line naming it becomes `@<sh
 whatever ref it held, so an older commit moves with the declaration. A tag's owner can move it to
 other code after review, and a commit cannot move. `actions/*` stays on a major tag: a commit there
 is a hand-updated hash on a first-party tool for no gain. Load refuses a third-party entry without a
-full commit, and a commit beside a tag naming no single release, such as `v7`.
+full commit, and a commit beside a tag naming no single release, such as `v7`. A release comment
+already on the line is replaced, and any other note after the ref is kept whole.
 
 **A commit pins an action's code and nothing it downloads.** setup-uv installs the newest uv, and
 setup-terraform the newest terraform, unless an input names one. `downloadingActions` maps each to
