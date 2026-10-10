@@ -124,7 +124,8 @@ Four categories are seeded by `Generate` rather than by a component:
 
 **The shell block's bats hook is guarded both ways.** A repo with no `tests/*.bats` passes; a repo
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck
-findings by reporting success there.
+findings by reporting success there. In CI, the hooks job installs bats, its helper libraries and
+the declared jq wherever `tests/*.bats` exists.
 
 **Blocks name no version.** Each writes `{{pin}}` where one belongs, generation fills it from the
 declaration, and a pin the declaration cannot fill is a refusal rather than a placeholder shipped to
@@ -132,23 +133,24 @@ a repo (`toolchain.Unpinned`, `TestBlocksNameNoVersion`). Generation stamps the 
 `version` as `# forge-toolchain: N`; bump it on any pin change, because the stamp is what staged
 rollout reads. `toolchain.StampPrefix` is its one definition. `forge stamp spec --json` prints it
 with `dies.StampedFiles`, which fleet reads at run time instead of keeping a copy, and
-`TestStampedFilesAreExactlyTheFilesTheDiesStamp` holds that list to what the dies write. A tool CI
-runs whose pre-commit hook pins its release takes that release, as `hookPinnedTools` maps them, and
-a `binaries` entry for one is refused as a second copy.
+`TestStampedFilesAreExactlyTheFilesTheDiesStamp` holds that list to what the dies write. A tool
+forge runs outside its hook takes the release that hook pins, as `hookPinnedTools` maps them: a uvx
+line in a workflow, a Python repo's dev pin, the uv that writes a lock. A `binaries` entry for one is
+refused as a second copy.
 `toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its values name
 tools rather than releases.
 
-**No hook runs a linter or formatter from `PATH` where CI pins one.** A hook doing so passes or
-fails by what that machine last installed, and gofumpt writes, so two releases rewrite each other.
-A hook whose tool CI pins runs as a `repo: local`, `language: golang` hook. pre-commit installs it
-from an `additional_dependencies` item `- <module>@{{pin}}`, which `ApplyDependencyVersions` fills
-from the `tools` pin. CI reads the same entry. It installs most tools with `go install`. For a tool
-in `modulePinnedBinaries` it downloads the release binary instead, because a self-hosted runner has
-no Go. Each such hook runs over the files CI's step checks, never only the staged ones: a formatter
-fed the staged files passes a commit CI then fails on a file nobody touched. So the Go pair `cd`s
-into each declared directory and runs over its whole module, as CI does, and golangci-lint must
-start beside the go.mod it loads anyway. The tekwizely hooks walk every go.mod themselves and stay
-one copy.
+**A hook whose tool is a Go module never runs it from `PATH`.** A hook doing so passes or fails by what that
+machine last installed, and gofumpt writes, so two releases rewrite each other. A hook whose tool is
+a Go module runs as a `repo: local`, `language: golang` hook. pre-commit installs it from an
+`additional_dependencies` item `- <module>@{{pin}}`, which `ApplyDependencyVersions` fills from the
+`tools` pin. pre-commit builds it with the Go on `PATH`, or downloads a Go where there is none, so
+CI runs the same hook with no install step of its own. Each such hook runs over a whole module,
+never only the staged files. A formatter fed the staged files leaves the rest of the module as it
+was, and the next commit touching one of those files fails on a change it did not make. So the Go
+pair `cd`s into each declared directory, and golangci-lint must start beside the go.mod it loads
+anyway. The tekwizely hooks walk every go.mod themselves and
+stay one copy.
 
 **Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
 reads it, and a file at a managed path without it is reported rather than overwritten
@@ -236,28 +238,45 @@ declared-never-detected rule, deliberately: the failure is someone adding a rele
 forgetting a flag, which a flag cannot prevent. Every unknown answers false and keeps `push`, so the
 failure mode is a duplicate run rather than an unvalidated main.
 
-**One job per declared component**, named `<stack>` at the root or `<stack>-<dir>` below it, run in
-parallel so a failure names its module. A declared stack with no CI block is skipped rather than
-emitting an empty job. That is why docker has no block: a Dockerfile is built by the deploy, not by
-validation.
+**CI runs the hooks themselves, never copies of their checks.** A copy is a second spelling of the
+check, and the two drift: a CI step pinning a different release, or checking a different scope,
+passes what the hook fails. So a stack job holds only what no hook runs — the full test suite where
+the hook runs `-short`, govulncheck, cargo-audit, a build — and a stack whose every check is a hook,
+such as shell or lua, gets no job.
 
-**One more job, `hooks`, runs the pre-commit hooks no stack job covers.** `ci.HooksToRun` reads them
-from the committed `.pre-commit-config.yaml`, never from the config the precommit die would write.
-CI runs the committed file, and the two differ wherever that die is blocked or not yet applied. A
-list taken from the owed config would name hooks the file lacks. A repo declaring no components gets
-a workflow holding this job alone, wherever forge maintains its pre-commit config.
+**One job per declared component with checks of its own**, named `<stack>` at the root or
+`<stack>-<dir>` below it, run in parallel so a failure names its module. A declared stack with no CI
+block is skipped rather than emitting an empty job. That is why docker has no block: a Dockerfile is
+built by the deploy, not by validation.
 
-**The hooks job drops a hook a stack job here runs, and a stack block names each one it runs.** That
-is its `# covers:` line, which names hooks rather than a stack because a stack job runs only the
-checks written into it. `TestAStackJobRunsEveryHookItsStackCarries` holds each stack block to every
-hook its stack's pre-commit blocks carry, so a hook added to one needs a step in the other. The job
-also drops a hook off the `pre-commit` stage, and a local hook, whose tool only a stack job installs.
-A local hook calling uv is the exception, because this job sets uv up. The shell block is why
-coverage is decided per repo. Every config carries it, and only a repo declaring a shell component
-has a job running it.
+**A stack's setup block opens both its job and the hooks job.** `NN-<category>-setup.yml` puts on
+`PATH` what that stack's hooks call: setup-go for the tekwizely hooks, setup-terraform for
+`terraform_validate`, setup-node and `npm ci` for the vue scripts. The hooks job has no directory of
+its own, so it carries each component's setup rendered for its directory, once per distinct render.
+setup-go exports `GOTOOLCHAIN=local`, under which a second setup-go ignores its go.mod's toolchain
+line. So the hooks job exports `auto` before running anything.
+
+**One more job, `hooks`, runs every hook a standard block put in the repo's config.**
+`ci.HooksToRun` reads them from the committed `.pre-commit-config.yaml`, never from the config the
+precommit die would write. CI runs the committed file, and the two differ wherever that die is
+blocked or not yet applied. A list taken from the owed config would name hooks the file lacks. A
+repo declaring no components gets a workflow holding this job alone, wherever forge maintains its
+pre-commit config. The job runs hooks by id, so a custom alias sharing an id runs with it. It drops a
+hook off the `pre-commit` stage, and every hook in a custom section: several need a workstation, such
+as a running dev stack or a local editor install.
+
+**A custom section whose job is gone holds the workflow back.** Custom sections are keyed
+`before:<job>` or `after:<job>`, and `Generate` renders one only beside a job it emits. A section
+keyed to a removed job would vanish on the next write, and it is the one part of the file nothing
+else can recreate. `ci.OrphanedSections` names each, and the die reports it `ByHand` against
+`validate.yml` until the marker moves to a job that exists, such as `before:hooks`.
 
 **The hooks job checks what the push or pull request changed.** That is what the hooks saw at commit
-time, so a finding in a file nobody touched cannot fail a push. The checkout stays one commit deep
+time, so a finding in a file nobody touched cannot fail a push. A change touching a hook or tool
+config, a manifest, a lockfile or a toolchain file is the exception, and the job checks every file.
+A new ruff rule or linter release matches no source file's type filter. Scoped to the change, it
+would grade nothing, and its findings would land on the next author to touch the code. The run
+script names each file that widens the scope. The checkout stays one commit deep
 and the job fetches only the base commit. pre-commit falls back to a two-dot diff where two commits
 share no history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit
 can be fetched, as on a repo's first push, the job checks every file and says so in a notice.
@@ -320,16 +339,6 @@ owns the module, never to a fleet-wide sweep.
 
 Both numbers come from the declaration's `languages.go`. Bump the toolchain on a standard-library
 advisory; `govulncheck` in generated CI is what reports one.
-
-**A module whose CI Go the pinned linter cannot build is refused, never written.** Generated CI
-sets up go.mod's toolchain directive where there is one and its floor otherwise, under
-`GOTOOLCHAIN=local`. It then installs golangci-lint, and on a Go below the linter's own minimum
-that install exits 1 with `requires go >= X`. A declaration doing that does it in every Go repo at
-once, with nothing wrong in any of them. A floor below the minimum is still written where an owed
-toolchain line puts CI above it, because the floor only says who may consume the module. The declaration carries that bottom as `languages.go.binding_minimum` —
-declared rather than derived, because reading it needs the module proxy and a die that reaches
-the network to decide one line is a die that fails offline. The refusal is `ByHand`, so it
-surfaces in `check` and `apply` cannot reach it.
 
 **A floor moves in either direction.** Lowering one is safe for every consumer; raising one excludes
 them. No module is floored above the declaration, so nothing in the portfolio is stricter than the

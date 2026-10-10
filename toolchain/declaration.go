@@ -21,18 +21,7 @@ import (
 type Language struct {
 	Floor     string `json:"floor"`
 	Toolchain string `json:"toolchain,omitempty"`
-	// BindingMinimum is the oldest release the build can run on: the version
-	// some pinned tool in the build itself requires. Declared rather than
-	// derived, because reading it needs the module proxy and a die that reaches
-	// the network to decide one line is a die that fails offline.
-	BindingMinimum struct {
-		Value string `json:"value"`
-	} `json:"binding_minimum,omitempty"`
 }
-
-// Minimum is the declared oldest release this language's build can run on, or
-// empty when none is declared.
-func (l Language) Minimum() string { return l.BindingMinimum.Value }
 
 // declaration is the on-disk shape of the version file. It differs from the test
 // fixture's YAML deliberately: this file is read by several tools and carries its

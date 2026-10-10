@@ -1,5 +1,4 @@
 # Python
-# covers: uv-lock ruff-format ruff-check mypy
       # enable-cache is left at setup-uv's `auto`, which caches on a hosted
       # runner only. Every repo's self-hosted runner shares one ~/.cache/uv
       # that outlives the job, so there the post step's prune and upload are
@@ -7,41 +6,12 @@
       # same files.
       - uses: astral-sh/setup-uv@{{pin}}
 
-      # Before the sync, which would rewrite a stale lock rather than fail on
-      # it. uvx, so the uv is the one the uv-lock hook pins.
-      - run: uvx uv@{{pin}} lock --check
-
       - run: uv sync --all-extras --dev
 
-      # uvx, not `uv run` — the latter resolves ruff from the repo's own
-      # dependencies, and a repo treating ruff as an installed tool rather than a
-      # project dependency does not declare it. The version is the one the
-      # pre-commit hook pins, so the two cannot disagree about a finding.
-      - run: uvx ruff@{{pin}} check .
-
-      - run: uvx ruff@{{pin}} format --check .
-
-      # Declaring mypy as a dependency is the opt-in, and `uv run` is the same
-      # invocation the pre-commit hook uses, so a repo passing locally passes
-      # here. A [tool.mypy] section is not the opt-in: the standard pyproject
-      # template writes one into every repo, infra repos included, and those
-      # have nothing importable to check.
-      # Tested by import rather than `mypy --version`: `uv run` falls back to
-      # PATH, so a machine with mypy installed globally reports it present in a
-      # repo that never declared it, and the check would pass locally while
-      # behaving differently on a clean runner.
-      - name: Type check
-        run: |
-          if uv run python -c "import mypy" >/dev/null 2>&1; then
-            uv run mypy . --install-types --non-interactive
-          else
-            echo "mypy not a project dependency; skipping"
-          fi
-
-      # --with pytest, unlike the mypy step above, because skipping is the wrong
-      # answer here: a repo with a real test suite that never declared pytest as
-      # a dependency would silently stop being tested. Supplying the runner runs
-      # the tests; a suite needing plugins still declares those itself.
+      # --with pytest, because skipping is the wrong answer here: a repo with a
+      # real test suite that never declared pytest as a dependency would
+      # silently stop being tested. Supplying the runner runs the tests; a suite
+      # needing plugins still declares those itself.
       #
       # pytest exits 5 when it collects nothing, which is not a failure for a
       # repo that has no tests yet. Written explicitly rather than as an && chain

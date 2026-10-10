@@ -519,25 +519,7 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobLandsInADirectoryMadeForIt(t *test
 	}
 
 	if persistent == 0 {
-		t.Fatal("no clone outside $RUNNER_TEMP found; the shell block's bats step clones its helpers under $HOME")
-	}
-}
-
-// The runner image ships its own jq, and a jq program that parses on one
-// release can be rejected whole by another. The suites only run against the
-// declared jq if it is first on PATH by the time bats starts.
-func TestTheBatsStepRunsTheSuitesAgainstTheDeclaredJq(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("shell", "."), "", nil, Ungated, hostedRunner(t))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if !strings.Contains(workflow, `jq_version="fixture-jq"`) {
-		t.Fatalf("the bats step does not take jq's declared version:\n%s", workflow)
-	}
-	onPath := strings.Index(workflow, `export PATH="$RUNNER_TEMP/jq:$PATH"`)
-	suites := strings.Index(workflow, "bats tests/\n")
-	if onPath < 0 || suites < 0 || onPath > suites {
-		t.Errorf("the declared jq is not first on PATH before bats runs (export at %d, bats at %d)", onPath, suites)
+		t.Fatal("no clone outside $RUNNER_TEMP found; the hooks block's bats setup clones its helpers under $HOME")
 	}
 }
 
@@ -553,19 +535,6 @@ func TestTheVueJobTakesNodeFromTheFileTheDieRequires(t *testing.T) {
 	}
 	if strings.Contains(workflow, "node-version:") {
 		t.Errorf("the vue job carries a Node version of its own:\n%s", workflow)
-	}
-}
-
-func TestTheRustJobAuditsTheLockfileAtTheDeclaredRelease(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("rust", "."), "", nil, Ungated, hostedRunner(t))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if !strings.Contains(workflow, `cargo_audit_version="fixture-cargo-audit"`) {
-		t.Fatalf("the audit step does not take cargo-audit's declared version:\n%s", workflow)
-	}
-	if !strings.Contains(workflow, `"$RUNNER_TEMP/cargo-audit/cargo-audit" audit`+"\n") {
-		t.Errorf("the rust job never runs the downloaded cargo-audit:\n%s", workflow)
 	}
 }
 

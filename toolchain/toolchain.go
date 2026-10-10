@@ -58,30 +58,15 @@ var (
 	commitRefRE = regexp.MustCompile(`@[0-9a-f]{40}\b`)
 )
 
-// hookPinnedTools maps a tool generated CI runs to the pre-commit repo whose rev
-// pins it. CI takes the hook's release rather than a version of its own, so the
-// two cannot disagree about a finding: a second entry could drift, and a derived
-// one cannot.
+// hookPinnedTools maps a tool forge runs outside its hook to the pre-commit repo
+// whose rev pins it: a uvx line in a workflow, a Python repo's dev dependency,
+// the uv that writes a lock. Each takes the hook's release rather than a
+// version of its own, so none can disagree with the hook: a second entry could
+// drift, and a derived one cannot.
 var hookPinnedTools = map[string]string{
-	"ruff":       "https://github.com/astral-sh/ruff-pre-commit",
-	"shellcheck": "https://github.com/koalaman/shellcheck-precommit",
-	"shfmt":      "https://github.com/scop/pre-commit-shfmt",
-	"stylua":     "https://github.com/JohnnyMorganz/StyLua",
-	"uv":         "https://github.com/astral-sh/uv-pre-commit",
+	"ruff": "https://github.com/astral-sh/ruff-pre-commit",
+	"uv":   "https://github.com/astral-sh/uv-pre-commit",
 }
-
-// modulePinnedBinaries maps a tool generated CI downloads to the Go module its
-// pre-commit hook installs. The hook takes the tools pin for that module, so CI
-// takes the same release from it rather than from a binaries entry that could
-// drift from the hook.
-var modulePinnedBinaries = map[string]string{
-	"tflint":         "github.com/terraform-linters/tflint",
-	"terraform_docs": "github.com/terraform-docs/terraform-docs",
-}
-
-// hookRevisionSuffix is the counter a wrapper repo appends when it re-tags one
-// upstream release: pre-commit-shfmt's v3.13.1-1 wraps shfmt 3.13.1.
-var hookRevisionSuffix = regexp.MustCompile(`-\d+$`)
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
 // config. Blocks carry Pin where a version goes, so a version is declared in
@@ -93,9 +78,8 @@ type Toolchain struct {
 	// version is declared in the same place as a pre-commit hook version.
 	Actions []Action `yaml:"actions"`
 	// Tools pins Go modules installed as CLIs. Generated CI installs each with
-	// `go install`, except a tool in modulePinnedBinaries, whose release binary
-	// it downloads at this version. A `language: golang` hook installs the
-	// same version from its additional_dependencies.
+	// `go install`, and a `language: golang` hook installs the same version from
+	// its additional_dependencies.
 	Tools []Tool `yaml:"tools"`
 	// Runtimes pins language runtimes generated CI sets up.
 	Runtimes []Runtime `yaml:"runtimes"`
@@ -187,9 +171,6 @@ func (t *Toolchain) refuseDerivedBinaries() error {
 	for _, binary := range t.Binaries {
 		if repo, derived := hookPinnedTools[binary.Name]; derived {
 			return fmt.Errorf("binaries pins %s, whose CI version is the release its hook pin %s wraps — remove the binaries entry", binary.Name, repo)
-		}
-		if module, derived := modulePinnedBinaries[binary.Name]; derived {
-			return fmt.Errorf("binaries pins %s, whose CI version is the tools pin for %s that its hook installs — remove the binaries entry", binary.Name, module)
 		}
 	}
 	return nil
@@ -515,19 +496,14 @@ func (t *Toolchain) HookPinnedVersion(tool string) (string, bool) {
 	if !managed {
 		return "", false
 	}
-	return hookRevisionSuffix.ReplaceAllString(strings.TrimPrefix(rev, "v"), ""), true
+	return strings.TrimPrefix(rev, "v"), true
 }
 
 // BinaryVersion returns the pinned version for a released binary, and whether
-// it is managed. A tool with a hook takes the release that hook pins, or the
-// release of the module its hook installs.
+// it is managed. A tool with a hook takes the release that hook pins.
 func (t *Toolchain) BinaryVersion(name string) (string, bool) {
 	if version, derived := t.HookPinnedVersion(name); derived {
 		return version, true
-	}
-	if module, derived := modulePinnedBinaries[name]; derived {
-		version, managed := t.ToolVersion(module)
-		return strings.TrimPrefix(version, "v"), managed
 	}
 	for _, binary := range t.Binaries {
 		if binary.Name == name {

@@ -1,0 +1,35 @@
+# Vue setup
+      # Shared by the vue job and the hooks job, whose vue-eslint, vue-prettier
+      # and vue-typecheck hooks run npm scripts in the component.
+      - uses: actions/setup-node@{{pin}}
+        with:
+          # The repo's own file, at the workspace root, because the Node major
+          # also lives in each Dockerfile's FROM line and a pin here would be a
+          # third copy. The ci die refuses to write this job without the file,
+          # since setup-node fails before installing anything.
+          node-version-file: .nvmrc
+          cache: npm
+          # A glob rather than {{dir}}/package-lock.json, because the two
+          # layouts in use keep the lock in different places: one lock per
+          # component beside its package.json, or an npm workspace with a
+          # single lock at the repo root. setup-node fails outright when a
+          # named path does not resolve, so a workspace component with no lock
+          # of its own kills the job before npm ci.
+          #
+          # Action inputs resolve from the workspace root, not the job's
+          # working-directory, so this is not relative to the component.
+          cache-dependency-path: "**/package-lock.json"
+
+      # An npm workspace has to install from the root: the lock covers every
+      # workspace, and npm ci inside one refuses to run without a lock beside
+      # it. Falling back keeps the per-component layout installing in place.
+      #
+      # The directory is named on the step because the hooks job has no
+      # working-directory of its own, and installs for every component.
+      - working-directory: "{{dir}}"
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            cd "$GITHUB_WORKSPACE" && npm ci
+          fi

@@ -108,6 +108,11 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 	case len(kept) == 0 && len(pending) > 0:
 		result.Status = Converged
 		result.Detail = fmt.Sprintf("%d item(s) differ from the standard, and apply repairs them%s", len(pending), gap)
+	// Under plan the summary would call current a file a by-hand finding holds
+	// back from its write.
+	case len(kept) == 0 && len(attention) > 0:
+		result.Status = Converged
+		result.Detail = fmt.Sprintf("nothing for apply to change; %d item(s) need attention — see check%s", len(attention), gap)
 	case len(kept) == 0:
 		result.Status = Converged
 		result.Detail = summary + gap

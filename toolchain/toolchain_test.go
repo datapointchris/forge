@@ -81,31 +81,6 @@ func TestUnpinnedNamesTheRepoARevBelongsTo(t *testing.T) {
 	}
 }
 
-// pre-commit-shfmt tags v3.13.1-1 for shfmt 3.13.1, and CI downloads shfmt by
-// its own release number. Keeping the counter asks for a release that does not
-// exist.
-func TestShfmtTakesTheReleaseItsHookWraps(t *testing.T) {
-	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: hookPinnedTools["shfmt"], Rev: "v3.13.1-1"}}}
-
-	got := manifest.ApplyBinaryVersions("          shfmt_version=\"" + Pin + "\"\n")
-
-	if !strings.Contains(got, `shfmt_version="3.13.1"`) {
-		t.Errorf("shfmt not derived from its hook: %q", got)
-	}
-}
-
-// The tflint hook installs the module at its tools pin, and CI downloads the
-// release binary. Both read the one entry, so they cannot name two releases.
-func TestTflintInCITakesTheReleaseItsHookInstalls(t *testing.T) {
-	manifest := &Toolchain{Version: 1, Tools: []Tool{{Module: modulePinnedBinaries["tflint"], Version: "v0.64.0"}}}
-
-	got := manifest.ApplyBinaryVersions("          tflint_version=\"" + Pin + "\"\n")
-
-	if !strings.Contains(got, `tflint_version="0.64.0"`) {
-		t.Errorf("tflint not derived from its module pin: %q", got)
-	}
-}
-
 func TestApplyDependencyVersionsPinsADeclaredModuleOnly(t *testing.T) {
 	manifest := &Toolchain{Version: 1, Tools: []Tool{{Module: "mvdan.cc/gofumpt", Version: "v0.12.0"}}}
 	block := "        additional_dependencies:\n" +
@@ -320,18 +295,9 @@ const hostedImage = `, "runners": {"hosted": "ubuntu-26.04"}`
 // Every command loads the declaration through LoadFile, so a second copy of a
 // version CI already takes from a hook pin is refused there.
 func TestLoadFileRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
-	_, err := LoadFile(writeDeclaration(t, hostedImage+`, "binaries": {"pins": [{"name": "shellcheck", "version": "0.10.0"}]}`))
-	if err == nil || !strings.Contains(err.Error(), "shellcheck") {
-		t.Errorf("LoadFile = %v, want a refusal naming shellcheck", err)
-	}
-}
-
-// Every command loads the declaration through LoadFile, so a second copy of a
-// version CI already takes from a tools pin is refused there.
-func TestLoadFileRefusesABinariesEntryForAModulePinnedTool(t *testing.T) {
-	_, err := LoadFile(writeDeclaration(t, hostedImage+`, "binaries": {"pins": [{"name": "terraform_docs", "version": "0.24.0"}]}`))
-	if err == nil || !strings.Contains(err.Error(), "terraform_docs") {
-		t.Errorf("LoadFile = %v, want a refusal naming terraform_docs", err)
+	_, err := LoadFile(writeDeclaration(t, hostedImage+`, "binaries": {"pins": [{"name": "ruff", "version": "0.12.5"}]}`))
+	if err == nil || !strings.Contains(err.Error(), "ruff") {
+		t.Errorf("LoadFile = %v, want a refusal naming ruff", err)
 	}
 }
 

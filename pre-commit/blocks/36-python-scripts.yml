@@ -36,11 +36,19 @@
   # these apps fails with "Duplicate module named __main__" before checking
   # either. These apps declare their dependencies in PEP 723 headers and import
   # nothing from the repo, so per-file checking loses no visibility.
+  #
+  # It takes the repo-wide mypy hook's guard, for that hook's reason.
   - repo: local
     hooks:
       - id: mypy-scripts
         name: mypy (uv run scripts)
-        entry: uv run mypy --scripts-are-modules --install-types --non-interactive
+        entry: >-
+          bash -c 'uv run --all-extras python -c "import importlib.util as u, sys; sys.exit(0 if u.find_spec(sys.argv[1]) else 3)" mypy;
+          status=$?; case $status in
+          0) exec uv run --all-extras mypy --scripts-are-modules --install-types --non-interactive "$@" ;;
+          3) echo "mypy is not a project dependency, so nothing is type-checked" ;;
+          *) exit $status ;;
+          esac' --
         language: system
         types: [text]
         files: '{{scripts}}'

@@ -213,12 +213,10 @@ func TestVersionsCompareNumericallyRatherThanAsText(t *testing.T) {
 
 // declared builds a target whose manifest carries a full language declaration,
 // which is what LoadFile produces and what the embedded YAML cannot.
-func declared(t *testing.T, floor, pin, minimum string, mods map[string]string) reconcile.Target {
+func declared(t *testing.T, floor, pin string, mods map[string]string) reconcile.Target {
 	t.Helper()
 	target := goTarget(t, "", mods)
-	lang := toolchain.Language{Floor: floor, Toolchain: pin}
-	lang.BindingMinimum.Value = minimum
-	target.Assets.Manifest.Languages = map[string]toolchain.Language{"go": lang}
+	target.Assets.Manifest.Languages = map[string]toolchain.Language{"go": {Floor: floor, Toolchain: pin}}
 	return target
 }
 
@@ -226,7 +224,7 @@ func TestAFlooredRepoIsPulledDownToTheDeclaration(t *testing.T) {
 	// The case the whole declaration exists for. A floor above the declared one
 	// excludes consumers and buys nothing, because the toolchain directive
 	// already carries the fixed standard library.
-	target := declared(t, "1.26.5", "1.26.6", "1.25.0", map[string]string{
+	target := declared(t, "1.26.5", "1.26.6", map[string]string{
 		".": "module x\n\ngo 1.26.6\n",
 	})
 	changes := gomodChanges(t, target)
@@ -247,59 +245,8 @@ func TestAFlooredRepoIsPulledDownToTheDeclaration(t *testing.T) {
 	}
 }
 
-func TestAModuleWhoseCIGoTheLinterCannotBuildIsRefused(t *testing.T) {
-	// CI would set up the owed go1.24.9 and then fail to install golangci-lint,
-	// which needs 1.25.0.
-	target := declared(t, "1.24.0", "1.24.9", "1.25.0", map[string]string{
-		".": "module x\n\ngo 1.26.5\n",
-	})
-	changes := gomodChanges(t, target)
-	if len(changes) != 1 {
-		t.Fatalf("changes = %+v", changes)
-	}
-	if changes[0].Repair != reconcile.ByHand {
-		t.Errorf("Repair = %q, want by_hand", changes[0].Repair)
-	}
-	if changes[0].Actionable() {
-		t.Error("apply would write a floor the linter cannot build")
-	}
-
-	before, err := os.ReadFile(filepath.Join(target.Repo.Path, "go.mod"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := (GoMod{}).Perform(target, changes[0]); err != nil {
-		t.Fatal(err)
-	}
-	after, err := os.ReadFile(filepath.Join(target.Repo.Path, "go.mod"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(before) != string(after) {
-		t.Errorf("go.mod was written anyway:\n%s", after)
-	}
-}
-
-func TestAFloorBelowTheLinterIsWrittenWhereTheToolchainCarriesCIAboveIt(t *testing.T) {
-	// setup-go installs the toolchain directive, so CI runs go1.26.6 and the
-	// linter builds. The 1.24.0 floor only bounds who may consume the module.
-	target := declared(t, "1.24.0", "1.26.6", "1.25.0", map[string]string{
-		".": "module x\n\ngo 1.26.5\n",
-	})
-	changes := gomodChanges(t, target)
-	for _, c := range changes {
-		if !c.Actionable() {
-			t.Fatalf("a floor the toolchain covers was refused: %+v", c)
-		}
-	}
-	performAll(t, target, changes)
-	if got, want := readFile(t, target.Path("go.mod")), "module x\n\ngo 1.24.0\n\ntoolchain go1.26.6\n"; got != want {
-		t.Errorf("go.mod =\n%q\nwant\n%q", got, want)
-	}
-}
-
 func TestAFloorThatAlreadyReachesThePinGetsNoToolchainLine(t *testing.T) {
-	target := declared(t, "1.26.6", "1.26.6", "1.25.0", map[string]string{
+	target := declared(t, "1.26.6", "1.26.6", map[string]string{
 		".": "module x\n\ngo 1.26.6\n",
 	})
 	if changes := gomodChanges(t, target); len(changes) != 0 {
@@ -310,7 +257,7 @@ func TestAFloorThatAlreadyReachesThePinGetsNoToolchainLine(t *testing.T) {
 func TestAToolchainThatTheFloorHasOvertakenIsReportedNotRemoved(t *testing.T) {
 	// forge does not delete what it did not put there, and a floor that grew
 	// past the pin leaves the line redundant rather than wrong.
-	target := declared(t, "1.26.6", "1.26.6", "1.25.0", map[string]string{
+	target := declared(t, "1.26.6", "1.26.6", map[string]string{
 		".": "module x\n\ngo 1.26.6\n\ntoolchain go1.26.6\n",
 	})
 	changes := gomodChanges(t, target)
@@ -325,7 +272,7 @@ func TestAToolchainThatTheFloorHasOvertakenIsReportedNotRemoved(t *testing.T) {
 func TestConvergingOneModuleSettlesBothDirectivesAtOnce(t *testing.T) {
 	// A Change names the file rather than the line, and a module can drift on
 	// both, so the second change arrives after the first already settled it.
-	target := declared(t, "1.26.5", "1.26.6", "1.25.0", map[string]string{
+	target := declared(t, "1.26.5", "1.26.6", map[string]string{
 		".": "module x\n\ngo 1.27.0\n",
 	})
 	changes := gomodChanges(t, target)
@@ -416,7 +363,7 @@ func TestARewriteMovesOnlyTheGoRelease(t *testing.T) {
 func TestAnImageTakesTheFloorWhereNoToolchainLineIsOwed(t *testing.T) {
 	// setup-go reads the `go` directive when go.mod names no toolchain, so a
 	// floor above the pin is the Go CI tests.
-	target := withFiles(t, declared(t, "1.27.0", "1.26.9", "1.25.0", map[string]string{
+	target := withFiles(t, declared(t, "1.27.0", "1.26.9", map[string]string{
 		"api": "module x/api\n\ngo 1.27.0\n",
 	}), map[string]string{"api/Dockerfile": "FROM golang:1.26.9-alpine\n"})
 
@@ -484,18 +431,6 @@ func TestOnlyDockerfilesInTheComponentDirectoryAreRead(t *testing.T) {
 	changes := gomodChanges(t, target)
 	if len(changes) != 1 || changes[0].Item != "api/prod.Dockerfile" {
 		t.Errorf("changes = %+v", changes)
-	}
-}
-
-func TestARefusedModuleMovesNoImage(t *testing.T) {
-	target := withFiles(t, declared(t, "1.24.0", "1.24.9", "1.25.0", map[string]string{
-		"api": "module x/api\n\ngo 1.26.5\n",
-	}), map[string]string{"api/Dockerfile": "FROM golang:alpine\n"})
-
-	for _, c := range gomodChanges(t, target) {
-		if c.Item == "api/Dockerfile" {
-			t.Errorf("an image moved under a refused declaration: %+v", c)
-		}
 	}
 }
 
