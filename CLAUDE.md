@@ -26,12 +26,23 @@ something.
 - **`directories` targets live in forge's own config, never the registry.** The registry is read by
   other tools, and each takes an entry there to be a git repo with a GitHub remote. Both nouns come
   from one `reconcileNoun` factory, and `TestBothNounsSpellTheSharedVerbsIdentically` keeps them level.
-- **`-c` is declared on `repos`, `directories`, `cli`, `config` and `test`, never on the root.** A root
+- **`-c` is declared on `repos`, `directories`, `cli`, `config`, `test` and `lint`, never on the root.** A root
   persistent flag is advertised on every subcommand, including ones that never open the registry.
   `loadRepos` refuses a command that has not declared it, and `cmd/flagscope_test.go` pins the set.
 - **`cli` reads installed CLIs from the outside only** — `--help`, plus cobra's `__complete` where a
   tool has one. It never runs a bare subcommand, because a noun that performs a read with no verb
   would fire that read against a live API. It reports variation and exits 0 whatever it finds.
+- **`lint` runs the hooks CI runs, over every file, in a throwaway clone of HEAD.** The list is
+  `ci.HooksToRun` of the committed config, so the local answer and CI's cannot differ. Several hooks
+  rewrite what they check, so each repo is cloned with `--shared` under the cache. That borrows the
+  repo's objects and writes nothing into its `.git`, where a worktree would register itself and
+  outlive a killed run. The vue hooks resolve their tools in `node_modules`, so each package gets a
+  `node_modules` of the clone's own holding a link per installed entry. Top-level dot-directories
+  other than `.bin` are left out. vue-tsc, jiti and Vue's global types write caches there, and a
+  link to the whole directory would send those writes into the checkout. A package's `postinstall` then
+  runs in the clone, as `npm ci` runs it in CI. Nuxt's generates the types its typecheck reads. A
+  hook whose tool is missing reports `unknown`, the shell's 127 or pre-commit's "Executable not
+  found", and never moves the exit code.
 - **Nothing in forge writes a pin.** `toolchain show` reads the file `versions_file` names and prints
   the path beside the version. A pin is chosen, not discovered.
 
