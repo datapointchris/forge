@@ -48,17 +48,13 @@ type ciFile struct {
 	generatedFile
 	// write is what a plan says when the file is missing or stale.
 	write string
-	// retract is what a plan says when forge is removing one it wrote.
-	retract string
 }
 
 type ciState struct {
 	applicable bool
 	reason     string
 	// files are every file this die owns in this repo, in the order they must
-	// be written. A file the repo is not owed still appears, carrying an empty
-	// want — that is what makes a retraction expressible, and what stops a path
-	// going unobserved because the repo stopped qualifying for it.
+	// be written.
 	files []ciFile
 	// selfHosted records which runner the workflow names, for the row a
 	// converged repo shows.
@@ -109,7 +105,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		existing = string(data)
 	}
 
-	runner := ci.RunnerFor(t.Repo.IsPrivate())
+	runner := ci.RunnerFor(t.Repo.IsPrivate(), t.Assets.Manifest)
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommitConfig,
 		precommit.ExtractCustomSections(existing), ci.ReleaseGatesOnValidate(root), runner)
 	if errors.Is(err, ci.ErrNoJobs) {
@@ -119,19 +115,16 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return nil, err
 	}
 
-	// Both paths are read whatever the runner is. Scoping the read to the
-	// runner is how a repo that stopped being private kept its lint config
-	// while every verb reported converged — a path nothing observes cannot
-	// drift, because nothing is measuring it.
-	lintConfig := lintConfigFor(runner, t.Assets.Manifest.Version)
+	// Its content depends on the runner, so a repo that stops being private
+	// sees the pool come out of it as a change to this file.
+	lintConfig := ci.ActionlintConfig(t.Assets.Manifest, runner)
 	state := ciState{
 		applicable: true,
 		selfHosted: runner == ci.SelfHosted,
 		files: []ciFile{
 			{
 				generatedFile: readGenerated(root, ci.ActionlintConfigPath, lintConfig),
-				write:         "declare the self-hosted runner label to actionlint",
-				retract:       "this repo is no longer private, so the self-hosted label declaration comes out",
+				write:         "declare to actionlint the runner labels it cannot discover",
 			},
 			{
 				generatedFile: readGenerated(root, ci.WorkflowPath, wanted),
@@ -261,20 +254,6 @@ func repinnedWorkflows(root string, manifest *toolchain.Toolchain) []generatedFi
 	return files
 }
 
-// lintConfigFor is the actionlint configuration a repo on this runner is owed.
-//
-// A value rather than a branch inside Observe, so
-// TestOnlyASelfHostedRepoIsOwedALintConfig can assert the choice directly.
-// Without that test, hoisting the write out of the branch passes the whole
-// suite: every other assertion is that lintWorkflow honors the argument it is
-// handed, never that Observe picks the right one.
-func lintConfigFor(runner ci.Runner, stampVersion int) string {
-	if runner != ci.SelfHosted {
-		return ""
-	}
-	return ci.ActionlintConfig(stampVersion)
-}
-
 // pinnedActionlint is the version the declaration pins the actionlint hook to,
 // or "" when the manifest does not name it.
 func pinnedActionlint(manifest *toolchain.Toolchain) string {
@@ -382,30 +361,22 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 
 	changes := state.blockers
 
-	// Writes first, then retractions, and within the writes the lint
-	// declaration before the workflow that names the label. reconcile.Apply
-	// performs them in this order, so a run interrupted between two of them has
-	// to leave a repo that still builds. A declaration for a label nothing uses
-	// is inert; a workflow naming a label nothing declares fails that repo's
-	// actionlint hook on every commit until the second file lands.
+	// The lint declaration goes before every workflow that names its labels.
+	// reconcile.Apply performs changes in this order, so a run interrupted
+	// between two of them has to leave a repo that still builds. A declaration
+	// for a label nothing uses is inert; a workflow naming a label nothing
+	// declares fails that repo's actionlint hook on every commit until the
+	// declaration lands.
 	//
 	// A hand-written file is not drift to repair — it is a file forge refuses
 	// to touch — so its change is suppressed while the blocker is there, or the
 	// plan would promise a write Perform would refuse. Asked per file: a
 	// hand-written lint config is no reason to stop regenerating the workflow.
 	for _, file := range state.files {
-		if file.retracting() || hasItem(state.blockers, file.rel) {
+		if hasItem(state.blockers, file.rel) {
 			continue
 		}
 		if change, drifted := file.change(file.write); drifted {
-			changes = append(changes, change)
-		}
-	}
-	for _, file := range state.files {
-		if !file.retracting() || hasItem(state.blockers, file.rel) {
-			continue
-		}
-		if change, drifted := file.change(file.retract); drifted {
 			changes = append(changes, change)
 		}
 	}
@@ -420,7 +391,7 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 }
 
 // repinReason is what a plan says for a workflow forge did not write.
-const repinReason = "take the declared action and tool versions; the rest of this workflow is the repo's own"
+const repinReason = "take the declared action and tool versions and runner image; the rest of this workflow is the repo's own"
 
 func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	if !change.Actionable() {
@@ -471,15 +442,6 @@ func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outc
 		}, nil
 	}
 
-	// A retraction is checked before wanted(), because an empty want is exactly
-	// what a retraction has. Reading it as "no longer wanted since the plan"
-	// would refuse every removal this die ever emits.
-	if file.retracting() {
-		if err := removeGenerated(t.Repo.Path, file.generatedFile); err != nil {
-			return reconcile.Outcome{}, err
-		}
-		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "removed " + file.rel}, nil
-	}
 	if !file.wanted() {
 		return reconcile.Outcome{
 			Change: change, Status: reconcile.Refused,

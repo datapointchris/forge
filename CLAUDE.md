@@ -264,14 +264,23 @@ can be fetched, as on a repo's first push, the job checks every file and says so
 
 **`runs-on` follows the repo's declared visibility, through `ci.RunnerFor`.** A private repo takes the
 self-hosted pool, because GitHub bills hosted minutes on private repos only. Anything not positively
-declared private takes `ubuntu-latest`, and that direction is the safety property: a fork's pull
+declared private takes the hosted image, and that direction is the safety property: a fork's pull
 request on a public repo runs the fork's code, and a self-hosted runner sits inside a private network.
 `TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner` keeps the choice in `RunnerFor`.
 
-**The die also writes `.github/actionlint.yaml`, only where the workflow names the pool**, because
-actionlint knows GitHub's labels and nothing else. Its absence in a public repo makes actionlint
-reject a hand-written workflow reaching the pool. A repo that turns public has it removed; a
-hand-written one at `.yaml` or `.yml` is reported and left alone.
+**The hosted image is a pinned release, `runners.hosted` in the declaration.** `ubuntu-latest` moves
+to a new release on GitHub's schedule, and a job that passed the day before then fails with nothing
+in the repo changed. Both loaders refuse a declaration naming no release, or naming `ubuntu-latest`.
+`ApplyWorkflowPins` rewrites `ubuntu-latest` and every `ubuntu-NN.NN` in a hand-written workflow to
+the pin, so a matrix and the `if:` reading it move together. A variant such as `ubuntu-24.04-arm`
+names a different machine and is left alone, and so are macOS and Windows labels.
+
+**The die also writes `.github/actionlint.yaml` into every repo it generates CI for**, declaring the
+labels actionlint cannot discover. actionlint compiles in the hosted images that existed at its
+release, so a pin newer than the pinned actionlint is an unknown label without it. The self-hosted
+pool is declared only where the workflow names it. Its absence in a public repo makes actionlint
+reject a hand-written workflow reaching the pool. A repo that turns public has the pool taken out; a
+hand-written config at `.yaml` or `.yml` is reported and left alone.
 
 **The output is `validate.yml`, not `ci.yml`.** `ci.yml` is the name a hand-written pipeline takes
 by default, and generating over one would destroy work nothing could recover. The die refuses any `validate.yml`

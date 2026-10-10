@@ -73,6 +73,10 @@ func runToolchainShow(cmd *cobra.Command, _ []string) error {
 	for _, tool := range manifest.Tools {
 		row(out, "  %s %s\n", cyan.Sprintf("%-52s", tool.Module), tool.Version)
 	}
+	for _, binary := range manifest.Binaries {
+		row(out, "  %s %s\n", cyan.Sprintf("%-52s", binary.Name), binary.Version)
+	}
+	row(out, "  %s %s\n", cyan.Sprintf("%-52s", "hosted runner"), manifest.HostedRunner)
 	row(out, "\n")
 	return nil
 }

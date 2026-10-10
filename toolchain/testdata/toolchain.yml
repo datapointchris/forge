@@ -8,6 +8,9 @@
 # test leaves its {{pin}} behind and the generator refuses it.
 version: 1
 
+# No GitHub image carries this release, so a workflow naming it came from here.
+hosted_runner: ubuntu-99.04
+
 hooks:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: fixture-conventional-pre-commit

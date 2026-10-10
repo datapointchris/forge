@@ -104,6 +104,11 @@ type Toolchain struct {
 	// whatever the runner image happens to ship, which is the floating-version
 	// problem the rest of this manifest exists to prevent.
 	Binaries []Binary `yaml:"binaries"`
+	// HostedRunner is the GitHub-hosted image a public repo's workflows run on,
+	// named by the label for one image release. `ubuntu-latest` moves to a new
+	// release on GitHub's schedule, so a job that passed the day before can
+	// fail with nothing in the repo changed.
+	HostedRunner string `yaml:"hosted_runner"`
 	// Languages holds each language's floor and, where the language separates
 	// them, the toolchain its builds use. Populated only by LoadFile — the
 	// embedded YAML predates the declaration and carries runtimes alone, so a
@@ -159,7 +164,20 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 	if err := manifest.refuseDerivedBinaries(); err != nil {
 		return nil, fmt.Errorf("%s: %w", File, err)
 	}
+	if err := manifest.refuseFloatingRunner(); err != nil {
+		return nil, fmt.Errorf("%s: hosted_runner: %w", File, err)
+	}
 	return &manifest, nil
+}
+
+// refuseFloatingRunner rejects a hosted runner that is not one image release.
+// Empty would write a bare runs-on, and `ubuntu-latest` is the floating label
+// the pin exists to replace.
+func (t *Toolchain) refuseFloatingRunner() error {
+	if !pinnedImageRE.MatchString(t.HostedRunner) {
+		return fmt.Errorf("must name one Ubuntu image release such as ubuntu-26.04, got %q", t.HostedRunner)
+	}
+	return nil
 }
 
 // refuseDerivedBinaries rejects a binaries entry for a tool whose CI version
@@ -363,11 +381,44 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 }
 
 // ApplyWorkflowPins rewrites the pins a workflow forge did not write shares
-// with the one it did: actions, `go install` tools, uvx tools and binaries.
-// A runtime version is left alone, because a hand-written matrix may test
-// several on purpose.
+// with the one it did: actions, `go install` tools, uvx tools, binaries and the
+// hosted runner image. A runtime version is left alone, because a hand-written
+// matrix may test several on purpose.
 func (t *Toolchain) ApplyWorkflowPins(content string) string {
-	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionVersions(content))))
+	return t.ApplyRunnerLabels(t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionVersions(content)))))
+}
+
+var (
+	// pinnedImageRE is a label naming one Ubuntu image release.
+	pinnedImageRE = regexp.MustCompile(`^ubuntu-[0-9]{2}\.[0-9]{2}$`)
+	// labelTokenRE is a maximal run of the characters a runner label is made
+	// of, so `ubuntu-24.04-arm` and `my-ubuntu-latest` arrive whole and are
+	// never mistaken for the label inside them.
+	labelTokenRE = regexp.MustCompile(`[A-Za-z0-9._-]+`)
+)
+
+// ApplyRunnerLabels rewrites every general-purpose Ubuntu label in a workflow,
+// `ubuntu-latest` or a release such as `ubuntu-24.04`, to the declared hosted
+// image. That covers runs-on values and OS matrices alike. A variant such as
+// `ubuntu-24.04-arm` names a different machine and is left alone, and so is a
+// comment line, which is prose about a runner rather than a choice of one.
+func (t *Toolchain) ApplyRunnerLabels(content string) string {
+	if t.HostedRunner == "" {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		lines[i] = labelTokenRE.ReplaceAllStringFunc(line, func(token string) string {
+			if token == "ubuntu-latest" || pinnedImageRE.MatchString(token) {
+				return t.HostedRunner
+			}
+			return token
+		})
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ApplyAll runs every substitution a generated file may need.

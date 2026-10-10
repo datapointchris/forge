@@ -57,7 +57,7 @@ func TestAPrivateRepoTakesTheSelfHostedPoolOnEveryJob(t *testing.T) {
 // runner just as well.
 func TestAPublicRepoNeverNamesTheSelfHostedPool(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, Hosted)
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -66,18 +66,43 @@ func TestAPublicRepoNeverNamesTheSelfHostedPool(t *testing.T) {
 		t.Errorf("a public repo's workflow names %q:\n%s", RunnerLabel, workflow)
 	}
 	for _, value := range runsOnLines(workflow) {
-		if value != string(Hosted) {
-			t.Errorf("runs-on = %q, want %q", value, Hosted)
+		if value != string(hostedRunner(t)) {
+			t.Errorf("runs-on = %q, want %q", value, hostedRunner(t))
+		}
+	}
+}
+
+// The image is the declaration's pin, never a label forge carries. GitHub moves
+// ubuntu-latest to a new release on its own schedule, and a job that passed the
+// day before then fails with nothing in the repo changed.
+func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
+	manifest := testManifest(t)
+	manifest.HostedRunner = "ubuntu-98.10"
+
+	workflow, err := Generate(os.DirFS("blocks"), manifest,
+		comps("go", "api", "vue", "web"), "", nil, Ungated, RunnerFor(false, manifest))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	values := runsOnLines(workflow)
+	if len(values) == 0 {
+		t.Fatal("the workflow names no runner at all")
+	}
+	for _, value := range values {
+		if value != "ubuntu-98.10" {
+			t.Errorf("runs-on = %q, want the declared ubuntu-98.10", value)
 		}
 	}
 }
 
 func TestRunnerForSendsOnlyAPositivelyPrivateRepoToTheRunner(t *testing.T) {
-	if got := RunnerFor(true); got != SelfHosted {
+	manifest := testManifest(t)
+	if got := RunnerFor(true, manifest); got != SelfHosted {
 		t.Errorf("RunnerFor(true) = %q, want %q", got, SelfHosted)
 	}
-	if got := RunnerFor(false); got != Hosted {
-		t.Errorf("RunnerFor(false) = %q, want %q", got, Hosted)
+	if got := RunnerFor(false, manifest); got != Runner(manifest.HostedRunner) {
+		t.Errorf("RunnerFor(false) = %q, want %q", got, manifest.HostedRunner)
 	}
 }
 
@@ -91,45 +116,75 @@ func TestTheZeroRunnerFallsBackToTheHostedImage(t *testing.T) {
 	}
 
 	for _, value := range runsOnLines(workflow) {
-		if value != string(Hosted) {
+		if value != string(hostedRunner(t)) {
 			t.Errorf("runs-on = %q, want the hosted image", value)
 		}
+	}
+}
+
+// Both loaders refuse a declaration naming no image, so this is reached only
+// by a manifest built in code. It still never writes a bare runs-on.
+func TestTheZeroRunnerIsRefusedWhereNoImageIsDeclared(t *testing.T) {
+	manifest := testManifest(t)
+	manifest.HostedRunner = ""
+
+	if _, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, Runner("")); err == nil {
+		t.Error("Generate wrote a workflow with no runner to name")
 	}
 }
 
 // The lint config has to be a document actionlint reads, not merely a file
 // containing the label.
 //
-// Both the workflow and the config render RunnerLabel, so comparing the two
-// strings compares a constant with itself — rewriting RunnerLabel leaves that
+// Both the workflow and the config render the label, so comparing the two
+// strings compares a value with itself — changing the label leaves that
 // comparison passing. What can actually diverge is the structure around the
 // label: rename the self-hosted-runner key or reshape the nesting and the file
 // still contains the right word while declaring nothing to actionlint, which is
-// silent until it fails a private repo's hook on the next commit.
+// silent until it fails the repo's hook on the next commit.
 func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, SelfHosted)
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
+	manifest := testManifest(t)
+	for _, runner := range []Runner{Hosted(manifest), SelfHosted} {
+		workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, runner)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
 
-	values := runsOnLines(workflow)
-	if len(values) == 0 {
-		t.Fatal("the workflow names no runner at all")
-	}
-	label := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(values[0], "[self-hosted,"), "]"))
+		values := runsOnLines(workflow)
+		if len(values) == 0 {
+			t.Fatalf("%s: the workflow names no runner at all", runner)
+		}
+		label := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(values[0], "[self-hosted,"), "]"))
 
-	var parsed struct {
-		SelfHostedRunner struct {
-			Labels []string `yaml:"labels"`
-		} `yaml:"self-hosted-runner"`
-	}
-	if err := yaml.Unmarshal([]byte(ActionlintConfig(1)), &parsed); err != nil {
-		t.Fatalf("the lint config is not valid YAML: %v", err)
-	}
+		config := ActionlintConfig(manifest, runner)
+		var parsed struct {
+			SelfHostedRunner struct {
+				Labels []string `yaml:"labels"`
+			} `yaml:"self-hosted-runner"`
+		}
+		if err := yaml.Unmarshal([]byte(config), &parsed); err != nil {
+			t.Fatalf("the lint config is not valid YAML: %v", err)
+		}
 
-	if !slices.Contains(parsed.SelfHostedRunner.Labels, label) {
-		t.Errorf("the workflow runs on %q and self-hosted-runner.labels is %v:\n%s",
-			label, parsed.SelfHostedRunner.Labels, ActionlintConfig(1))
+		if !slices.Contains(parsed.SelfHostedRunner.Labels, label) {
+			t.Errorf("the workflow runs on %q and self-hosted-runner.labels is %v:\n%s",
+				label, parsed.SelfHostedRunner.Labels, config)
+		}
+	}
+}
+
+// Declaring the pool in a public repo would retire the one check that catches a
+// hand-written workflow there reaching the self-hosted runner: actionlint
+// reporting the label as unknown.
+func TestOnlyASelfHostedRepoDeclaresThePoolToActionlint(t *testing.T) {
+	manifest := testManifest(t)
+	for _, runner := range []Runner{Hosted(manifest), Runner("")} {
+		if got := ActionlintConfig(manifest, runner); strings.Contains(got, RunnerLabel) {
+			t.Errorf("runner %q was handed the pool label:\n%s", runner, got)
+		}
+	}
+	if got := ActionlintConfig(manifest, SelfHosted); !strings.Contains(got, RunnerLabel) {
+		t.Errorf("a self-hosted repo's lint config does not declare its pool:\n%s", got)
 	}
 }
 
@@ -256,7 +311,7 @@ func TestACustomSectionOnAnotherRunnerIsNamedWithItsJob(t *testing.T) {
 // The generated jobs are the ones the runner argument wrote, so none of them
 // can be foreign. A finding on every job would be noise on every repo.
 func TestAWorkflowEntirelyOnItsOwnRunnerNamesNothing(t *testing.T) {
-	for _, runner := range []Runner{Hosted, SelfHosted} {
+	for _, runner := range []Runner{hostedRunner(t), SelfHosted} {
 		workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
 			comps("go", "api", "vue", "web"), "", nil, false, runner)
 		if err != nil {
@@ -271,7 +326,10 @@ func TestAWorkflowEntirelyOnItsOwnRunnerNamesNothing(t *testing.T) {
 // The stamp is what answers "is this repo current", and a generated file
 // without one reads as hand-written to every die that checks.
 func TestTheLintConfigCarriesTheGeneratedStamp(t *testing.T) {
-	if !strings.HasPrefix(ActionlintConfig(42), "# forge-toolchain: 42\n") {
-		t.Errorf("stamp missing or wrong: %q", strings.SplitN(ActionlintConfig(42), "\n", 2)[0])
+	manifest := testManifest(t)
+	manifest.Version = 42
+	config := ActionlintConfig(manifest, SelfHosted)
+	if !strings.HasPrefix(config, "# forge-toolchain: 42\n") {
+		t.Errorf("stamp missing or wrong: %q", strings.SplitN(config, "\n", 2)[0])
 	}
 }

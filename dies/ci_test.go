@@ -52,11 +52,13 @@ func TestAPrivateRepoGetsTheLintConfigBesideTheWorkflow(t *testing.T) {
 	}
 }
 
-// A public repo gets neither half, and the missing lint config is the half
-// worth asserting. Declaring the label there would retire the one check that
-// catches a hand-written workflow in a repo a fork can open a pull request
-// against.
-func TestAPublicRepoIsOfferedNoLintConfigAndStaysOnTheHostedImage(t *testing.T) {
+// A public repo's lint config declares the pinned image and never the pool.
+// Declaring the pool there would retire the one check that catches a
+// hand-written workflow in a repo a fork can open a pull request against.
+//
+// This is the assertion that Observe hands ActionlintConfig the repo's runner.
+// Passing SelfHosted regardless writes a config every other test accepts.
+func TestAPublicRepoDeclaresItsImageToActionlintAndNeverThePool(t *testing.T) {
 	target := fixture(t, stacks("go"), nil)
 
 	applyAll(t, target, CI{})
@@ -69,32 +71,46 @@ func TestAPublicRepoIsOfferedNoLintConfigAndStaysOnTheHostedImage(t *testing.T) 
 		t.Errorf("a public repo's workflow names the pool:\n%s", workflow)
 	}
 
-	if _, err := os.Stat(target.Path(ci.ActionlintConfigPath)); !os.IsNotExist(err) {
-		t.Errorf("a public repo was given %s", ci.ActionlintConfigPath)
+	config, err := os.ReadFile(target.Path(ci.ActionlintConfigPath))
+	if err != nil {
+		t.Fatalf("read the lint config: %s", err)
+	}
+	if strings.Contains(string(config), ci.RunnerLabel) {
+		t.Errorf("a public repo's lint config declares the pool:\n%s", config)
+	}
+	if image := testAssets(t).Manifest.HostedRunner; !strings.Contains(string(config), image) {
+		t.Errorf("the lint config does not declare %s:\n%s", image, config)
 	}
 }
 
 // lintWorkflow builds a throwaway repo, and nothing a real repo carries on disk
-// reaches it. So a workflow naming the pool needs its declaration written
-// beside it there, or actionlint reports an unknown label and the finding
-// refuses `forge repos plan ci` for every private repo at once.
-func TestTheDiesOwnLintRejectsThePoolLabelWithoutTheConfigAndAcceptsItWithOne(t *testing.T) {
+// reaches it. So a workflow naming a label actionlint cannot discover needs
+// its declaration written beside it there, or actionlint reports an unknown
+// label and the finding refuses `forge repos plan ci` for every repo at once.
+// The pool is never on actionlint's list, and an image newer than the pinned
+// actionlint is not on it either.
+func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWithOne(t *testing.T) {
 	requireActionlint(t)
 
 	assets := testAssets(t)
-	workflow, err := ci.Generate(assets.CI, assets.Manifest,
-		[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, ci.SelfHosted)
-	if err != nil {
-		t.Fatalf("Generate: %s", err)
-	}
+	for runner, label := range map[ci.Runner]string{
+		ci.SelfHosted:              ci.RunnerLabel,
+		ci.Hosted(assets.Manifest): assets.Manifest.HostedRunner,
+	} {
+		workflow, err := ci.Generate(assets.CI, assets.Manifest,
+			[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, runner)
+		if err != nil {
+			t.Fatalf("Generate: %s", err)
+		}
 
-	bare := lintWorkflow(workflow, "")
-	if !strings.Contains(bare, ci.RunnerLabel) {
-		t.Fatalf("actionlint accepted an undeclared pool label, so this test measures nothing: %q", bare)
-	}
+		bare := lintWorkflow(workflow, "")
+		if !strings.Contains(bare, label) {
+			t.Fatalf("actionlint accepted an undeclared %s, so this test measures nothing: %q", label, bare)
+		}
 
-	if finding := lintWorkflow(workflow, ci.ActionlintConfig(assets.Manifest.Version)); finding != "" {
-		t.Errorf("the generated workflow does not lint against its own config: %s", finding)
+		if finding := lintWorkflow(workflow, ci.ActionlintConfig(assets.Manifest, runner)); finding != "" {
+			t.Errorf("%s: the generated workflow does not lint against its own config: %s", runner, finding)
+		}
 	}
 }
 
@@ -113,25 +129,6 @@ func requireActionlint(t *testing.T) {
 		t.Fatal("actionlint is absent where the gate declares it present — this assertion would pass vacuously")
 	}
 	t.Skip("actionlint is not installed, so runValidator returns no finding either way")
-}
-
-// The choice of config is what a public repo's safety rests on, and it has to
-// be assertable without running actionlint at all.
-//
-// This is the only assertion that Observe picks the right one. Without it,
-// hoisting the config out of Observe's runner branch — so lintWorkflow always
-// receives one — passes the entire suite, because every other assertion is
-// that lintWorkflow honors the argument it is handed.
-func TestOnlyASelfHostedRepoIsOwedALintConfig(t *testing.T) {
-	if got := lintConfigFor(ci.Hosted, 18); got != "" {
-		t.Errorf("a public repo was offered a lint config: %q", got)
-	}
-	if got := lintConfigFor(ci.Runner(""), 18); got != "" {
-		t.Errorf("the zero runner was offered a lint config: %q", got)
-	}
-	if got := lintConfigFor(ci.SelfHosted, 18); !strings.Contains(got, ci.RunnerLabel) {
-		t.Errorf("a private repo's lint config does not declare %q: %q", ci.RunnerLabel, got)
-	}
 }
 
 // Several repos hand-wrote a workflow before generation existed. Overwriting
@@ -237,11 +234,10 @@ func TestPerformWritesTheFileTheChangeNames(t *testing.T) {
 	}
 }
 
-// A repo that turns public keeps whatever forge wrote while it was private, so
-// the die has to observe a path it no longer writes to. Scoping that read to
-// the runner leaves a stale self-hosted declaration on disk with check, plan
-// and apply all reporting converged, because nothing measures it.
-func TestARepoThatTurnsPublicHasItsLintConfigRemoved(t *testing.T) {
+// A repo that turns public keeps whatever forge wrote while it was private.
+// A self-hosted declaration left on disk there is the drift, and check, plan
+// and apply all have to see it.
+func TestARepoThatTurnsPublicHasThePoolTakenOutOfItsLintConfig(t *testing.T) {
 	target := privateFixture(t, stacks("go"), nil)
 	applyAll(t, target, CI{})
 
@@ -257,17 +253,21 @@ func TestARepoThatTurnsPublicHasItsLintConfigRemoved(t *testing.T) {
 
 	applyAll(t, target, CI{})
 
-	if _, err := os.Stat(target.Path(ci.ActionlintConfigPath)); !os.IsNotExist(err) {
-		t.Errorf("%s survived the repo going public", ci.ActionlintConfigPath)
+	config, err := os.ReadFile(target.Path(ci.ActionlintConfigPath))
+	if err != nil {
+		t.Fatalf("read the lint config: %s", err)
+	}
+	if strings.Contains(string(config), ci.RunnerLabel) {
+		t.Errorf("the pool survived the repo going public:\n%s", config)
 	}
 	if again := reconcile.Assess(target, CI{}); len(again.Changes) != 0 {
-		t.Errorf("changes after the retraction = %v, want none", changedItems(again.Changes))
+		t.Errorf("changes after the rewrite = %v, want none", changedItems(again.Changes))
 	}
 }
 
-// forge removes only what it wrote. A lint config with no stamp is the repo's
+// forge rewrites only what it wrote. A lint config with no stamp is the repo's
 // own file, whatever runner that repo now takes.
-func TestAHandWrittenLintConfigIsNotRemovedFromAPublicRepo(t *testing.T) {
+func TestAHandWrittenLintConfigIsLeftAloneInAPublicRepo(t *testing.T) {
 	handWritten := "self-hosted-runner:\n  labels:\n    - " + ci.RunnerLabel + "\n"
 	target := fixture(t, stacks("go"), map[string]string{ci.ActionlintConfigPath: handWritten})
 
@@ -399,9 +399,12 @@ func TestAHandWrittenWorkflowTakesTheDeclaredPinsAndNothingElse(t *testing.T) {
 	applyAll(t, target, CI{})
 
 	got := readFile(t, target.Path(".github/workflows/release.yml"))
-	want := strings.Replace(release, "actions/checkout@v1", "actions/checkout@fixture-checkout", 1)
+	want := strings.NewReplacer(
+		"actions/checkout@v1", "actions/checkout@fixture-checkout",
+		"runs-on: ubuntu-latest", "runs-on: "+testAssets(t).Manifest.HostedRunner,
+	).Replace(release)
 	if got != want {
-		t.Errorf("release.yml =\n%s\nwant only the checkout pin changed:\n%s", got, want)
+		t.Errorf("release.yml =\n%s\nwant only the checkout pin and the runner changed:\n%s", got, want)
 	}
 }
 
