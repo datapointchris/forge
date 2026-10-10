@@ -6,7 +6,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/gitenv"
@@ -36,23 +40,43 @@ func repoWith(t *testing.T, files map[string]string) config.Repo {
 	t.Helper()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	root := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
-		cmd.Env = append(gitenv.WithoutRepoTarget(os.Environ()),
-			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	run("init", "--quiet")
+	gitIn(t, root, "init", "--quiet")
 	for rel, body := range files {
 		write(t, filepath.Join(root, rel), body)
-		run("add", "--", rel)
+		gitIn(t, root, "add", "--", rel)
 	}
-	run("commit", "--quiet", "--no-verify", "-m", "fixture")
+	gitIn(t, root, "commit", "--quiet", "--no-verify", "-m", "fixture")
 	return config.Repo{Name: "fixture", Path: root}
 }
+
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(gitenv.WithoutRepoTarget(os.Environ()),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func symlink(t *testing.T, target, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const twoHooks = committedHooks + `  # generated:python
+  - repo: local
+    hooks:
+      - id: typecheck
+        name: typecheck
+        entry: true
+        language: system
+`
 
 func write(t *testing.T, path, body string) {
 	t.Helper()
@@ -73,7 +97,7 @@ func TestTheHooksRunInAThrowawayCloneOfHEAD(t *testing.T) {
 
 	var ran []string
 	var seen, dir string
-	result := RunWith(repo, func(_ context.Context, in, hook string) (int, string) {
+	result := RunWith(context.Background(), repo, func(_ context.Context, in, hook string) (int, string) {
 		ran = append(ran, hook)
 		dir = in
 		body, _ := os.ReadFile(filepath.Join(in, "script.sh"))
@@ -104,7 +128,7 @@ func TestAnUncommittedConfigHasNoHooks(t *testing.T) {
 	repo := repoWith(t, map[string]string{"script.sh": "committed\n"})
 	write(t, filepath.Join(repo.Path, precommit.ConfigPath), committedHooks)
 
-	result := RunWith(repo, func(context.Context, string, string) (int, string) {
+	result := RunWith(context.Background(), repo, func(context.Context, string, string) (int, string) {
 		t.Error("a hook ran from a config HEAD does not hold")
 		return 0, ""
 	})
@@ -125,7 +149,7 @@ func TestInstalledPackagesAreLinkedAndTheirCachesStayInTheClone(t *testing.T) {
 	write(t, filepath.Join(modules, ".cache", "checkout-only"), "\n")
 
 	var sawPackage, sawBin, sawCache bool
-	RunWith(repo, func(_ context.Context, in, _ string) (int, string) {
+	RunWith(context.Background(), repo, func(_ context.Context, in, _ string) (int, string) {
 		linked := filepath.Join(in, "web", "node_modules")
 		sawPackage = exists(filepath.Join(linked, "eslint", "package.json"))
 		sawBin = exists(filepath.Join(linked, ".bin", "eslint"))
@@ -161,7 +185,7 @@ func TestAPackagesPostinstallRunsInTheClone(t *testing.T) {
 	write(t, filepath.Join(repo.Path, "web", "node_modules", "eslint", "package.json"), "{}\n")
 
 	var generated bool
-	result := RunWith(repo, func(_ context.Context, in, _ string) (int, string) {
+	result := RunWith(context.Background(), repo, func(_ context.Context, in, _ string) (int, string) {
 		generated = exists(filepath.Join(in, "web", ".generated"))
 		return 0, ""
 	})
@@ -182,17 +206,169 @@ func exists(path string) bool {
 	return err == nil
 }
 
+// npm links a workspace package into node_modules, as node_modules/shared ->
+// ../shared. Linked through, that resolves beside the checkout, and the hooks
+// read an edit nobody committed. A scoped workspace sits one level down, and a
+// .bin entry reaches one through node_modules.
+func TestAWorkspacePackageResolvesToHEADNotTheCheckout(t *testing.T) {
+	repo := repoWith(t, map[string]string{
+		precommit.ConfigPath:     committedHooks,
+		"package.json":           `{"workspaces": ["shared", "packages/util"]}` + "\n",
+		"shared/index.js":        "committed\n",
+		"packages/util/index.js": "committed\n",
+	})
+	write(t, filepath.Join(repo.Path, "shared", "index.js"), "uncommitted\n")
+	write(t, filepath.Join(repo.Path, "packages", "util", "index.js"), "uncommitted\n")
+	modules := filepath.Join(repo.Path, "node_modules")
+	symlink(t, "../shared", filepath.Join(modules, "shared"))
+	symlink(t, "../../packages/util", filepath.Join(modules, "@app", "util"))
+	symlink(t, "../shared/index.js", filepath.Join(modules, ".bin", "shared"))
+
+	seen := map[string]string{}
+	RunWith(context.Background(), repo, func(_ context.Context, in, _ string) (int, string) {
+		for _, rel := range []string{"shared/index.js", "@app/util/index.js", ".bin/shared"} {
+			body, _ := os.ReadFile(filepath.Join(in, "node_modules", rel))
+			seen[rel] = string(body)
+		}
+		return 0, ""
+	})
+	for rel, body := range seen {
+		if body != "committed\n" {
+			t.Errorf("node_modules/%s read %q, want HEAD's content", rel, body)
+		}
+	}
+}
+
+// A package staged in the checkout and not yet committed has no directory in
+// the clone. It made the whole repo unknown with no hook run, and unknown
+// leaves the exit code at 0.
+func TestAPackageStagedButNotCommittedLeavesTheRepoLinted(t *testing.T) {
+	repo := repoWith(t, map[string]string{precommit.ConfigPath: committedHooks})
+	write(t, filepath.Join(repo.Path, "web", "package.json"), "{}\n")
+	write(t, filepath.Join(repo.Path, "web", "node_modules", "eslint", "package.json"), "{}\n")
+	gitIn(t, repo.Path, "add", "--", "web/package.json")
+
+	ran := 0
+	result := RunWith(context.Background(), repo, func(context.Context, string, string) (int, string) {
+		ran++
+		return 0, ""
+	})
+	if result.Outcome != Passed || ran != 1 {
+		t.Errorf("outcome = %q after %d hooks (%s), want passed after 1", result.Outcome, ran, result.Note)
+	}
+}
+
+// Killing pre-commit alone left its hook's tool running in a clone about to
+// be removed, and the pipe that tool held kept the wait open past the deadline.
+func TestAHookPastItsDeadlineIsStoppedWithEverythingItStarted(t *testing.T) {
+	bin := t.TempDir()
+	pidfile := filepath.Join(t.TempDir(), "tool.pid")
+	write(t, filepath.Join(bin, "pre-commit"), "#!/bin/sh\nsleep 30 &\necho $! > \"$PIDFILE\"\nwait\n")
+	if err := os.Chmod(filepath.Join(bin, "pre-commit"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PIDFILE", pidfile)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	preCommit(ctx, t.TempDir(), "slow")
+	if elapsed := time.Since(started); elapsed >= waitDelay {
+		t.Errorf("returned after %s: the tool held the wait open", elapsed)
+	}
+
+	body, err := os.ReadFile(pidfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(2 * time.Second); syscall.Kill(pid, 0) == nil; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatalf("the hook's tool, pid %d, outlived the run", pid)
+		}
+	}
+}
+
+// An interrupted sweep left its clone in the cache, holding links into the
+// checkout, with nothing to remove it later.
+func TestAnInterruptedRunRemovesItsCloneAndSaysWhereItStopped(t *testing.T) {
+	repo := repoWith(t, map[string]string{precommit.ConfigPath: twoHooks})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var dir string
+	result := RunWith(ctx, repo, func(ctx context.Context, in, _ string) (int, string) {
+		dir = in
+		cancel()
+		<-ctx.Done()
+		return 1, ""
+	})
+	if want := "interrupted during fixer; 1 of 2 hooks never ran"; result.Outcome != Unknown || !strings.HasPrefix(result.Note, want) {
+		t.Errorf("outcome %q, note %q; want unknown, opening %q", result.Outcome, result.Note, want)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("the clone at %s outlived the interrupted run", dir)
+	}
+}
+
+// Hooks skipped once the time ran out were reported as could-not-run, and
+// nothing said the time had run out.
+func TestARepoOutOfTimeSaysSoAndNamesTheHookItStoppedIn(t *testing.T) {
+	repo := repoWith(t, map[string]string{precommit.ConfigPath: twoHooks})
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	result := RunWith(ctx, repo, func(ctx context.Context, _, _ string) (int, string) {
+		<-ctx.Done()
+		return 1, ""
+	})
+	if want := "hit the " + Timeout.String() + " limit during fixer; 1 of 2 hooks never ran"; !strings.HasPrefix(result.Note, want) {
+		t.Errorf("note %q, want it to open %q", result.Note, want)
+	}
+}
+
+// Offline with a cold hook cache, pre-commit cannot fetch a hook's environment
+// and exits 3. Every hook read as failed, and the run exited 1 on code that may
+// be clean.
+func TestAHookPreCommitCouldNotSetUpIsUnknown(t *testing.T) {
+	repo := repoWith(t, map[string]string{precommit.ConfigPath: committedHooks})
+	const why = "An unexpected error has occurred: CalledProcessError: command: ('/usr/bin/git', 'fetch', 'origin', '--tags')"
+	result := RunWith(context.Background(), repo, func(context.Context, string, string) (int, string) {
+		return 3, why
+	})
+	if result.Outcome != Unknown || len(result.Hooks) != 1 || result.Hooks[0].Output != why {
+		t.Errorf("outcome %q, hooks %+v; want unknown with pre-commit's reason kept", result.Outcome, result.Hooks)
+	}
+}
+
+// forge run from inside a pre-commit hook inherits GIT_DIR and GIT_INDEX_FILE
+// naming that hook's repository. The run must still lint the repo it was given.
+func TestARunInsideAnotherRepositorysHookLintsItsOwnTarget(t *testing.T) {
+	repo := repoWith(t, map[string]string{precommit.ConfigPath: committedHooks, "script.sh": "committed\n"})
+	other := repoWith(t, map[string]string{"script.sh": "the other repository\n"})
+	t.Setenv("GIT_DIR", filepath.Join(other.Path, ".git"))
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(other.Path, ".git", "index"))
+
+	var seen string
+	result := RunWith(context.Background(), repo, func(_ context.Context, in, _ string) (int, string) {
+		body, _ := os.ReadFile(filepath.Join(in, "script.sh"))
+		seen = string(body)
+		return 0, ""
+	})
+	if result.Outcome != Passed || seen != "committed\n" {
+		t.Errorf("outcome %q (%s), the hook saw %q; want passed over the given repo's HEAD", result.Outcome, result.Note, seen)
+	}
+}
+
 // A tool missing from this machine says nothing about the code, so it must not
 // read as a failure. A real failure still outranks it.
 func TestAMissingToolIsUnknownAndAFailureOutranksIt(t *testing.T) {
-	repo := repoWith(t, map[string]string{precommit.ConfigPath: committedHooks + `  # generated:python
-  - repo: local
-    hooks:
-      - id: typecheck
-        name: typecheck
-        entry: true
-        language: system
-`})
+	repo := repoWith(t, map[string]string{precommit.ConfigPath: twoHooks})
 	outputs := map[string]struct {
 		code   int
 		output string
@@ -200,7 +376,7 @@ func TestAMissingToolIsUnknownAndAFailureOutranksIt(t *testing.T) {
 		"fixer":     {1, "Executable `shfmt` not found"},
 		"typecheck": {1, "- hook id: typecheck\n- exit code: 1\n\nfound 2 errors"},
 	}
-	result := RunWith(repo, func(_ context.Context, _, hook string) (int, string) {
+	result := RunWith(context.Background(), repo, func(_ context.Context, _, hook string) (int, string) {
 		return outputs[hook].code, outputs[hook].output
 	})
 

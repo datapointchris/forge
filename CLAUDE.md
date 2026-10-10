@@ -33,16 +33,24 @@ something.
   tool has one. It never runs a bare subcommand, because a noun that performs a read with no verb
   would fire that read against a live API. It reports variation and exits 0 whatever it finds.
 - **`lint` runs the hooks CI runs, over every file, in a throwaway clone of HEAD.** The list is
-  `ci.HooksToRun` of the committed config, so the local answer and CI's cannot differ. Several hooks
-  rewrite what they check, so each repo is cloned with `--shared` under the cache. That borrows the
-  repo's objects and writes nothing into its `.git`, where a worktree would register itself and
-  outlive a killed run. The vue hooks resolve their tools in `node_modules`, so each package gets a
-  `node_modules` of the clone's own holding a link per installed entry. Top-level dot-directories
-  other than `.bin` are left out. vue-tsc, jiti and Vue's global types write caches there, and a
-  link to the whole directory would send those writes into the checkout. A package's `postinstall` then
-  runs in the clone, as `npm ci` runs it in CI. Nuxt's generates the types its typecheck reads. A
-  hook whose tool is missing reports `unknown`, the shell's 127 or pre-commit's "Executable not
-  found", and never moves the exit code.
+  `ci.HooksToRun` of the committed config, so a local run and CI run the same hooks. CI runs them
+  over what a push changed, and `lint` runs them over every file, so `lint` can fail where CI
+  passes. Several hooks rewrite what they check, so each repo is cloned with `--shared` under the
+  cache. That borrows the repo's objects and writes nothing into its `.git`, where a worktree would
+  register itself and outlive a killed run.
+- **The clone gets each package's `node_modules` as a mirror, never a link to the directory.** The
+  vue hooks resolve their tools there. Top-level dot-directories other than `.bin` are left out,
+  because vue-tsc, jiti and Vue's global types write caches there, and a whole-directory link would
+  send those writes into the checkout. A link npm made is recreated rather than followed: a
+  workspace package such as `node_modules/shared -> ../shared` points at the clone's copy, which is
+  HEAD's, and `.bin` and `@scope` entries are rebuilt the same way. A package's `postinstall` then
+  runs in the clone, as `npm ci` runs it in CI. Nuxt's generates the types its typecheck reads.
+- **A `lint` run stops whole.** pre-commit and npm lead their own process groups, and a timeout or
+  Ctrl-C kills the group, so no tool outlives the clone it runs in. The run catches the signal
+  itself for that reason, and removes each clone before it exits. A hook whose tool is missing
+  reports `unknown`, from the shell's 127 or pre-commit's "Executable not found", and so does
+  pre-commit's own exit 3, which is a hook environment it could not set up. None moves the exit
+  code.
 - **Nothing in forge writes a pin.** `toolchain show` reads the file `versions_file` names and prints
   the path beside the version. A pin is chosen, not discovered.
 

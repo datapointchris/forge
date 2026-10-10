@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"sort"
+	"syscall"
 	"time"
 
 	"github.com/datapointchris/goclikit"
@@ -18,10 +22,10 @@ var lintCmd = &cobra.Command{
 	Long: `Run every hook a standard block put in each repo's committed
 .pre-commit-config.yaml, over every file the repo tracks.
 
-The hooks are the ones the repo's generated CI runs, read the same way, so a
-local run and CI cannot disagree about what "the lint" means. A hook in a
-custom section is not run: some need a workstation, such as one driving an
-editor or a local stack.
+The hooks are the ones the repo's generated CI runs, read the same way. CI
+runs them over what a push changed, and this runs them over every file, so it
+can fail where CI passes. A hook in a custom section is not run: some need a
+workstation, such as one driving an editor or a local stack.
 
 Each repo is linted in a throwaway clone of its HEAD under forge's cache,
 because several hooks rewrite what they check. The checkout is never written,
@@ -29,8 +33,9 @@ so an uncommitted change is not what gets linted.
 
 Four outcomes, not two. ` + "`no_hooks`" + ` is a repo with no committed config, or none
 of forge's hooks in it. ` + "`unknown`" + ` is a hook whose tool is not on this machine,
-or a repo that ran out of time. Nothing is installed to fix that: it is a fact
-about this machine rather than about the code.
+a hook environment pre-commit could not set up, or a repo that ran out of time.
+Nothing is installed to fix that: it is a fact about this machine rather than
+about the code.
 
 Exit 1 if any hook failed. ` + "`unknown`" + ` does not fail the run, because an
 unmeasurable item is not drift.`,
@@ -63,8 +68,12 @@ func runLint(cmd *cobra.Command, args []string) error {
 	}
 	sort.Slice(selected, func(i, j int) bool { return selected[i].Name < selected[j].Name })
 
+	// Hooks lead their own process groups, so only this stops them on a Ctrl-C.
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	started := time.Now()
-	results := lint.RunRepos(selected, lintJobs)
+	results := lint.RunRepos(ctx, selected, lintJobs)
 	elapsed := time.Since(started).Round(time.Millisecond).Seconds()
 
 	if lintJSON {
@@ -80,6 +89,9 @@ func runLint(cmd *cobra.Command, args []string) error {
 		writeLintResults(cmd, results, elapsed)
 	}
 
+	if ctx.Err() != nil {
+		return errors.New("interrupted: the rows above are partial")
+	}
 	return lintVerdict(results)
 }
 

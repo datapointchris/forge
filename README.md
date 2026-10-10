@@ -225,15 +225,16 @@ forge lint -j 4                # repos at once; default is half the CPUs
 
 The hooks are the ones the repo's generated CI runs: every hook a standard block
 put in the committed `.pre-commit-config.yaml`. A hook in a custom section is the
-repo's own and is not run. Each repo is linted in a throwaway clone of its HEAD,
+repo's own and is not run. CI runs them over what a push changed, so `lint` can
+fail on a file CI never checked. Each repo is linted in a throwaway clone of its HEAD,
 because several hooks rewrite what they check, so the checkout is never written and
 an uncommitted change is not linted. A package's installed dependencies are linked
 into the clone, and its `postinstall` script runs there, as `npm ci` runs it in CI.
 
 The outcomes follow `forge test`. `no_hooks` is a repo with no committed config or
 none of forge's hooks in it. `unknown` is a hook whose tool is not on this machine,
-or a repo that ran out of time, and it does not move the exit code. A name that
-matches no repo exits 2.
+a hook environment pre-commit could not set up, or a repo that ran out of time, and
+it does not move the exit code. A name that matches no repo exits 2.
 
 ### Command surfaces
 
