@@ -45,7 +45,7 @@ var (
 func init() {
 	testCmd.Flags().BoolVar(&testJSON, "json", false, "Output as JSON to stdout")
 	testCmd.Flags().BoolVar(&testFailedOnly, "failed", false, "Print captured output for failures only, rather than nothing")
-	testCmd.Flags().IntVarP(&testJobs, "jobs", "j", 0, "Repos to test at once; 0 is one per CPU")
+	testCmd.Flags().IntVarP(&testJobs, "jobs", "j", 0, "Repos to test at once; 0 is half the CPUs")
 	addRegistryFlag(testCmd)
 	rootCmd.AddCommand(testCmd)
 }
