@@ -266,7 +266,7 @@ func TestADeclaredCommitReplacesWhateverRefTheLineHeld(t *testing.T) {
 }
 
 func TestTheRefusalOfATagAloneAsksForBothFields(t *testing.T) {
-	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nactions:\n  - uses: github/codeql-action/init\n    version: v3\n")}}
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nactions:\n  - uses: github/codeql-action/init\n    version: v3\n")}}
 	_, err := Load(fixture)
 	if err == nil {
 		t.Fatal("loaded without complaint")
