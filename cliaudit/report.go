@@ -37,8 +37,8 @@ var jobs = []Job{
 var queryNames = map[string]bool{
 	"status": true, "stats": true, "next": true, "now": true, "due": true,
 	"todo": true, "overview": true, "brief": true, "report": true, "search": true,
-	"dashboard": true, "blocked": true, "current": true, "random": true, "pick": true,
-	"doctor": true, "config": true, "version": true, "update": true, "auth": true,
+	"dashboard": true, "blocked": true, "completed": true, "current": true, "random": true, "pick": true,
+	"doctor": true, "version": true, "update": true, "auth": true,
 	"login": true, "logout": true, "token": true, "reference": true, "demo": true,
 	"ui": true, "browse": true, "init": true, "run": true, "exec": true, "check": true,
 	"apply": true, "sync": true, "undo": true, "read": true, "play": true, "export": true,
@@ -83,13 +83,14 @@ type Report struct {
 func Analyze(tools []*clisurface.Tool, unresolved []Unresolved) *Report {
 	rep := &Report{Verbs: map[string][]VerbUse{}, Unresolved: unresolved}
 	seen := map[string]map[string]map[string]bool{} // job -> tool -> spelling
+	namespaced := namespaceNames(tools)
 
 	for _, t := range tools {
 		rep.Tools = append(rep.Tools, t.Binary)
 		t.Walk(func(n *clisurface.Node) {
 			rep.NodeCount++
 			recordVerb(seen, t.Binary, n)
-			rep.Findings = append(rep.Findings, inspect(t, n)...)
+			rep.Findings = append(rep.Findings, inspect(t, n, namespaced)...)
 		})
 		if t.Root != nil && t.Root.Leaf() && t.Framework != clisurface.FrameworkFlat {
 			rep.Findings = append(rep.Findings, Finding{
@@ -149,8 +150,21 @@ func recordVerb(seen map[string]map[string]map[string]bool, tool string, n *clis
 	}
 }
 
+// namespaceNames is every name some tool in the scan gives commands of its own.
+func namespaceNames(tools []*clisurface.Tool) map[string]bool {
+	names := map[string]bool{}
+	for _, t := range tools {
+		t.Walk(func(n *clisurface.Node) {
+			if !n.Leaf() {
+				names[n.Name] = true
+			}
+		})
+	}
+	return names
+}
+
 // inspect applies the shape rules to one node.
-func inspect(t *clisurface.Tool, n *clisurface.Node) []Finding {
+func inspect(t *clisurface.Tool, n *clisurface.Node, namespaced map[string]bool) []Finding {
 	var out []Finding
 	cmd := strings.Join(n.Path, " ")
 
@@ -169,7 +183,7 @@ func inspect(t *clisurface.Tool, n *clisurface.Node) []Finding {
 
 	// A resource that could ever grow a second command is a namespace today, so
 	// a bare noun that acts is reported.
-	if n.Leaf() && looksLikeNoun(n.Name) && !queryNames[n.Name] {
+	if n.Leaf() && looksLikeNoun(n.Name, namespaced) && !queryNames[n.Name] {
 		out = append(out, Finding{Kind: "bare-noun", Tool: t.Binary, Command: cmd})
 	}
 	return out
@@ -180,6 +194,7 @@ var verbWords = map[string]bool{
 	"edit": true, "set": true, "list": true, "show": true, "reorder": true,
 	"move": true, "search": true, "complete": true, "clear": true, "get": true,
 	"put": true, "copy": true, "rm": true, "view": true, "swap": true, "promote": true,
+	"log": true, "review": true, "audit": true, "serve": true, "eval": true, "snapshot": true,
 }
 
 func isVerb(s string) bool { return verbWords[s] }
@@ -194,11 +209,20 @@ func splitCompound(name string) (verb, noun string, ok bool) {
 	return v, rest, true
 }
 
-// looksLikeNoun is deliberately crude — a plural, or a known set name. It only
-// generates candidates; the report says "worth a look", never "wrong".
-func looksLikeNoun(s string) bool {
+// looksLikeNoun is deliberately crude: a plural, or a name some tool in the scan
+// already gives commands of its own. It only generates candidates; the report
+// says "worth a look", never "wrong".
+//
+// The second test is what reaches a singular resource. A plural suffix never
+// does, so a bare `config` that acts went unreported while other tools held a
+// `config` with verbs under it. Another tool namespacing the name is the
+// evidence the rule asks for: that resource did grow a second command.
+func looksLikeNoun(s string, namespaced map[string]bool) bool {
 	if isVerb(s) {
 		return false
+	}
+	if namespaced[s] {
+		return true
 	}
 	return strings.HasSuffix(s, "s") && !strings.HasSuffix(s, "ss")
 }

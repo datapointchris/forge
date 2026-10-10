@@ -83,6 +83,28 @@ func TestQueryNamesAreNotBareNouns(t *testing.T) {
 	}
 }
 
+// A singular resource carries no plural suffix to catch, so the evidence is
+// another tool holding the same name as a namespace. A singular name nothing
+// namespaces stays quiet.
+func TestASingularNameAnotherToolNamespacesIsABareNoun(t *testing.T) {
+	config := node("config")
+	config.Children = []*clisurface.Node{node("config", "show")}
+	rep := Analyze([]*clisurface.Tool{
+		tool("tidy", config),
+		tool("loose", node("config"), node("vocabulary")),
+	}, nil)
+
+	var flagged []string
+	for _, f := range rep.Findings {
+		if f.Kind == "bare-noun" {
+			flagged = append(flagged, f.Tool+" "+f.Command)
+		}
+	}
+	if len(flagged) != 1 || flagged[0] != "loose config" {
+		t.Errorf("bare nouns = %v, want only [loose config]", flagged)
+	}
+}
+
 func TestUnreadableToolIsReported(t *testing.T) {
 	rep := Analyze([]*clisurface.Tool{{Binary: "quiet", Framework: clisurface.FrameworkRich, Root: &clisurface.Node{Name: "quiet"}}}, nil)
 	var found bool
