@@ -532,6 +532,19 @@ func TestTheBatsStepRunsTheSuitesAgainstTheDeclaredJq(t *testing.T) {
 	}
 }
 
+func TestTheRustJobAuditsTheLockfileAtTheDeclaredRelease(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("rust", "."), "", nil, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(workflow, `cargo_audit_version="fixture-cargo-audit"`) {
+		t.Fatalf("the audit step does not take cargo-audit's declared version:\n%s", workflow)
+	}
+	if !strings.Contains(workflow, `"$RUNNER_TEMP/cargo-audit/cargo-audit" audit`+"\n") {
+		t.Errorf("the rust job never runs the downloaded cargo-audit:\n%s", workflow)
+	}
+}
+
 // Regeneration carries a custom section across as written, so one naming a
 // declared action would keep its old version through every bump.
 func TestACustomSectionTakesTheDeclaredPins(t *testing.T) {

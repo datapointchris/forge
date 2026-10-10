@@ -83,6 +83,8 @@ binaries:
     version: fixture-bats-assert
   - name: jq
     version: fixture-jq
+  - name: cargo_audit
+    version: fixture-cargo-audit
 
 runtimes:
   - name: node
