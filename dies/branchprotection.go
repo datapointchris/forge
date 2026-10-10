@@ -72,18 +72,11 @@ func (BranchProtection) Observe(t reconcile.Target) (reconcile.Observation, erro
 		return branchProtectionState{repo: repo, summary: "no default branch yet (empty repo)"}, nil
 	}
 
-	// A branch with no protection 404s, which is a state to fix rather than an
-	// error to report.
 	out, err := runIn(t.Repo.Path, "gh", "api",
 		fmt.Sprintf("repos/%s/branches/%s/protection", repo.slug, repo.defaultBranch),
 		"--jq", `"\(.allow_force_pushes.enabled) \(.allow_deletions.enabled) \(.enforce_admins.enabled)"`)
 	if err != nil {
-		return branchProtectionState{repo: repo, changes: []reconcile.Change{{
-			Item:    repo.defaultBranch,
-			Verdict: reconcile.Missing,
-			Repair:  reconcile.Automatic,
-			Detail:  "unprotected — force-push and deletion would be allowed",
-		}}}, nil
+		return protectionRefused(repo, err), nil
 	}
 
 	fields := strings.Fields(out)
@@ -101,6 +94,33 @@ func (BranchProtection) Observe(t reconcile.Target) (reconcile.Observation, erro
 	}
 
 	return branchProtectionState{repo: repo, changes: changes}, nil
+}
+
+// protectionRefused reads why GitHub would not return a branch's protection.
+// gh prints the API's message and status on stderr, which runIn carries in the
+// error.
+//
+// A 404 is a branch with no protection, which apply fixes. A 403 asking for an
+// upgrade is a private repo on a plan that offers no protection, which no write
+// can change, so it is out of scope in the way another provider is. Anything
+// else left the state unread, and unverified is not permission.
+func protectionRefused(repo ghRepo, err error) branchProtectionState {
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "(HTTP 404)"):
+		return branchProtectionState{repo: repo, changes: []reconcile.Change{{
+			Item:    repo.defaultBranch,
+			Verdict: reconcile.Missing,
+			Repair:  reconcile.Automatic,
+			Detail:  "unprotected — force-push and deletion would be allowed",
+		}}}
+	case strings.Contains(message, "(HTTP 403)") && strings.Contains(message, "Upgrade to GitHub Pro"):
+		return branchProtectionState{repo: repo, summary: "private repo on a GitHub plan without branch protection"}
+	default:
+		return branchProtectionState{repo: repo, changes: []reconcile.Change{
+			unknownChange(repo.defaultBranch, "could not read protection for "+repo.slug),
+		}}
+	}
 }
 
 func (BranchProtection) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
