@@ -1,19 +1,20 @@
 package dies
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/datapointchris/forge/reconcile"
 )
 
-const conflicted = `package main
-
-<<<<<<< HEAD
-const greeting = "ours"
-=======
-const greeting = "theirs"
->>>>>>> branch
-`
+// conflicted spells each marker with strings.Repeat, because a marker opening a
+// line of this file is what the die reports when it checks forge itself.
+var conflicted = "package main\n\n" +
+	strings.Repeat("<", 7) + " HEAD\n" +
+	"const greeting = \"ours\"\n" +
+	strings.Repeat("=", 7) + "\n" +
+	"const greeting = \"theirs\"\n" +
+	strings.Repeat(">", 7) + " branch\n"
 
 func TestConflictMarkersSaysNothingAboutACleanRepo(t *testing.T) {
 	target := unversionedFixture(t, stacks("go"), map[string]string{
