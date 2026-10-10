@@ -17,6 +17,7 @@ import (
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 const preCommitConfigPath = ".pre-commit-config.yaml"
@@ -173,7 +174,7 @@ func (m maintenance) reason() string {
 		return "declares no toolchain, and forge has written nothing here to maintain"
 	case unstamped:
 		return "declares no toolchain, and the " + preCommitConfigPath + " here carries no " +
-			toolchainStamp + " stamp, so forge did not write it"
+			stampMark + " stamp, so forge did not write it"
 	case byDeclaration, byStamp:
 	}
 	return ""
@@ -208,7 +209,7 @@ func maintained(declared *config.Toolchain, existing string) (*config.Toolchain,
 	if existing == "" {
 		return nil, unmaintained
 	}
-	if !strings.HasPrefix(existing, toolchainStamp) {
+	if !strings.HasPrefix(existing, toolchain.StampPrefix) {
 		return nil, unstamped
 	}
 	return &config.Toolchain{}, byStamp
@@ -260,7 +261,7 @@ func strandedToolConfigs(root string, basis maintenance) []reconcile.Change {
 	var changes []reconcile.Change
 	for _, rel := range generic {
 		changes = append(changes, blocker(rel, "forge deploys this beside "+preCommitConfigPath+
-			", and that file is gone, so nothing left here carries the "+toolchainStamp+
+			", and that file is gone, so nothing left here carries the "+stampMark+
 			" stamp that says whether forge wrote it — declare the repo's toolchain to have forge maintain it again, or remove it"))
 	}
 	return changes

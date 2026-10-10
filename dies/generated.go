@@ -7,17 +7,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/datapointchris/forge/ci"
 	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/toolchain"
 )
 
-// toolchainStamp marks a file as generated. Its absence on an existing file is
-// what makes that file hand-written by definition — overwriting one would
-// discard work with no way back.
-const toolchainStamp = "# forge-toolchain:"
+// stampMark is toolchain.StampPrefix as a message names it. The stamp marks a
+// file as generated, so its absence on an existing file makes that file
+// hand-written by definition, and overwriting one would discard work with no
+// way back.
+var stampMark = strings.TrimSpace(toolchain.StampPrefix)
 
 // managedMark marks a file forge deploys whole from a static template.
 //
-// Separate from toolchainStamp because the two answer different questions. A
+// Separate from the stamp because the two answer different questions. A
 // generated file's content is derived from the manifest, so its marker carries
 // the version and a staged rollout reads it. A tool config is a template copied
 // verbatim, so ownership is the only fact its marker has to carry — a version
@@ -26,7 +29,25 @@ const toolchainStamp = "# forge-toolchain:"
 const managedMark = "# forge-managed"
 
 // forgeMarks are the first lines that identify a file as forge's own.
-var forgeMarks = []string{toolchainStamp, managedMark}
+var forgeMarks = []string{toolchain.StampPrefix, managedMark}
+
+// StampedFile is a file a die generates with the toolchain stamp on its first
+// line, and the die that writes it.
+type StampedFile struct {
+	Path string `json:"path"`
+	Die  string `json:"die"`
+}
+
+// StampedFiles names every file a die writes the stamp into, relative to a
+// repo. A reader of the stamp takes this list from `forge stamp spec`, so one
+// left off here is a file whose rollout nothing reports.
+func StampedFiles() []StampedFile {
+	return []StampedFile{
+		{Path: preCommitConfigPath, Die: PreCommit{}.Name()},
+		{Path: ci.WorkflowPath, Die: CI{}.Name()},
+		{Path: ci.ActionlintConfigPath, Die: CI{}.Name()},
+	}
+}
 
 // generatedFile is one file the standard owns whole, as opposed to the
 // append-only .gitignore the gitignore die asserts entries in.

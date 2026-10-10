@@ -103,14 +103,14 @@ func RunnerFor(private bool) Runner {
 // public repo would retire the one check that catches a hand-written workflow
 // there reaching the self-hosted runner.
 func ActionlintConfig(stampVersion int) string {
-	return fmt.Sprintf(`# forge-toolchain: %d
+	return fmt.Sprintf(`%s
 # Labels actionlint cannot discover, because they belong to a self-hosted
 # runner rather than to one of GitHub's hosted images. Without this every
 # runs-on naming one is reported as a typo and the actionlint hook fails.
 self-hosted-runner:
   labels:
     - %s
-`, stampVersion, RunnerLabel)
+`, toolchain.StampFor(stampVersion), RunnerLabel)
 }
 
 // releaseGateRef matches a reusable-workflow call naming this workflow, the
@@ -258,7 +258,7 @@ func Generate(
 	var lines []string
 	lines = append(
 		lines,
-		fmt.Sprintf("# forge-toolchain: %d", manifest.Version),
+		manifest.Stamp(),
 		"name: CI",
 		"",
 		"on:",

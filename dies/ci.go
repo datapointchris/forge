@@ -145,10 +145,10 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if !handWritten(root, file.rel) {
 			continue
 		}
-		detail := "exists without the " + toolchainStamp +
+		detail := "exists without the " + stampMark +
 			" stamp, so it was hand-written and will not be overwritten"
 		if !file.wanted() {
-			detail = "exists without the " + toolchainStamp +
+			detail = "exists without the " + stampMark +
 				" stamp, so forge did not write it and will not remove it"
 		}
 		state.blockers = append(state.blockers, blocker(file.rel, detail))

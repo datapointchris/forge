@@ -242,6 +242,7 @@ otherwise bury the single renamed flag the diff is run to find.
 
 ```bash
 forge toolchain show           # what is pinned now, and which file said so
+forge stamp spec --json        # which files carry the version stamp, and its form
 ```
 
 Versions are declared, never discovered. `show` names the file it read:

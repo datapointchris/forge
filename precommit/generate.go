@@ -467,7 +467,7 @@ func Generate(
 	customIDs := GetCustomHookIDs(customSections)
 
 	var lines []string
-	lines = append(lines, fmt.Sprintf("# forge-toolchain: %d", manifest.Version))
+	lines = append(lines, manifest.Stamp())
 	lines = append(lines, "fail_fast: true")
 	lines = append(lines, "default_stages: [pre-commit]")
 	if declared.Exclude != "" {

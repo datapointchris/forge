@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 func TestCacheHomeFollowsXDG(t *testing.T) {
@@ -156,7 +157,7 @@ func TestCheckGeneratedRequiresAStampedConfig(t *testing.T) {
 		t.Error("a hand-written config was accepted")
 	}
 
-	if err := os.WriteFile(handWritten, []byte(toolchainStamp+" 11\nrepos: []\n"), 0o644); err != nil {
+	if err := os.WriteFile(handWritten, []byte(toolchain.StampFor(11)+"\nrepos: []\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := CheckGenerated(tree); err != nil {

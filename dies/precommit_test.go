@@ -283,7 +283,7 @@ func TestPrecommitSaysWhichOfTheTwoReasonsItIs(t *testing.T) {
 	if never.Summary == unstamped.Summary {
 		t.Fatalf("both states report %q, so a reader cannot tell which remedy applies", never.Summary)
 	}
-	if !strings.Contains(unstamped.Summary, toolchainStamp) {
+	if !strings.Contains(unstamped.Summary, stampMark) {
 		t.Errorf("summary = %q, want it to name the missing stamp", unstamped.Summary)
 	}
 }

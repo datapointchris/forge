@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -18,6 +19,25 @@ const File = "toolchain.yml"
 // A pin the versions file does not fill survives rendering, and Unpinned names
 // it so the generator can refuse the file rather than ship the placeholder.
 const Pin = "{{pin}}"
+
+// StampPrefix opens the first line of every file forge generates from the
+// declaration, and the declaration's stamp version follows it. A file at a
+// generated path without it is hand-written, which is what keeps forge from
+// overwriting one.
+const StampPrefix = "# forge-toolchain: "
+
+// StampLine is the 1-based line of a generated file that carries the stamp.
+const StampLine = 1
+
+// Stamp is the first line of a file generated from this declaration.
+func (t *Toolchain) Stamp() string {
+	return StampFor(t.Version)
+}
+
+// StampFor is the first line of a file generated at stamp version.
+func StampFor(version int) string {
+	return StampPrefix + strconv.Itoa(version)
+}
 
 var (
 	repoLineRE    = regexp.MustCompile(`^(\s*-\s*repo:\s*)(\S+)\s*$`)

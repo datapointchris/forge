@@ -25,15 +25,11 @@ import (
 	"strings"
 
 	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 // ConfigPath is the generated file whose hooks a run executes.
 const ConfigPath = ".pre-commit-config.yaml"
-
-// toolchainStamp marks the config as generated. A hand-written one is not
-// something to run blind, for the same reason the ci die refuses an unstamped
-// validate.yml rather than overwriting it.
-const toolchainStamp = "# forge-toolchain:"
 
 // Index is a throwaway git index over a directory git does not version.
 type Index struct {
@@ -263,9 +259,11 @@ func CheckGenerated(workTree string) error {
 	if err != nil {
 		return fmt.Errorf("%w in %s: run `forge directories apply precommit` first", ErrNotGenerated, workTree)
 	}
-	if !strings.HasPrefix(string(data), toolchainStamp) {
+	// A config without the stamp is hand-written, and not something to run
+	// blind, for the same reason the ci die refuses an unstamped validate.yml.
+	if !strings.HasPrefix(string(data), toolchain.StampPrefix) {
 		return fmt.Errorf("%s in %s has no %s stamp, so it was hand-written: run `forge directories apply precommit` to adopt the standard",
-			ConfigPath, workTree, toolchainStamp)
+			ConfigPath, workTree, strings.TrimSpace(toolchain.StampPrefix))
 	}
 	return nil
 }
