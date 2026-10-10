@@ -140,7 +140,7 @@ refused as a second copy.
 `toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its values name
 tools rather than releases.
 
-**No hook runs a linter or formatter from `PATH`.** A hook doing so passes or fails by what that
+**A hook whose tool is a Go module never runs it from `PATH`.** A hook doing so passes or fails by what that
 machine last installed, and gofumpt writes, so two releases rewrite each other. A hook whose tool is
 a Go module runs as a `repo: local`, `language: golang` hook. pre-commit installs it from an
 `additional_dependencies` item `- <module>@{{pin}}`, which `ApplyDependencyVersions` fills from the

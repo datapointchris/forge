@@ -110,7 +110,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommitConfig,
 		customSections, ci.ReleaseGatesOnValidate(root), runner)
 	if errors.Is(err, ci.ErrNoJobs) {
-		return ciState{reason: "no component has a CI block, and no hook is left for the hooks job"}, nil
+		return ciState{reason: "no component has a CI block and the committed pre-commit config names no hook to run"}, nil
 	}
 	if err != nil {
 		return nil, err

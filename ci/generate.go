@@ -28,7 +28,7 @@ import (
 // components has a CI block, and it has no pre-commit config of forge's for
 // HooksJob to run. That repo is owed no workflow, which is not a failure to
 // generate one.
-var ErrNoJobs = errors.New("no component has a CI block and no hook is left for the hooks job: nothing to generate")
+var ErrNoJobs = errors.New("no component has a CI block and the committed pre-commit config names no hook to run: nothing to generate")
 
 // WorkflowPath is where the generated workflow lands. Deliberately not ci.yml:
 // ci.yml is the name a hand-written pipeline takes by default, and generating
