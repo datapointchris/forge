@@ -336,16 +336,6 @@ owns the module, never to a fleet-wide sweep.
 Both numbers come from the declaration's `languages.go`. Bump the toolchain on a standard-library
 advisory; `govulncheck` in generated CI is what reports one.
 
-**A module whose CI Go the pinned linter cannot build is refused, never written.** Generated CI
-sets up go.mod's toolchain directive where there is one and its floor otherwise, under
-`GOTOOLCHAIN=local`. It then installs golangci-lint, and on a Go below the linter's own minimum
-that install exits 1 with `requires go >= X`. A declaration doing that does it in every Go repo at
-once, with nothing wrong in any of them. A floor below the minimum is still written where an owed
-toolchain line puts CI above it, because the floor only says who may consume the module. The declaration carries that bottom as `languages.go.binding_minimum` —
-declared rather than derived, because reading it needs the module proxy and a die that reaches
-the network to decide one line is a die that fails offline. The refusal is `ByHand`, so it
-surfaces in `check` and `apply` cannot reach it.
-
 **A floor moves in either direction.** Lowering one is safe for every consumer; raising one excludes
 them. No module is floored above the declaration, so nothing in the portfolio is stricter than the
 fleet. The declaration carries its own exceptions below the floor, and a retired repo is not drift.

@@ -95,9 +95,6 @@ type gomodState struct {
 	// converged rather than inventing a version.
 	floor  string
 	pinned string
-	// minimum is the Go the pinned golangci-lint requires, which lintRefused
-	// holds each module's CI Go to.
-	minimum string
 }
 
 func (s gomodState) Summary() string {
@@ -129,9 +126,6 @@ func (GoMod) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			if version, managed := m.RuntimeVersion("go"); managed {
 				state.pinned = version
 			}
-		}
-		if lang, declared := m.LanguageFor("go"); declared {
-			state.minimum = lang.Minimum()
 		}
 	}
 	if t.Repo.Toolchain == nil {
@@ -230,23 +224,9 @@ func (GoMod) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconci
 			continue
 		}
 		changes = append(changes, moduleChanges(state, module)...)
-		// A refused module converges nothing, so no image is moved to a Go its
-		// go.mod will not name.
-		if !lintRefused(state, module) {
-			changes = append(changes, imageChanges(state, module)...)
-		}
+		changes = append(changes, imageChanges(state, module)...)
 	}
 	return changes, nil
-}
-
-// lintRefused reports a module whose CI Go, as buildGo reads it, is older than
-// the pinned linter's minimum. CI installs golangci-lint under
-// GOTOOLCHAIN=local, and `go install` then exits 1 with `requires go >=
-// <minimum>`. Converging the module would leave that Lint job failing with
-// nothing wrong in its code.
-func lintRefused(state gomodState, module goModule) bool {
-	build := buildGo(state, module)
-	return state.minimum != "" && build != "" && !meetsFloor(build, state.minimum)
 }
 
 // convergedFloor is the `go` directive a module holds once this die has run.
@@ -290,16 +270,6 @@ func buildGo(state gomodState, module goModule) string {
 func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 	item := filepath.Join(module.rel, "go.mod")
 	var changes []reconcile.Change
-
-	if lintRefused(state, module) {
-		return []reconcile.Change{{
-			Item:     item,
-			Verdict:  reconcile.Stale,
-			Repair:   reconcile.ByHand,
-			Detail:   fmt.Sprintf("CI would set up Go %s, below the %s the pinned linter requires; Lint would fail on a repo whose code is fine", buildGo(state, module), state.minimum),
-			Observed: "go " + module.goVersion,
-		}}
-	}
 
 	if state.floor != "" && module.goVersion != state.floor {
 		// Both directions are drift. A repo above the floor is the case that
@@ -514,9 +484,6 @@ func performImage(t reconcile.Target, state gomodState, change reconcile.Change)
 		for _, image := range module.dockerfiles {
 			if image.rel != change.Item {
 				continue
-			}
-			if lintRefused(state, module) {
-				return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "CI's Go is below the pinned linter's minimum"}, nil
 			}
 			want := buildGo(state, module)
 			pinned, changed := pinGolangImages(image.body, want)
