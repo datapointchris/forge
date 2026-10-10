@@ -342,6 +342,16 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 	}
 }
 
+func TestGenerateUsesAThirdPartyActionByItsCommit(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), "", nil, Ungated, hostedRunner(t))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if want := "- uses: astral-sh/setup-uv@" + strings.Repeat("a", 40) + " # v0.0.1\n"; !strings.Contains(workflow, want) {
+		t.Errorf("setup-uv not used by its declared commit:\n%s", workflow)
+	}
+}
+
 // A block's pin the versions file cannot fill would reach the runner as a
 // literal `{{pin}}` and fail at dispatch, so generation refuses it instead.
 func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {

@@ -68,6 +68,10 @@ func runToolchainShow(cmd *cobra.Command, _ []string) error {
 		row(out, "  %s %s\n", cyan.Sprintf("%-52s", shortRepo(hook.Repo)), hook.Rev)
 	}
 	for _, action := range manifest.Actions {
+		if action.Sha != "" {
+			row(out, "  %s %s %s\n", cyan.Sprintf("%-52s", action.Uses), action.Version, dim.Sprint(action.Sha))
+			continue
+		}
 		row(out, "  %s %s\n", cyan.Sprintf("%-52s", action.Uses), action.Version)
 	}
 	for _, tool := range manifest.Tools {

@@ -106,6 +106,9 @@ func LoadFile(path string) (*Toolchain, error) {
 	if err := manifest.refuseFloatingRunner(); err != nil {
 		return nil, fmt.Errorf("%s: runners.hosted: %w", path, err)
 	}
+	if err := manifest.refuseUnpinnedActions(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return manifest, nil
 }
 

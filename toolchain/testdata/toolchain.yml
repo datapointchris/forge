@@ -56,10 +56,14 @@ actions:
     version: fixture-setup-node
   - uses: actions/setup-python
     version: fixture-setup-python
+  # A third-party action loads only with a commit beside an exact release, so
+  # these two name a placeholder of each instead of their tool.
   - uses: astral-sh/setup-uv
-    version: fixture-setup-uv
+    version: v0.0.1
+    sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   - uses: hashicorp/setup-terraform
-    version: fixture-setup-terraform
+    version: v0.0.2
+    sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 tools:
   - module: github.com/golangci/golangci-lint/v2/cmd/golangci-lint

@@ -56,7 +56,17 @@ var (
 	dependencyLineRE = regexp.MustCompile(`^(\s*-\s+)([A-Za-z0-9._~/-]+)@(\S+)\s*$`)
 	// A full commit id, which is a stronger pin than any tag the manifest names.
 	commitRefRE = regexp.MustCompile(`@[0-9a-f]{40}\b`)
+	commitRE    = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	// One release, never a major that moves: the comment beside a commit says
+	// which code it is, and `v7` says only which line of releases.
+	exactTagRE = regexp.MustCompile(`^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$`)
+	// The `# v1.2.3` after a commit-pinned `uses:`.
+	releaseCommentRE = regexp.MustCompile(`^\s*#\s*v?\d\S*`)
 )
+
+// firstPartyOwner owns the actions GitHub publishes. Those stay on tags: a
+// commit pin there is a hand-updated hash on a first-party tool for no gain.
+const firstPartyOwner = "actions"
 
 // hookPinnedTools maps a tool forge runs outside its hook to the pre-commit repo
 // whose rev pins it: a uvx line in a workflow, a Python repo's dev dependency,
@@ -128,6 +138,38 @@ type Hook struct {
 type Action struct {
 	Uses    string `yaml:"uses"`
 	Version string `yaml:"version"`
+	// Sha is the commit Version tags, and a third-party action is used by it.
+	// Whoever owns a tag can move it to other code after review, and a commit
+	// cannot move. Version stays beside it as a comment, which is what makes the
+	// commit reviewable.
+	Sha string `yaml:"sha"`
+}
+
+// firstParty reports whether GitHub publishes the action itself.
+func (a Action) firstParty() bool {
+	owner, _, _ := strings.Cut(a.Uses, "/")
+	return owner == firstPartyOwner
+}
+
+// refuseUnpinnedActions rejects a third-party action declared without the
+// commit its tag points at, and a commit that is not a full id or whose tag
+// names no single release.
+func (t *Toolchain) refuseUnpinnedActions() error {
+	for _, action := range t.Actions {
+		if action.Sha == "" {
+			if !action.firstParty() {
+				return fmt.Errorf("actions pins %s by tag alone — add the commit %s tags as sha, because a third-party tag can be moved after review", action.Uses, action.Version)
+			}
+			continue
+		}
+		if !commitRE.MatchString(action.Sha) {
+			return fmt.Errorf("actions pins %s to sha %q, which is not a full 40-character commit id", action.Uses, action.Sha)
+		}
+		if !exactTagRE.MatchString(action.Version) {
+			return fmt.Errorf("actions pins %s to a commit beside version %s, which names no single release — use the exact tag the commit carries, such as v1.2.3", action.Uses, action.Version)
+		}
+	}
+	return nil
 }
 
 // Load reads a manifest in the YAML shape the test fixture uses. Every command
@@ -150,6 +192,9 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 	}
 	if err := manifest.refuseFloatingRunner(); err != nil {
 		return nil, fmt.Errorf("%s: hosted_runner: %w", File, err)
+	}
+	if err := manifest.refuseUnpinnedActions(); err != nil {
+		return nil, fmt.Errorf("%s: %w", File, err)
 	}
 	return &manifest, nil
 }
@@ -231,30 +276,37 @@ func (t *Toolchain) ApplyRevs(content string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ActionVersion returns the pinned version ref for an action, and whether it is managed.
-func (t *Toolchain) ActionVersion(uses string) (string, bool) {
+// ActionFor returns the declared pin for an action, and whether it is managed.
+func (t *Toolchain) ActionFor(uses string) (Action, bool) {
 	for _, action := range t.Actions {
 		if action.Uses == uses {
-			return action.Version, true
+			return action, true
 		}
 	}
-	return "", false
+	return Action{}, false
 }
 
 // ApplyActionVersions rewrites each `uses: owner/action@ref` to the manifest's
-// pinned version. A local workflow reference (`uses: ./...`) and any action the
-// manifest does not pin are left alone, and so is an action pinned to a commit:
-// replacing that with a tag would loosen the pin.
+// pin. An action declared with a commit takes `@<sha> # <version>`, replacing
+// whatever ref and release comment the line held, so an older commit moves. One
+// declared by tag takes the tag, except on a line already pinned to a commit,
+// because a tag there would loosen the pin. A local workflow reference
+// (`uses: ./...`) and any action the manifest does not pin are left alone.
 func (t *Toolchain) ApplyActionVersions(content string) string {
 	lines := strings.Split(content, "\n")
 
 	for i, line := range lines {
 		m := usesLineRE.FindStringSubmatch(line)
-		if len(m) < 4 || commitRefRE.MatchString(line) {
+		if len(m) < 4 {
 			continue
 		}
-		if version, managed := t.ActionVersion(m[2]); managed {
-			lines[i] = m[1] + m[2] + "@" + version + m[3]
+		action, managed := t.ActionFor(m[2])
+		switch {
+		case !managed:
+		case action.Sha != "":
+			lines[i] = m[1] + m[2] + "@" + action.Sha + " # " + action.Version + releaseCommentRE.ReplaceAllString(m[3], "")
+		case !commitRefRE.MatchString(line):
+			lines[i] = m[1] + m[2] + "@" + action.Version + m[3]
 		}
 	}
 	return strings.Join(lines, "\n")

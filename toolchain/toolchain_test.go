@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func loadManifest(t *testing.T) *Toolchain {
@@ -78,6 +79,32 @@ func TestUnpinnedNamesTheRepoARevBelongsTo(t *testing.T) {
 	got := Unpinned((&Toolchain{Version: 1}).ApplyRevs(block))
 	if len(got) != 1 || got[0] != "https://example.com/hook" {
 		t.Errorf("Unpinned = %v, want the repo URL", got)
+	}
+}
+
+func TestLoadRefusesAThirdPartyActionItCannotPinToACommit(t *testing.T) {
+	commit := strings.Repeat("c", 40)
+	for name, entry := range map[string]string{
+		"a tag alone":        "  - uses: astral-sh/setup-uv\n    version: v7.1.2\n",
+		"a moving major":     "  - uses: astral-sh/setup-uv\n    version: v7\n    sha: " + commit + "\n",
+		"an abbreviated sha": "  - uses: astral-sh/setup-uv\n    version: v7.1.2\n    sha: c0ffee1\n",
+		"an uppercase sha":   "  - uses: astral-sh/setup-uv\n    version: v7.1.2\n    sha: " + strings.ToUpper(commit) + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nactions:\n" + entry)}}
+			if _, err := Load(fixture); err == nil {
+				t.Error("loaded without complaint")
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsAFirstPartyTagAndAThirdPartyCommit(t *testing.T) {
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nactions:\n" +
+		"  - uses: actions/checkout\n    version: v7\n" +
+		"  - uses: astral-sh/setup-uv\n    version: v7.1.2\n    sha: " + strings.Repeat("c", 40) + "\n")}}
+	if _, err := Load(fixture); err != nil {
+		t.Errorf("Load: %v", err)
 	}
 }
 
@@ -205,6 +232,30 @@ func TestApplyUvxVersionsTracksTheHookRev(t *testing.T) {
 	unmapped := "      - run: uvx somethingelse@1.2.3 --help\n"
 	if got := manifest.ApplyUvxVersions(unmapped); got != unmapped {
 		t.Errorf("unmapped tool rewritten: %q", got)
+	}
+}
+
+// An older commit has to move to the declared one, or a hand-written workflow
+// pinned once by hand never takes a bump.
+func TestADeclaredCommitReplacesWhateverRefTheLineHeld(t *testing.T) {
+	commit := strings.Repeat("c", 40)
+	manifest := &Toolchain{Version: 1, Actions: []Action{{Uses: "astral-sh/setup-uv", Version: "v7.1.2", Sha: commit}}}
+	want := "      - uses: astral-sh/setup-uv@" + commit + " # v7.1.2"
+
+	for name, line := range map[string]string{
+		"a tag":                  "      - uses: astral-sh/setup-uv@v6",
+		"the block's pin":        "      - uses: astral-sh/setup-uv@" + Pin,
+		"an older commit":        "      - uses: astral-sh/setup-uv@" + strings.Repeat("0", 40) + " # v6.0.0",
+		"a commit with no label": "      - uses: astral-sh/setup-uv@" + strings.Repeat("0", 40),
+	} {
+		if got := manifest.ApplyActionVersions(line); got != want {
+			t.Errorf("%s: got %q, want %q", name, got, want)
+		}
+	}
+
+	note := "      - uses: astral-sh/setup-uv@v6.0.0 # v6.0.0 until the cache bug is fixed"
+	if got := manifest.ApplyActionVersions(note); got != want+" until the cache bug is fixed" {
+		t.Errorf("the note after the release was lost: %q", got)
 	}
 }
 

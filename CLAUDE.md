@@ -320,8 +320,15 @@ the `versions_file` config key, and unset is an error, because forge ships no pi
 **The declared pins reach workflows forge did not write.** The `ci` die rewrites the declared action,
 `go install`, uvx and binary versions in every hand-written workflow and in every custom section of
 the generated one, through `ApplyWorkflowPins`, and changes nothing else in them. A runtime version is
-left alone, because a hand-written matrix may test several on purpose. So is an action pinned to a
-commit, which is a stronger pin than the tag that would replace it.
+left alone, because a hand-written matrix may test several on purpose. So is a commit pin on an
+action the declaration names by tag alone, because the tag would loosen it.
+
+**A third-party action is used by commit, a first-party one by tag.** An action outside `actions/*`
+declares `sha` beside an exact `version`, and every line naming it becomes `@<sha> # <version>`,
+whatever ref it held, so an older commit moves with the declaration. A tag's owner can move it to
+other code after review, and a commit cannot move. `actions/*` stays on a major tag: a commit there
+is a hand-updated hash on a first-party tool for no gain. Load refuses a third-party entry without a
+full commit, and a commit beside a tag naming no single release, such as `v7`.
 
 **The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
 and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
