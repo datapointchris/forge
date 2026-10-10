@@ -123,7 +123,7 @@ var knownAliases = map[string]bool{
 	"gofmt":   true,
 	"gofumpt": true,
 	// Same tool, different id, in the lua block.
-	"stylua": true,
+	"stylua-github": true,
 }
 
 // BlockName extracts the block name from a numbered filename.

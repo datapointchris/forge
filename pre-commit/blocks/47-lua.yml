@@ -1,5 +1,7 @@
   # Lua
+  # The cargo hook, not stylua-github: that one finds the release through
+  # GitHub's API unauthenticated, and a spent hourly budget blocks every commit.
   - repo: https://github.com/JohnnyMorganz/StyLua
     rev: "{{pin}}"
     hooks:
-      - id: stylua-github
+      - id: stylua

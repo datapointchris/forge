@@ -100,7 +100,7 @@ def test_lua_repo():
         assert 'python-format' not in blocks
 
         hooks = get_hook_ids(config)
-        assert 'stylua-github' in hooks
+        assert 'stylua' in hooks
 
 
 def test_full_stack_repo():

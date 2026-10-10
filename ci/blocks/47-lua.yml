@@ -1,10 +1,10 @@
 # Lua
-# covers: stylua-github
+# covers: stylua
       # --check, not the formatting run the pre-commit hook does: CI reports,
       # it does not rewrite the tree.
       #
       # The version is the release the StyLua hook pins, which is the release
-      # that hook downloads, so CI and the hook grade with one binary.
+      # that hook builds, so CI and the hook grade with one version.
       - name: StyLua
         run: |
           stylua_version="{{pin}}"
