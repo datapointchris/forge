@@ -321,13 +321,8 @@ func ReposPath() string {
 }
 
 // VersionsPath is where this machine keeps the version declaration:
-// $FORGE_VERSIONS_FILE, then versions_file in forge's config, then "" — which
-// means the manifest embedded in this binary.
-//
-// The empty answer is the meaningful one here, and differs from ReposPath. A
-// registry forge cannot find is a machine that cannot be operated on; a
-// versions file it cannot find is a machine that rolls out what this binary
-// shipped with, which is exactly what forge did before the file existed.
+// $FORGE_VERSIONS_FILE, then versions_file in forge's config, then "" when
+// neither names one. forge ships no pins, so callers refuse the empty answer.
 func VersionsPath() string {
 	declared := os.Getenv("FORGE_VERSIONS_FILE")
 	if declared == "" {

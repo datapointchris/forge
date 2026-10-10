@@ -251,9 +251,9 @@ lacking the `# forge-toolchain:` header for the same reason.
 catches: `defaults.run.working-directory` does not apply to action inputs, so a path in one needs
 `{{dir}}`.
 
-**Every pinned version comes from the declaration.** `versions_file` resolves like `repos_registry` —
-flag, then `$FORGE_VERSIONS_FILE`, then the config key — and unset is an error, because forge ships
-no pins of its own. `forge toolchain show` prints the path it read.
+**Every pinned version comes from the declaration.** It resolves from `$FORGE_VERSIONS_FILE`, then
+the `versions_file` config key, and unset is an error, because forge ships no pins of its own.
+`forge toolchain show` prints the path it read.
 
 **The declared pins reach workflows forge did not write.** The `ci` die rewrites the declared action,
 `go install`, uvx and binary versions in every hand-written workflow and in every custom section of

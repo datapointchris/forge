@@ -1,8 +1,10 @@
 # Forge
 
-Run commands and reusable scripts across multiple git repositories.
+Reconcile each git repository in a registry against a set of standards.
 
-Forge reads a repo list from config and executes operations in each repo's working directory — either ad-hoc commands or managed scripts called **dies**.
+Forge reads a repo list from config and operates on each repo: reconciling it with
+reusable operations called **dies**, running an ad-hoc command in it, or running its
+declared test suites.
 
 **Forge's unit of work is one repo.** Running an operation across the whole portfolio is machinery
 for reaching many repos, not a different kind of operation. A question about the estate as a whole
@@ -11,10 +13,6 @@ is a different tool's job, whatever answers it.
 The test is what a command operates on, not whether it writes: a per-repo read still belongs here,
 and a question about the estate as a whole belongs elsewhere even if answering it means writing
 something.
-
-Two read commands sat here on the wrong side of that line, both answering a question about the
-portfolio rather than operating on a repo. Both were moved out, and forge has no read side left.
-Do not add a third.
 
 ## Installation
 
@@ -246,9 +244,10 @@ otherwise bury the single renamed flag the diff is run to find.
 forge toolchain show           # what is pinned now, and which file said so
 ```
 
-Versions are declared, never discovered. `show` names the file it read —
-whatever `versions_file` points at, or the copy embedded in the binary when a
-machine names none. Raising a pin is an edit to that file plus a
+Versions are declared, never discovered. `show` names the file it read:
+`$FORGE_VERSIONS_FILE` when set, otherwise whatever `versions_file` points at in
+forge's config. With neither, it exits 1 and names both, because forge ships no
+pins of its own. Raising a pin is an edit to that file plus a
 `stamp.version` bump, then a rollout to one repo before fanning out:
 `forge repos apply precommit -F <repo>`.
 
@@ -268,27 +267,16 @@ forge update
 
 ## Writing Dies
 
-Create a bash script in the dies directory under a category subdirectory:
+A die is a Go value implementing `reconcile.Die`, listed in `Builtin()` in
+`dies/builtin.go`. It carries its own name, description and tags, which
+`forge dies list` and `forge dies search` read.
 
-```bash
-#!/bin/bash
+- `Observe` measures the repo and only reads.
+- `Diff` is pure. It compares the observation with the standard and returns the
+  `Change`s owed, each marked as a repair apply makes or one a person must.
+- `Perform` makes one `Change`, re-checking live that it is still owed. It is the
+  only method that writes, and `check` and `plan` never call it.
 
-# Exit 2 to skip (nothing to do)
-if [ -f ".tool-versions" ]; then
-  echo "already exists"
-  exit 2
-fi
-
-# Do work...
-echo "missing .tool-versions"
-exit 1
-```
-
-Optionally register metadata in `dies/registry.yml`:
-
-```yaml
-dies:
-  checks/tool-versions.sh:
-    description: "Check that .tool-versions exists in the repo."
-    tags: [checks, asdf, setup]
-```
+`dies/property_test.go` runs `Observe` and `Diff` for every die in `Builtin()`
+against a fixture and fails if anything on disk changed. A new die is held to that
+by being registered.
