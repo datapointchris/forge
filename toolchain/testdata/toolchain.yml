@@ -81,6 +81,8 @@ binaries:
     version: fixture-bats-support
   - name: bats_assert
     version: fixture-bats-assert
+  - name: jq
+    version: fixture-jq
 
 runtimes:
   - name: node

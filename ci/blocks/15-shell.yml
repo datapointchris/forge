@@ -104,11 +104,18 @@
       # case, and a nested repo adds a # > custom: step naming its own subset.
       # What it must not do is exit 0 in silence, which is how the layout went
       # unnoticed in the first place.
+      #
+      # jq is installed ahead of the runner's own, because the scripts under
+      # test evaluate jq programs and jq's grammar moves between releases. 1.8
+      # accepts an object value piped into `//` without parentheses, and 1.7
+      # rejects the whole program. The version is the release the development
+      # machines run, so a program parses here exactly when it parses there.
       - name: bats
         run: |
           bats_version="{{pin}}"
           bats_support_version="{{pin}}"
           bats_assert_version="{{pin}}"
+          jq_version="{{pin}}"
 
           if [ -z "$(find tests -name '*.bats' -print -quit 2>/dev/null)" ]; then
             echo "no bats tests found"
@@ -132,5 +139,12 @@
             https://github.com/bats-core/bats-support.git "$HOME/.local/lib/bats-support"
           git clone --depth 1 --branch "v${bats_assert_version}" \
             https://github.com/bats-core/bats-assert.git "$HOME/.local/lib/bats-assert"
+
+          mkdir -p "$RUNNER_TEMP/jq"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/jq/jq" \
+            "https://github.com/jqlang/jq/releases/download/jq-${jq_version}/jq-linux-amd64"
+          chmod +x "$RUNNER_TEMP/jq/jq"
+          export PATH="$RUNNER_TEMP/jq:$PATH"
+          jq --version
 
           bats tests/

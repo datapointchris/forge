@@ -514,6 +514,24 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobIsClearedFirst(t *testing.T) {
 	}
 }
 
+// The runner image ships its own jq, and a jq program that parses on one
+// release can be rejected whole by another. The suites only run against the
+// declared jq if it is first on PATH by the time bats starts.
+func TestTheBatsStepRunsTheSuitesAgainstTheDeclaredJq(t *testing.T) {
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("shell", "."), "", nil, Ungated, Hosted)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(workflow, `jq_version="fixture-jq"`) {
+		t.Fatalf("the bats step does not take jq's declared version:\n%s", workflow)
+	}
+	onPath := strings.Index(workflow, `export PATH="$RUNNER_TEMP/jq:$PATH"`)
+	suites := strings.Index(workflow, "bats tests/\n")
+	if onPath < 0 || suites < 0 || onPath > suites {
+		t.Errorf("the declared jq is not first on PATH before bats runs (export at %d, bats at %d)", onPath, suites)
+	}
+}
+
 // Regeneration carries a custom section across as written, so one naming a
 // declared action would keep its old version through every bump.
 func TestACustomSectionTakesTheDeclaredPins(t *testing.T) {
