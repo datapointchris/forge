@@ -100,6 +100,13 @@
       # finding in a file it never touched, so it is the scope only where no
       # earlier commit can be fetched, as on a repo's first push.
       #
+      # Or where the change touches a file that configures a hook or pins what
+      # it checks against: the hook config, a tool's config, a manifest, a lock
+      # or a toolchain file. None of those matches a hook's own file types, so
+      # a new release or rule would otherwise grade nothing in the commit that
+      # brought it, and its findings would land on the next author to touch the
+      # code.
+      #
       # The checkout is one commit deep, and diffing needs one more. pre-commit
       # falls back to a two-dot diff where the two commits share no history on
       # disk, and refcheck's --moves reads the range as a two-dot diff too, so
@@ -120,15 +127,32 @@
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           export GOTOOLCHAIN=auto
+          from=
           if [ -n "$BASE" ] && git fetch --quiet --depth=1 --no-tags origin "$BASE" 2>/dev/null; then
-            scope=(--from-ref "$BASE" --to-ref HEAD)
+            from=$BASE
           elif git fetch --quiet --depth=2 --no-tags origin "$(git rev-parse HEAD)" &&
             git rev-parse --quiet --verify HEAD~1 >/dev/null; then
             echo "::notice::this event names no base commit, so only the head commit's change is checked"
-            scope=(--from-ref HEAD~1 --to-ref HEAD)
+            from=HEAD~1
           else
             echo "::notice::no earlier commit to diff against, so every file is checked"
-            scope=(--all-files)
+          fi
+          scope=(--all-files)
+          if [ -n "$from" ]; then
+            scope=(--from-ref "$from" --to-ref HEAD)
+            while IFS= read -r changed; do
+              case "${changed##*/}" in
+                .pre-commit-config.yaml | .editorconfig | .codespellrc | .markdownlint.yaml | \
+                  .shellcheckrc | .golangci.yml | .sqlfluff | .tflint.hcl | .prettierrc.yaml | \
+                  eslint.config.* | tsconfig*.json | stylua.toml | .stylua.toml | \
+                  pyproject.toml | uv.lock | go.mod | go.sum | Cargo.toml | Cargo.lock | \
+                  rust-toolchain.toml | package.json | package-lock.json | .nvmrc | .terraform.lock.hcl)
+                  echo "::notice::$changed changed, so every file is checked"
+                  scope=(--all-files)
+                  break
+                  ;;
+              esac
+            done < <(git diff --name-only "$from" HEAD)
           fi
           hooks=(
             {{hooks}}

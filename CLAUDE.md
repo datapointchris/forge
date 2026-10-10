@@ -272,7 +272,11 @@ else can recreate. `ci.OrphanedSections` names each, and the die reports it `ByH
 `validate.yml` until the marker moves to a job that exists, such as `before:hooks`.
 
 **The hooks job checks what the push or pull request changed.** That is what the hooks saw at commit
-time, so a finding in a file nobody touched cannot fail a push. The checkout stays one commit deep
+time, so a finding in a file nobody touched cannot fail a push. A change touching a hook or tool
+config, a manifest, a lockfile or a toolchain file is the exception, and the job checks every file.
+A new ruff rule or linter release matches no source file's type filter. Scoped to the change, it
+would grade nothing, and its findings would land on the next author to touch the code. The run
+script names each file that widens the scope. The checkout stays one commit deep
 and the job fetches only the base commit. pre-commit falls back to a two-dot diff where two commits
 share no history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit
 can be fetched, as on a repo's first push, the job checks every file and says so in a notice.
