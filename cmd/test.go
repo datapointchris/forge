@@ -9,7 +9,6 @@ import (
 	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/runner"
 	"github.com/datapointchris/forge/suites"
 )
 
@@ -55,7 +54,10 @@ func runTest(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("load repo registry: %w", err)
 	}
-	selected := runner.SelectRepos(runner.ActiveRepos(cfg.Repos), args)
+	selected, err := selectRepos(cfg.Repos, args)
+	if err != nil {
+		return err
+	}
 	sort.Slice(selected, func(i, j int) bool { return selected[i].Name < selected[j].Name })
 
 	started := time.Now()

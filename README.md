@@ -232,7 +232,8 @@ into the clone, and its `postinstall` script runs there, as `npm ci` runs it in 
 
 The outcomes follow `forge test`. `no_hooks` is a repo with no committed config or
 none of forge's hooks in it. `unknown` is a hook whose tool is not on this machine,
-or a repo that ran out of time, and it does not move the exit code.
+or a repo that ran out of time, and it does not move the exit code. A name that
+matches no repo exits 2.
 
 ### Command surfaces
 
