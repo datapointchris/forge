@@ -10,6 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/toolchain"
 )
@@ -743,13 +745,13 @@ func TestIntegration_SQLBlockFollowsTheDeclaredDialect(t *testing.T) {
 
 func TestIntegration_FullStack(t *testing.T) {
 	blocks := realBlocks(t)
-	config, err := Generate(blocks, testToolchain(t), detected("python", "go", "vue", "docker", "actions", "terraform"), nil, Observed{Versioning: Versioned})
+	config, err := Generate(blocks, testToolchain(t), detected("python", "go", "rust", "lua", "vue", "docker", "actions", "terraform"), nil, Observed{Versioning: Versioned})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	genBlocks := getGeneratedBlocks(config)
-	for _, name := range []string{"python-format", "python-lint", "go", "vue", "docker", "github-actions", "terraform"} {
+	for _, name := range []string{"python-format", "python-lint", "go", "rust", "lua", "vue", "docker", "github-actions", "terraform"} {
 		if !contains(genBlocks, name) {
 			t.Errorf("missing block: %s", name)
 		}
@@ -823,20 +825,43 @@ func TestIntegration_VersionedKeepsTheCommitStageBlock(t *testing.T) {
 	}
 }
 
+var integrationStacks = []struct {
+	name       string
+	components *config.Toolchain
+}{
+	{"python", detected("python")},
+	{"go", detected("go")},
+	{"full", detected("python", "go", "vue", "rust", "lua", "docker", "actions", "terraform")},
+	{"multi-vue", at("vue", "client", "node", "server")},
+	{"empty", detected()},
+}
+
+// The checks pin hook ids by matching text, which a config indented one level
+// wrong still passes. pre-commit then refuses the file at its next commit.
+func TestIntegration_EveryStackRendersValidYAML(t *testing.T) {
+	blocks := realBlocks(t)
+	for _, tc := range integrationStacks {
+		t.Run(tc.name, func(t *testing.T) {
+			config, err := Generate(blocks, testToolchain(t), tc.components, nil, Observed{Versioning: Versioned})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var parsed struct {
+				Repos []map[string]any `yaml:"repos"`
+			}
+			if err := yaml.Unmarshal([]byte(config), &parsed); err != nil {
+				t.Fatalf("the generated config is not YAML: %v\n%s", err, config)
+			}
+			if len(parsed.Repos) == 0 {
+				t.Errorf("the generated config parses to no repos:\n%s", config)
+			}
+		})
+	}
+}
+
 func TestIntegration_NoDuplicateHookIDs(t *testing.T) {
 	blocks := realBlocks(t)
-	stacks := []struct {
-		name       string
-		components *config.Toolchain
-	}{
-		{"python", detected("python")},
-		{"go", detected("go")},
-		{"full", detected("python", "go", "vue", "rust", "lua", "docker", "actions", "terraform")},
-		{"multi-vue", at("vue", "client", "node", "server")},
-		{"empty", detected()},
-	}
-
-	for _, tc := range stacks {
+	for _, tc := range integrationStacks {
 		t.Run(tc.name, func(t *testing.T) {
 			config, err := Generate(blocks, testToolchain(t), tc.components, nil, Observed{Versioning: Versioned})
 			if err != nil {
