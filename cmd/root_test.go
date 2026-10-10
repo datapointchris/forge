@@ -55,3 +55,22 @@ func TestAWordBeforeAFlagIsRefusedOnEveryGroup(t *testing.T) {
 		}
 	}
 }
+
+// Cobra answers --help before it validates arguments, so a mistyped word asking
+// for help printed the group's screen and exited 0 as though it had matched.
+func TestAWordTypedWithHelpIsRefusedOnEveryGroup(t *testing.T) {
+	lines := [][]string{{"repos", "bogus", "-h"}}
+	for _, group := range []string{"cli", "config", "dies", "directories", "repos", "stamp", "toolchain"} {
+		lines = append(lines, []string{group, "bogus", "--help"})
+	}
+	for _, args := range lines {
+		err := runLine(t, args...)
+		if !errors.Is(err, goclikit.ErrUsage) {
+			t.Errorf("%v is not a usage error, so it exits 0 or 1 rather than 2: %v", args, err)
+			continue
+		}
+		if want := `unknown command "bogus" for "forge ` + args[0] + `"`; !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("%v answered %v, want it to open %q", args, err, want)
+		}
+	}
+}

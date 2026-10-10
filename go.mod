@@ -13,7 +13,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/datapointchris/goclikit v0.3.1
+require github.com/datapointchris/goclikit v0.3.2
 
 require (
 	github.com/datapointchris/clisurface v0.8.1
