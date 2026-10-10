@@ -3,4 +3,5 @@
       # terraform_validate hooks call the terraform on PATH.
       - uses: hashicorp/setup-terraform@{{pin}}
         with:
+          terraform_version: "{{pin}}"
           terraform_wrapper: false

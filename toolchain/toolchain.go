@@ -56,7 +56,24 @@ var (
 	dependencyLineRE = regexp.MustCompile(`^(\s*-\s+)([A-Za-z0-9._~/-]+)@(\S+)\s*$`)
 	// A full commit id, which is a stronger pin than any tag the manifest names.
 	commitRefRE = regexp.MustCompile(`@[0-9a-f]{40}\b`)
+	commitRE    = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	// One release, never a major that moves: the comment beside a commit says
+	// which code it is, and `v7` says only which line of releases.
+	exactTagRE = regexp.MustCompile(`^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$`)
+	// A comment after a `uses:` ref whose first segment is a release and nothing
+	// else, as in `# v1.2.3` or `# tag=v6`, and the comment after it. Any other
+	// note is the author's, and is kept whole rather than spliced onto the new
+	// release.
+	releaseCommentRE = regexp.MustCompile(`^\s*#\s*(?:tag=)?(?:v\d+(?:\.\d+)*|\d+(?:\.\d+)+)(?:[-+][0-9A-Za-z.-]+)?\s*(#.*)?$`)
+	// A workflow step opens with a list item, and its `with:` holds the inputs.
+	stepStartRE = regexp.MustCompile(`^\s*-\s`)
+	withLineRE  = regexp.MustCompile(`^(\s*)with:\s*$`)
+	inputLineRE = regexp.MustCompile(`^(\s*)([A-Za-z0-9_-]+):\s*(\S+)\s*$`)
 )
+
+// firstPartyOwner owns the actions GitHub publishes. Those stay on tags: a
+// commit pin there is a hand-updated hash on a first-party tool for no gain.
+const firstPartyOwner = "actions"
 
 // hookPinnedTools maps a tool forge runs outside its hook to the pre-commit repo
 // whose rev pins it: a uvx line in a workflow, a Python repo's dev dependency,
@@ -66,6 +83,19 @@ var (
 var hookPinnedTools = map[string]string{
 	"ruff": "https://github.com/astral-sh/ruff-pre-commit",
 	"uv":   "https://github.com/astral-sh/uv-pre-commit",
+}
+
+// releaseInput is the input an action takes naming the release of the tool it
+// downloads, and the binary that release resolves as.
+type releaseInput struct{ input, binary string }
+
+// downloadingActions maps an action that downloads its tool when it runs to
+// the input naming that tool's release. A commit fixes the action's code and
+// nothing it downloads: left empty, setup-uv installs the newest uv and
+// setup-terraform the newest terraform.
+var downloadingActions = map[string]releaseInput{
+	"astral-sh/setup-uv":        {input: "version", binary: "uv"},
+	"hashicorp/setup-terraform": {input: "terraform_version", binary: "terraform"},
 }
 
 // Toolchain is the manifest of pinned tool versions shared by every generated
@@ -128,6 +158,48 @@ type Hook struct {
 type Action struct {
 	Uses    string `yaml:"uses"`
 	Version string `yaml:"version"`
+	// Sha is the commit Version tags, and a third-party action is used by it.
+	// Whoever owns a tag can move it to other code after review, and a commit
+	// cannot move. Version stays beside it as a comment, which is what makes the
+	// commit reviewable.
+	Sha string `yaml:"sha"`
+}
+
+// firstParty reports whether GitHub publishes the action itself.
+func (a Action) firstParty() bool {
+	owner, _, _ := strings.Cut(a.Uses, "/")
+	return owner == firstPartyOwner
+}
+
+// repo is the GitHub repository holding the action, without the path an
+// action inside a subdirectory adds.
+func (a Action) repo() string {
+	parts := strings.SplitN(a.Uses, "/", 3)
+	return strings.Join(parts[:min(2, len(parts))], "/")
+}
+
+// refuseUnpinnedActions rejects a third-party action declared without the
+// commit its tag points at, and a commit that is not a full id or whose tag
+// names no single release.
+func (t *Toolchain) refuseUnpinnedActions() error {
+	for _, action := range t.Actions {
+		if action.Sha == "" {
+			if !action.firstParty() {
+				return fmt.Errorf("actions pins %s by tag alone, and a third-party tag can be moved after review — "+
+					"set version to an exact release such as v1.2.3, and sha to the commit it tags, "+
+					"which `git ls-remote https://github.com/%s 'refs/tags/<release>^{}' 'refs/tags/<release>'` prints, "+
+					"on the ^{} line where there is one", action.Uses, action.repo())
+			}
+			continue
+		}
+		if !commitRE.MatchString(action.Sha) {
+			return fmt.Errorf("actions pins %s to sha %q, which is not a full 40-character commit id", action.Uses, action.Sha)
+		}
+		if !exactTagRE.MatchString(action.Version) {
+			return fmt.Errorf("actions pins %s to a commit beside version %s, which names no single release — use the exact tag the commit carries, such as v1.2.3", action.Uses, action.Version)
+		}
+	}
+	return nil
 }
 
 // Load reads a manifest in the YAML shape the test fixture uses. Every command
@@ -150,6 +222,9 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 	}
 	if err := manifest.refuseFloatingRunner(); err != nil {
 		return nil, fmt.Errorf("%s: hosted_runner: %w", File, err)
+	}
+	if err := manifest.refuseUnpinnedActions(); err != nil {
+		return nil, fmt.Errorf("%s: %w", File, err)
 	}
 	return &manifest, nil
 }
@@ -231,30 +306,44 @@ func (t *Toolchain) ApplyRevs(content string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ActionVersion returns the pinned version ref for an action, and whether it is managed.
-func (t *Toolchain) ActionVersion(uses string) (string, bool) {
+// ActionFor returns the declared pin for an action, and whether it is managed.
+func (t *Toolchain) ActionFor(uses string) (Action, bool) {
 	for _, action := range t.Actions {
 		if action.Uses == uses {
-			return action.Version, true
+			return action, true
 		}
 	}
-	return "", false
+	return Action{}, false
 }
 
 // ApplyActionVersions rewrites each `uses: owner/action@ref` to the manifest's
-// pinned version. A local workflow reference (`uses: ./...`) and any action the
-// manifest does not pin are left alone, and so is an action pinned to a commit:
-// replacing that with a tag would loosen the pin.
+// pin. An action declared with a commit takes `@<sha> # <version>`, replacing
+// whatever ref and release comment the line held, so an older commit moves. One
+// declared by tag takes the tag, except on a line already pinned to a commit,
+// because a tag there would loosen the pin. A local workflow reference
+// (`uses: ./...`) and any action the manifest does not pin are left alone.
 func (t *Toolchain) ApplyActionVersions(content string) string {
 	lines := strings.Split(content, "\n")
 
 	for i, line := range lines {
 		m := usesLineRE.FindStringSubmatch(line)
-		if len(m) < 4 || commitRefRE.MatchString(line) {
+		if len(m) < 4 {
 			continue
 		}
-		if version, managed := t.ActionVersion(m[2]); managed {
-			lines[i] = m[1] + m[2] + "@" + version + m[3]
+		action, managed := t.ActionFor(m[2])
+		switch {
+		case !managed:
+		case action.Sha != "":
+			note := strings.TrimRight(m[3], " \t")
+			if release := releaseCommentRE.FindStringSubmatch(note); release != nil {
+				note = ""
+				if release[1] != "" {
+					note = " " + release[1]
+				}
+			}
+			lines[i] = m[1] + m[2] + "@" + action.Sha + " # " + action.Version + note
+		case !commitRefRE.MatchString(line):
+			lines[i] = m[1] + m[2] + "@" + action.Version + m[3]
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -361,12 +450,46 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 	return strings.Join(lines, "\n")
 }
 
+// ApplyActionReleaseInputs rewrites the input naming the tool's release on
+// each step whose action downloads that tool, to the release the tool's binary
+// resolves as. Only an input inside that step's `with:` is read, so another
+// action's input of the same name is left alone. A step without the input
+// gets none: what an author left out of a workflow is not added here.
+func (t *Toolchain) ApplyActionReleaseInputs(content string) string {
+	lines := strings.Split(content, "\n")
+	var release releaseInput
+	withIndent := -1
+
+	for i, line := range lines {
+		if stepStartRE.MatchString(line) {
+			release, withIndent = releaseInput{}, -1
+		}
+		if m := usesLineRE.FindStringSubmatch(line); m != nil {
+			release = downloadingActions[m[2]]
+			continue
+		}
+		if m := withLineRE.FindStringSubmatch(line); m != nil {
+			withIndent = len(m[1])
+			continue
+		}
+		m := inputLineRE.FindStringSubmatch(line)
+		if m == nil || release.input == "" || withIndent < 0 || len(m[1]) <= withIndent || m[2] != release.input {
+			continue
+		}
+		// A value already naming the release stays as written, quoted or not.
+		if version, managed := t.BinaryVersion(release.binary); managed && strings.Trim(m[3], `"'`) != version {
+			lines[i] = fmt.Sprintf("%s%s: %q", m[1], m[2], version)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ApplyWorkflowPins rewrites the pins a workflow forge did not write shares
-// with the one it did: actions, `go install` tools, uvx tools, binaries and the
-// hosted runner image. A runtime version is left alone, because a hand-written
-// matrix may test several on purpose.
+// with the one it did: actions and the release each downloads, `go install`
+// tools, uvx tools, binaries and the hosted runner image. A runtime version is
+// left alone, because a hand-written matrix may test several on purpose.
 func (t *Toolchain) ApplyWorkflowPins(content string) string {
-	return t.ApplyRunnerLabels(t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionVersions(content)))))
+	return t.ApplyRunnerLabels(t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyToolVersions(t.ApplyActionReleaseInputs(t.ApplyActionVersions(content))))))
 }
 
 var (
@@ -482,7 +605,7 @@ func multiReleaseLists(lines []string) map[int]bool {
 
 // ApplyAll runs every substitution a generated file may need.
 func (t *Toolchain) ApplyAll(content string) string {
-	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionVersions(t.ApplyPreCommitPins(content))))))
+	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionReleaseInputs(t.ApplyActionVersions(t.ApplyPreCommitPins(content)))))))
 }
 
 // HookPinnedVersion is the upstream release a tool's hook rev wraps, and whether

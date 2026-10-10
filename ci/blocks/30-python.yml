@@ -3,8 +3,11 @@
       # runner only. Every repo's self-hosted runner shares one ~/.cache/uv
       # that outlives the job, so there the post step's prune and upload are
       # work the disk already did, and two jobs pruning at once collide on the
-      # same files.
+      # same files. version is the release the uv-lock hook pins, so the sync
+      # here and the lock check in the hooks job run one uv.
       - uses: astral-sh/setup-uv@{{pin}}
+        with:
+          version: "{{pin}}"
 
       - run: uv sync --all-extras --dev
 

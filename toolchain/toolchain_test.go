@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func loadManifest(t *testing.T) *Toolchain {
@@ -78,6 +79,32 @@ func TestUnpinnedNamesTheRepoARevBelongsTo(t *testing.T) {
 	got := Unpinned((&Toolchain{Version: 1}).ApplyRevs(block))
 	if len(got) != 1 || got[0] != "https://example.com/hook" {
 		t.Errorf("Unpinned = %v, want the repo URL", got)
+	}
+}
+
+func TestLoadRefusesAThirdPartyActionItCannotPinToACommit(t *testing.T) {
+	commit := strings.Repeat("c", 40)
+	for name, entry := range map[string]string{
+		"a tag alone":        "  - uses: astral-sh/setup-uv\n    version: v7.1.2\n",
+		"a moving major":     "  - uses: astral-sh/setup-uv\n    version: v7\n    sha: " + commit + "\n",
+		"an abbreviated sha": "  - uses: astral-sh/setup-uv\n    version: v7.1.2\n    sha: c0ffee1\n",
+		"an uppercase sha":   "  - uses: astral-sh/setup-uv\n    version: v7.1.2\n    sha: " + strings.ToUpper(commit) + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nactions:\n" + entry)}}
+			if _, err := Load(fixture); err == nil {
+				t.Error("loaded without complaint")
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsAFirstPartyTagAndAThirdPartyCommit(t *testing.T) {
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nactions:\n" +
+		"  - uses: actions/checkout\n    version: v7\n" +
+		"  - uses: astral-sh/setup-uv\n    version: v7.1.2\n    sha: " + strings.Repeat("c", 40) + "\n")}}
+	if _, err := Load(fixture); err != nil {
+		t.Errorf("Load: %v", err)
 	}
 }
 
@@ -205,6 +232,82 @@ func TestApplyUvxVersionsTracksTheHookRev(t *testing.T) {
 	unmapped := "      - run: uvx somethingelse@1.2.3 --help\n"
 	if got := manifest.ApplyUvxVersions(unmapped); got != unmapped {
 		t.Errorf("unmapped tool rewritten: %q", got)
+	}
+}
+
+// An older commit has to move to the declared one, or a hand-written workflow
+// pinned once by hand never takes a bump.
+func TestADeclaredCommitReplacesWhateverRefTheLineHeld(t *testing.T) {
+	commit := strings.Repeat("c", 40)
+	manifest := &Toolchain{Version: 1, Actions: []Action{{Uses: "astral-sh/setup-uv", Version: "v7.1.2", Sha: commit}}}
+	want := "      - uses: astral-sh/setup-uv@" + commit + " # v7.1.2"
+
+	for name, line := range map[string]string{
+		"a tag":                  "      - uses: astral-sh/setup-uv@v6",
+		"the block's pin":        "      - uses: astral-sh/setup-uv@" + Pin,
+		"an older commit":        "      - uses: astral-sh/setup-uv@" + strings.Repeat("0", 40) + " # v6.0.0",
+		"a commit with no label": "      - uses: astral-sh/setup-uv@" + strings.Repeat("0", 40),
+	} {
+		if got := manifest.ApplyActionVersions(line); got != want {
+			t.Errorf("%s: got %q, want %q", name, got, want)
+		}
+	}
+
+	// The note says something about v6.0.0, so splicing it onto the new release
+	// would put words in the author's mouth.
+	note := "      - uses: astral-sh/setup-uv@v6.0.0 # v6.0.0 until the cache bug is fixed"
+	got := manifest.ApplyActionVersions(note)
+	if got != want+" # v6.0.0 until the cache bug is fixed" {
+		t.Errorf("the note was not kept whole: %q", got)
+	}
+	if again := manifest.ApplyActionVersions(got); again != got {
+		t.Errorf("a second pass changed the line again: %q", again)
+	}
+}
+
+func TestTheRefusalOfATagAloneAsksForBothFields(t *testing.T) {
+	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nactions:\n  - uses: github/codeql-action/init\n    version: v3\n")}}
+	_, err := Load(fixture)
+	if err == nil {
+		t.Fatal("loaded without complaint")
+	}
+	for _, want := range []string{"set version to an exact release", "sha to the commit it tags", "https://github.com/github/codeql-action '"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, err)
+		}
+	}
+}
+
+func TestOnlyTheDownloadingActionsOwnInputIsRewritten(t *testing.T) {
+	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: hookPinnedTools["uv"], Rev: "0.9.1"}}}
+	workflow := strings.Join([]string{
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          version: 0.4.0",
+		"      - uses: goreleaser/goreleaser-action@v6",
+		"        with:",
+		"          version: v2.1.0",
+		"      - name: no input",
+		"        uses: astral-sh/setup-uv@v7",
+		"      - run: echo version: 1",
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          version: 0.9.1",
+	}, "\n")
+
+	got := strings.Split(manifest.ApplyActionReleaseInputs(workflow), "\n")
+
+	if got[2] != `          version: "0.9.1"` {
+		t.Errorf("setup-uv's input = %q, want the uv its hook pins", got[2])
+	}
+	if got[5] != "          version: v2.1.0" {
+		t.Errorf("another action's input was rewritten: %q", got[5])
+	}
+	if len(got) != 12 {
+		t.Errorf("an input was added to a step that had none:\n%s", strings.Join(got, "\n"))
+	}
+	if got[11] != "          version: 0.9.1" {
+		t.Errorf("an input already naming the release was rewritten: %q", got[11])
 	}
 }
 

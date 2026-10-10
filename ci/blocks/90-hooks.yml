@@ -6,6 +6,8 @@
       # rather than copies of their checks, because a copy is a second spelling
       # of the check that drifts from the first.
       - uses: astral-sh/setup-uv@{{pin}}
+        with:
+          version: "{{pin}}"
 
       # A self-hosted runner keeps ~/.cache/pre-commit between jobs, so there
       # the archive is a download of what is already on disk.

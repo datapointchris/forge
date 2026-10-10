@@ -137,8 +137,9 @@ with `dies.StampedFiles`, which fleet reads at run time instead of keeping a cop
 forge runs outside its hook takes the release that hook pins, as `hookPinnedTools` maps them: a uvx
 line in a workflow, a Python repo's dev pin, the uv that writes a lock. A `binaries` entry for one is
 refused as a second copy.
-`toolchain/testdata/toolchain.yml` is the test fixture, read by no command, and its values name
-tools rather than releases.
+`toolchain/testdata/toolchain.yml` is the test fixture, read by no command. Its values cannot pass
+for real pins: each names its tool, except a third-party action's, which load holds to an exact
+release and a full commit, so it carries a placeholder of each.
 
 **A hook whose tool is a Go module never runs it from `PATH`.** A hook doing so passes or fails by what that
 machine last installed, and gofumpt writes, so two releases rewrite each other. A hook whose tool is
@@ -318,10 +319,25 @@ the `versions_file` config key, and unset is an error, because forge ships no pi
 `forge toolchain show` prints the path it read.
 
 **The declared pins reach workflows forge did not write.** The `ci` die rewrites the declared action,
-`go install`, uvx and binary versions in every hand-written workflow and in every custom section of
+the release a downloading action installs, and `go install`, uvx and binary versions in every hand-written workflow and in every custom section of
 the generated one, through `ApplyWorkflowPins`, and changes nothing else in them. A runtime version is
-left alone, because a hand-written matrix may test several on purpose. So is an action pinned to a
-commit, which is a stronger pin than the tag that would replace it.
+left alone, because a hand-written matrix may test several on purpose. So is a commit pin on an
+action the declaration names by tag alone, because the tag would loosen it.
+
+**A third-party action is used by commit, a first-party one by tag.** An action outside `actions/*`
+declares `sha` beside an exact `version`, and every line naming it becomes `@<sha> # <version>`,
+whatever ref it held, so an older commit moves with the declaration. A tag's owner can move it to
+other code after review, and a commit cannot move. `actions/*` stays on a major tag: a commit there
+is a hand-updated hash on a first-party tool for no gain. Load refuses a third-party entry without a
+full commit, and a commit beside a tag naming no single release, such as `v7`. A release comment
+already on the line is replaced, and any other note after the ref is kept whole.
+
+**A commit pins an action's code and nothing it downloads.** setup-uv installs the newest uv, and
+setup-terraform the newest terraform, unless an input names one. `downloadingActions` maps each to
+that input and to the binary its release resolves as, and `ApplyActionReleaseInputs` fills it on
+every step naming the action, in a generated workflow or a hand-written one. uv takes the uv-lock
+hook's rev. terraform is a `binaries` entry, so a declaration without one refuses every Terraform
+repo. A hand-written step without the input is left without it.
 
 **The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
 and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
