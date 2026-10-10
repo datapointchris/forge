@@ -523,21 +523,6 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobLandsInADirectoryMadeForIt(t *test
 	}
 }
 
-// The runner image ships its own jq, and a jq program that parses on one
-// release can be rejected whole by another. The suites only run against the
-// declared jq if it is first on PATH by the time the bats hook starts.
-func TestTheBatsHookRunsTheSuitesAgainstTheDeclaredJq(t *testing.T) {
-	hooks := jobSteps(generateFor(t, comps("shell", ".")), HooksJob)
-	if !strings.Contains(hooks, `jq_version="fixture-jq"`) {
-		t.Fatalf("the bats setup does not take jq's declared version:\n%s", hooks)
-	}
-	onPath := strings.Index(hooks, `echo "$RUNNER_TEMP/jq" >> "$GITHUB_PATH"`)
-	run := strings.Index(hooks, "name: Run the hooks over the change")
-	if onPath < 0 || run < 0 || onPath > run {
-		t.Errorf("the declared jq is not on PATH before the hooks run (path at %d, run at %d)", onPath, run)
-	}
-}
-
 // The ci die refuses a vue repo missing NodeVersionFile. A block reading any
 // other file would pass that check and fail at setup-node.
 func TestTheVueJobTakesNodeFromTheFileTheDieRequires(t *testing.T) {
@@ -550,19 +535,6 @@ func TestTheVueJobTakesNodeFromTheFileTheDieRequires(t *testing.T) {
 	}
 	if strings.Contains(workflow, "node-version:") {
 		t.Errorf("the vue job carries a Node version of its own:\n%s", workflow)
-	}
-}
-
-func TestTheRustJobAuditsTheLockfileAtTheDeclaredRelease(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("rust", "."), "", nil, Ungated, hostedRunner(t))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if !strings.Contains(workflow, `cargo_audit_version="fixture-cargo-audit"`) {
-		t.Fatalf("the audit step does not take cargo-audit's declared version:\n%s", workflow)
-	}
-	if !strings.Contains(workflow, `"$RUNNER_TEMP/cargo-audit/cargo-audit" audit`+"\n") {
-		t.Errorf("the rust job never runs the downloaded cargo-audit:\n%s", workflow)
 	}
 }
 

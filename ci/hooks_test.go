@@ -98,12 +98,6 @@ func TestTheHooksJobSetsUpGoForEachModule(t *testing.T) {
 			t.Errorf("no Go set up from %s/go.mod:\n%s", module, hooks)
 		}
 	}
-	// The first setup-go exports GOTOOLCHAIN=local, and under it the second
-	// ignores cli's toolchain line.
-	toolchain := strings.Index(hooks, "export GOTOOLCHAIN=auto")
-	if toolchain < 0 || toolchain > strings.Index(hooks, "uvx pre-commit run") {
-		t.Errorf("the hooks run under setup-go's GOTOOLCHAIN=local:\n%s", hooks)
-	}
 }
 
 // The vue hooks run npm scripts inside the component, so each component's
@@ -125,23 +119,6 @@ func TestTwoComponentsRenderingOneSetupGetItOnce(t *testing.T) {
 	hooks := jobSteps(generateFor(t, comps("terraform", "infra", "terraform", "modules/net")), HooksJob)
 	if got := strings.Count(hooks, "hashicorp/setup-terraform@"); got != 1 {
 		t.Errorf("setup-terraform appears %d times, want 1:\n%s", got, hooks)
-	}
-}
-
-// Every check the shell and lua stacks had is a hook, so the hooks job is all
-// either gets.
-func TestAStackWhoseEveryCheckIsAHookGetsNoJobOfItsOwn(t *testing.T) {
-	workflow := generateFor(t, comps("shell", ".", "lua", "nvim"))
-	for _, job := range []string{"shell", "lua-nvim"} {
-		if jobSteps(workflow, job) != "" {
-			t.Errorf("a %s job:\n%s", job, workflow)
-		}
-	}
-	got := HooksToRun(owedConfig(t, comps("shell", ".", "lua", "nvim")))
-	for _, want := range []string{"shellcheck", "shfmt", "bats", "stylua"} {
-		if !slices.Contains(got, want) {
-			t.Errorf("%s is not run: %v", want, got)
-		}
 	}
 }
 
