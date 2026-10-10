@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 // plannedItems is what a plan would change, by item, for readable assertions.
@@ -140,6 +141,34 @@ func TestPreCommitAppendsDeclaredShellcheckExceptions(t *testing.T) {
 	}
 	if !strings.Contains(got, "remote command from local variables") {
 		t.Errorf("the exception landed without its reason:\n%s", got)
+	}
+}
+
+// The channel is the declaration's, so a Rust release is one edit there rather
+// than one per repo.
+func TestARustRepoIsGivenTheDeclaredToolchain(t *testing.T) {
+	target := fixture(t, stacks("rust"), nil)
+	target.Assets.Manifest.Languages = map[string]toolchain.Language{
+		"rust": {Floor: "fixture-floor", Toolchain: "fixture-rust"},
+	}
+
+	applyAll(t, target, PreCommit{})
+
+	if got := readFile(t, target.Path("rust-toolchain.toml")); !strings.Contains(got, `channel = "fixture-rust"`) {
+		t.Errorf("the declared toolchain is not the channel:\n%s", got)
+	}
+}
+
+// A channel rustup cannot resolve fails every cargo call in the repo, so a
+// declaration pinning no Rust toolchain refuses the repo rather than ship one.
+func TestARustRepoIsRefusedWhenTheDeclarationPinsNoToolchain(t *testing.T) {
+	target := fixture(t, stacks("rust"), nil)
+	target.Assets.Manifest.Languages = map[string]toolchain.Language{"rust": {Floor: "fixture-floor"}}
+
+	measured := reconcile.Assess(target, PreCommit{})
+
+	if !strings.Contains(measured.Refusal, "languages.rust.toolchain") {
+		t.Errorf("refusal = %q, want one naming languages.rust.toolchain", measured.Refusal)
 	}
 }
 

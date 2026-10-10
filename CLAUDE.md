@@ -164,6 +164,9 @@ reads it, and a file at a managed path without it is reported rather than overwr
   stays out because it flags `yaml.BaseLoader`, which constructs no objects.
 - `golangci.yml` goes to Go repos, and `.sqlfluff` — narrowed and lint-only, so it never reformats —
   wherever a `sql_dialect` is declared.
+- **`rust-toolchain.toml` is the one template the declaration fills.** Its channel is
+  `languages.rust.toolchain`, named by the entry's `toolchainOf`. A declaration without one refuses
+  every Rust repo, because a channel rustup cannot resolve fails every cargo call there.
 
 **`merge_pyproject_tools.py`** merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing). **The standard owns exactly the keys it writes**, recorded as `[tool.forge] managed` in each repo's pyproject. That record is what makes retraction possible: a key dropped from the template is removed everywhere on the next sync, because the record proves forge put it there, and the retraction is printed rather than silent. A key absent from the record is the project's and is unreachable from the delete path.
 

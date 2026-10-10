@@ -68,6 +68,10 @@ type toolConfig struct {
 	// reporting the repo converged. Two active repos hold such a file: one a
 	// .markdownlint.jsonc, one a bare .prettierrc.
 	supersedes []string
+	// toolchainOf names the declared language whose toolchain release fills
+	// the template's toolchain.Pin, or is empty where the template names no
+	// version.
+	toolchainOf string
 }
 
 // Deployed to every repo, or gated on a declared category. The three generic
@@ -89,6 +93,7 @@ var toolConfigs = []toolConfig{
 	{asset: "configs/shellcheckrc.ini", rel: ".shellcheckrc"},
 	{asset: "configs/golangci.yml", rel: ".golangci.yml", category: "go"},
 	{asset: "configs/rustfmt.toml", rel: "rustfmt.toml", category: "rust"},
+	{asset: "configs/rust-toolchain.toml", rel: "rust-toolchain.toml", category: "rust", toolchainOf: "rust"},
 	{
 		asset: "configs/prettierrc.yml", rel: ".prettierrc.yaml", category: "vue",
 		supersedes: []string{".prettierrc", ".prettierrc.json"},
@@ -490,6 +495,11 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if tool.rel == ".shellcheckrc" {
 			want += precommit.ShellcheckDisables(declared)
 		}
+		if tool.toolchainOf != "" {
+			if want, err = pinToolchain(want, t.Assets.Manifest, tool.toolchainOf); err != nil {
+				return nil, fmt.Errorf("%s: %w", tool.rel, err)
+			}
+		}
 
 		// A file at a managed path carrying none of forge's markers is a
 		// person's, unless it is forge's own output from before these files
@@ -534,6 +544,23 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	return state, nil
+}
+
+// pinToolchain fills a template's toolchain.Pin with the toolchain release the
+// declaration pins for language.
+//
+// A pin the declaration cannot fill refuses the repo, the answer Generate gives
+// a block. The alternative ships a file naming a placeholder rustup cannot
+// resolve, and every cargo call in that repo then fails.
+func pinToolchain(template string, manifest *toolchain.Toolchain, language string) (string, error) {
+	if lang, declared := manifest.LanguageFor(language); declared && lang.Toolchain != "" {
+		template = strings.ReplaceAll(template, toolchain.Pin, lang.Toolchain)
+	}
+	if missing := toolchain.Unpinned(template); len(missing) > 0 {
+		return "", fmt.Errorf("the versions file pins no %s toolchain (languages.%s.toolchain) for %s",
+			language, language, strings.Join(missing, ", "))
+	}
+	return template, nil
 }
 
 // declaredCategories is the block categories a repo's components pull in — the

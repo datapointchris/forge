@@ -15,8 +15,9 @@ import (
 // on a machine makes `go install <tool>@latest` prefer an older release there,
 // silently, returning 0 and leaving the old binary in place.
 //
-// A language declaring only a floor is normal. Only Go has a toolchain pin,
-// because only Go has a directive that separates the two.
+// A language declaring only a floor is normal. A toolchain is pinned only where
+// the language has a file that separates the two: Go's go.mod toolchain
+// directive, and Rust's rust-toolchain.toml channel.
 type Language struct {
 	Floor     string `json:"floor"`
 	Toolchain string `json:"toolchain,omitempty"`
