@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/reconcile"
 	"github.com/datapointchris/forge/toolchain"
 )
@@ -90,7 +91,7 @@ func TestPreCommitReportsUnmarkedHooksAsByHandAndOffersNoWrite(t *testing.T) {
 
 	var found bool
 	for _, change := range measured.Changes {
-		if change.Item == preCommitConfigPath {
+		if change.Item == precommit.ConfigPath {
 			found = true
 			if change.Repair != reconcile.ByHand {
 				t.Errorf("repair = %q, want by_hand — a sync must not delete it", change.Repair)
@@ -104,7 +105,7 @@ func TestPreCommitReportsUnmarkedHooksAsByHandAndOffersNoWrite(t *testing.T) {
 	// And the config must not also be offered as an automatic rewrite, or the
 	// plan promises a write Perform would refuse.
 	for _, change := range measured.Fold(reconcile.LensPlan).Changes {
-		if change.Item == preCommitConfigPath {
+		if change.Item == precommit.ConfigPath {
 			t.Error("plan offers to rewrite a config whose custom hooks would be lost")
 		}
 	}
@@ -121,7 +122,7 @@ func TestPreCommitPreservesMarkedCustomHooks(t *testing.T) {
 
 	applyAll(t, target, PreCommit{})
 
-	if got := readFile(t, target.Path(preCommitConfigPath)); !strings.Contains(got, "my-bespoke-check") {
+	if got := readFile(t, target.Path(precommit.ConfigPath)); !strings.Contains(got, "my-bespoke-check") {
 		t.Errorf("the marked custom hook was destroyed:\n%s", got)
 	}
 }
@@ -258,7 +259,7 @@ func TestPreCommitPerformRefusesAnItemNoLongerInTheStandard(t *testing.T) {
 const strandedStamp = "# forge-toolchain: 11\nfail_fast: true\ndefault_stages: [pre-commit]\nrepos: []\n"
 
 func TestPrecommitMaintainsARepoItStampedButDoesNotTrack(t *testing.T) {
-	target := fixture(t, nil, map[string]string{preCommitConfigPath: strandedStamp})
+	target := fixture(t, nil, map[string]string{precommit.ConfigPath: strandedStamp})
 
 	measured := reconcile.Assess(target, PreCommit{})
 
@@ -271,7 +272,7 @@ func TestPrecommitMaintainsARepoItStampedButDoesNotTrack(t *testing.T) {
 	}
 	// The three generic tool configs plus the config itself. A stack the registry
 	// does not name is not guessed at, so nothing go- or vue-shaped appears.
-	for _, want := range []string{preCommitConfigPath, ".editorconfig", ".shellcheckrc", ".markdownlint.yaml"} {
+	for _, want := range []string{precommit.ConfigPath, ".editorconfig", ".shellcheckrc", ".markdownlint.yaml"} {
 		if !slices.Contains(items, want) {
 			t.Errorf("no change for %s; got %v", want, items)
 		}
@@ -306,7 +307,7 @@ func TestPrecommitLeavesARepoItNeverWroteTo(t *testing.T) {
 func TestPrecommitSaysWhichOfTheTwoReasonsItIs(t *testing.T) {
 	never := reconcile.Assess(fixture(t, nil, nil), PreCommit{})
 	unstamped := reconcile.Assess(
-		fixture(t, nil, map[string]string{preCommitConfigPath: "repos:\n  - repo: local\n    hooks: []\n"}),
+		fixture(t, nil, map[string]string{precommit.ConfigPath: "repos:\n  - repo: local\n    hooks: []\n"}),
 		PreCommit{})
 
 	if never.Summary == unstamped.Summary {
@@ -322,7 +323,7 @@ func TestPrecommitSaysWhichOfTheTwoReasonsItIs(t *testing.T) {
 // on its own.
 func TestPrecommitLeavesAnUnstampedConfigAlone(t *testing.T) {
 	handWritten := "repos:\n  - repo: local\n    hooks: []\n"
-	target := fixture(t, nil, map[string]string{preCommitConfigPath: handWritten})
+	target := fixture(t, nil, map[string]string{precommit.ConfigPath: handWritten})
 
 	measured := reconcile.Assess(target, PreCommit{})
 
@@ -335,7 +336,7 @@ func TestPrecommitLeavesAnUnstampedConfigAlone(t *testing.T) {
 // installed, and installing them would put a commit gate on a repo nobody works
 // in and build every hook environment its frozen config names.
 func TestPrecommitDoesNotInstallHooksInARepoItOnlyStamped(t *testing.T) {
-	target := fixture(t, nil, map[string]string{preCommitConfigPath: strandedStamp})
+	target := fixture(t, nil, map[string]string{precommit.ConfigPath: strandedStamp})
 	for _, stage := range hookStages {
 		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
 			t.Fatalf("remove hook %s: %s", stage, err)
@@ -375,7 +376,7 @@ func TestPrecommitFindsTheHooksOfALinkedWorktree(t *testing.T) {
 // The same fixture with a declaration still reports the missing hooks, which is
 // what makes the assertion above a narrowing rather than a removal.
 func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T) {
-	target := fixture(t, stacks("shell"), map[string]string{preCommitConfigPath: strandedStamp})
+	target := fixture(t, stacks("shell"), map[string]string{precommit.ConfigPath: strandedStamp})
 	for _, stage := range hookStages {
 		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
 			t.Fatalf("remove hook %s: %s", stage, err)
@@ -400,7 +401,7 @@ func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T
 // report converged over a state the die's own hookStages comment defines as
 // broken — a commit gate declared in the config and absent from .git/hooks.
 func TestPrecommitReportsUninstalledHooksItMayNotInstallInAStampedRepo(t *testing.T) {
-	target := fixture(t, nil, map[string]string{preCommitConfigPath: strandedStamp})
+	target := fixture(t, nil, map[string]string{precommit.ConfigPath: strandedStamp})
 	for _, stage := range hookStages {
 		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
 			t.Fatalf("remove hook %s: %s", stage, err)
@@ -824,7 +825,7 @@ func TestACustomHookReplacingAStandardOneIsReportedAndTheConfigStillRegenerates(
 	if !reported {
 		t.Errorf("the shadowed refcheck went unreported: %v", measured.Fold(reconcile.LensCheck).Changes)
 	}
-	if !slices.Contains(plannedItems(measured), preCommitConfigPath) {
+	if !slices.Contains(plannedItems(measured), precommit.ConfigPath) {
 		t.Error("the finding stopped the config regenerating")
 	}
 }

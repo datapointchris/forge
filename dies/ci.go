@@ -266,7 +266,7 @@ func fileExists(path string) bool {
 // write. The two differ wherever that die is blocked or not yet applied, and a
 // job naming a hook the file lacks fails every run with "No hook with id".
 func committedPreCommit(t reconcile.Target) string {
-	data, err := os.ReadFile(filepath.Join(t.Repo.Path, preCommitConfigPath))
+	data, err := os.ReadFile(filepath.Join(t.Repo.Path, precommit.ConfigPath))
 	if err != nil {
 		return ""
 	}

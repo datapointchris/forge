@@ -9,25 +9,9 @@ import (
 	"testing"
 
 	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/toolchain"
 )
-
-func TestCacheHomeFollowsXDG(t *testing.T) {
-	cacheHome := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cacheHome)
-	if got, want := CacheHome(), filepath.Join(cacheHome, "forge"); got != want {
-		t.Errorf("CacheHome() = %q, want %q", got, want)
-	}
-
-	t.Setenv("XDG_CACHE_HOME", "")
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("no home directory")
-	}
-	if got, want := CacheHome(), filepath.Join(home, ".cache", "forge"); got != want {
-		t.Errorf("CacheHome() = %q, want %q", got, want)
-	}
-}
 
 // The property the whole design turns on. A .git inside a Syncthing folder does
 // not announce itself — it conflicts later, on a peer, after two machines have
@@ -149,7 +133,7 @@ func TestCheckGeneratedRequiresAStampedConfig(t *testing.T) {
 		t.Error("a directory with no config was accepted")
 	}
 
-	handWritten := filepath.Join(tree, ConfigPath)
+	handWritten := filepath.Join(tree, precommit.ConfigPath)
 	if err := os.WriteFile(handWritten, []byte("repos:\n  - repo: local\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

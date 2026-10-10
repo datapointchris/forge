@@ -32,6 +32,19 @@ func DefaultConfigPath() string {
 	return filepath.Join(home, ".config", "forge", "config.yml")
 }
 
+// CacheHome is forge's own XDG cache directory: what a run can rebuild in
+// seconds and every machine builds for itself.
+func CacheHome() string {
+	if dir := os.Getenv("XDG_CACHE_HOME"); dir != "" {
+		return filepath.Join(dir, "forge")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "forge")
+	}
+	return filepath.Join(home, ".cache", "forge")
+}
+
 // Config is forge's machine config: what this machine's layout is, as opposed
 // to what the portfolio is.
 //

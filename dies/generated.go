@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/datapointchris/forge/ci"
+	"github.com/datapointchris/forge/precommit"
 	"github.com/datapointchris/forge/reconcile"
 	"github.com/datapointchris/forge/toolchain"
 )
@@ -43,7 +44,7 @@ type StampedFile struct {
 // left off here is a file whose rollout nothing reports.
 func StampedFiles() []StampedFile {
 	return []StampedFile{
-		{Path: preCommitConfigPath, Die: PreCommit{}.Name()},
+		{Path: precommit.ConfigPath, Die: PreCommit{}.Name()},
 		{Path: ci.WorkflowPath, Die: CI{}.Name()},
 		{Path: ci.ActionlintConfigPath, Die: CI{}.Name()},
 	}
