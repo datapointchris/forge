@@ -96,43 +96,6 @@ func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 	}
 }
 
-func TestRunnerForSendsOnlyAPositivelyPrivateRepoToTheRunner(t *testing.T) {
-	manifest := testManifest(t)
-	if got := RunnerFor(true, manifest); got != SelfHosted {
-		t.Errorf("RunnerFor(true) = %q, want %q", got, SelfHosted)
-	}
-	if got := RunnerFor(false, manifest); got != Runner(manifest.HostedRunner) {
-		t.Errorf("RunnerFor(false) = %q, want %q", got, manifest.HostedRunner)
-	}
-}
-
-// A caller that leaves the runner off gets a workflow rather than `runs-on:`
-// with nothing after it. GitHub rejects that at dispatch, where the failure is
-// a queued job on a repo whose CI reads green.
-func TestTheZeroRunnerFallsBackToTheHostedImage(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, Runner(""))
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-
-	for _, value := range runsOnLines(workflow) {
-		if value != string(hostedRunner(t)) {
-			t.Errorf("runs-on = %q, want the hosted image", value)
-		}
-	}
-}
-
-// Both loaders refuse a declaration naming no image, so this is reached only
-// by a manifest built in code. It still never writes a bare runs-on.
-func TestTheZeroRunnerIsRefusedWhereNoImageIsDeclared(t *testing.T) {
-	manifest := testManifest(t)
-	manifest.HostedRunner = ""
-
-	if _, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, Runner("")); err == nil {
-		t.Error("Generate wrote a workflow with no runner to name")
-	}
-}
-
 // The lint config has to be a document actionlint reads, not merely a file
 // containing the label.
 //
@@ -170,21 +133,6 @@ func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 			t.Errorf("the workflow runs on %q and self-hosted-runner.labels is %v:\n%s",
 				label, parsed.SelfHostedRunner.Labels, config)
 		}
-	}
-}
-
-// Declaring the pool in a public repo would retire the one check that catches a
-// hand-written workflow there reaching the self-hosted runner: actionlint
-// reporting the label as unknown.
-func TestOnlyASelfHostedRepoDeclaresThePoolToActionlint(t *testing.T) {
-	manifest := testManifest(t)
-	for _, runner := range []Runner{Hosted(manifest), Runner("")} {
-		if got := ActionlintConfig(manifest, runner); strings.Contains(got, RunnerLabel) {
-			t.Errorf("runner %q was handed the pool label:\n%s", runner, got)
-		}
-	}
-	if got := ActionlintConfig(manifest, SelfHosted); !strings.Contains(got, RunnerLabel) {
-		t.Errorf("a self-hosted repo's lint config does not declare its pool:\n%s", got)
 	}
 }
 

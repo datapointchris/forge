@@ -395,30 +395,108 @@ var (
 	// of, so `ubuntu-24.04-arm` and `my-ubuntu-latest` arrive whole and are
 	// never mistaken for the label inside them.
 	labelTokenRE = regexp.MustCompile(`[A-Za-z0-9._-]+`)
+	// listItemRE is a YAML block-list item, capturing its indent.
+	listItemRE = regexp.MustCompile(`^( *)-(\s|$)`)
 )
 
 // ApplyRunnerLabels rewrites every general-purpose Ubuntu label in a workflow,
 // `ubuntu-latest` or a release such as `ubuntu-24.04`, to the declared hosted
-// image. That covers runs-on values and OS matrices alike. A variant such as
-// `ubuntu-24.04-arm` names a different machine and is left alone, and so is a
-// comment line, which is prose about a runner rather than a choice of one.
+// image. That covers runs-on values and OS matrices alike.
+//
+// Left alone: a variant such as `ubuntu-24.04-arm`, which names a different
+// machine; a label right after `:` or `/`, which is an image tag such as
+// `base:ubuntu-22.04`; a comment line, which is prose about a runner; and a
+// list naming two distinct labels, which tests several releases on purpose
+// and would collapse into one release named twice.
 func (t *Toolchain) ApplyRunnerLabels(content string) string {
 	if t.HostedRunner == "" {
 		return content
 	}
 	lines := strings.Split(content, "\n")
+	held := multiReleaseLists(lines)
 	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+		if held[i] {
 			continue
 		}
-		lines[i] = labelTokenRE.ReplaceAllStringFunc(line, func(token string) string {
-			if token == "ubuntu-latest" || pinnedImageRE.MatchString(token) {
-				return t.HostedRunner
-			}
-			return token
-		})
+		spans := runnerLabelSpans(line)
+		for j := len(spans) - 1; j >= 0; j-- {
+			line = line[:spans[j][0]] + t.HostedRunner + line[spans[j][1]:]
+		}
+		lines[i] = line
 	}
 	return strings.Join(lines, "\n")
+}
+
+// runnerLabelSpans is where each label ApplyRunnerLabels may rewrite sits in
+// one line, and none on a comment line.
+func runnerLabelSpans(line string) [][]int {
+	if strings.HasPrefix(strings.TrimSpace(line), "#") {
+		return nil
+	}
+	var spans [][]int
+	for _, loc := range labelTokenRE.FindAllStringIndex(line, -1) {
+		if loc[0] > 0 && (line[loc[0]-1] == ':' || line[loc[0]-1] == '/') {
+			continue
+		}
+		if token := line[loc[0]:loc[1]]; token == "ubuntu-latest" || pinnedImageRE.MatchString(token) {
+			spans = append(spans, loc)
+		}
+	}
+	return spans
+}
+
+// listItemIndent is the indent of a YAML block-list item, and whether the line
+// is one.
+func listItemIndent(line string) (int, bool) {
+	match := listItemRE.FindStringSubmatch(line)
+	if len(match) < 2 {
+		return 0, false
+	}
+	return len(match[1]), true
+}
+
+// multiReleaseLists marks every line of a flow list or block list that names
+// two or more distinct labels. A block list runs from an item to the last line
+// indented under it or beside it at the same indent.
+func multiReleaseLists(lines []string) map[int]bool {
+	held := map[int]bool{}
+	labelsIn := func(from, to int) map[string]bool {
+		labels := map[string]bool{}
+		for _, line := range lines[from:to] {
+			for _, span := range runnerLabelSpans(line) {
+				labels[line[span[0]:span[1]]] = true
+			}
+		}
+		return labels
+	}
+	for i := range lines {
+		if len(labelsIn(i, i+1)) > 1 {
+			held[i] = true
+		}
+	}
+	for i := 0; i < len(lines); {
+		indent, isItem := listItemIndent(lines[i])
+		if !isItem {
+			i++
+			continue
+		}
+		end := i + 1
+		for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
+			nextIndent, nextIsItem := listItemIndent(lines[end])
+			deeper := len(lines[end])-len(strings.TrimLeft(lines[end], " ")) > indent
+			if !deeper && (!nextIsItem || nextIndent != indent) {
+				break
+			}
+			end++
+		}
+		if len(labelsIn(i, end)) > 1 {
+			for j := i; j < end; j++ {
+				held[j] = true
+			}
+		}
+		i = end
+	}
+	return held
 }
 
 // ApplyAll runs every substitution a generated file may need.

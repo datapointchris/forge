@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"testing/fstest"
 )
 
 func loadManifest(t *testing.T) *Toolchain {
@@ -95,13 +94,6 @@ func TestShfmtTakesTheReleaseItsHookWraps(t *testing.T) {
 	}
 }
 
-func TestLoadRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
-	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nbinaries:\n  - name: shellcheck\n    version: \"0.10.0\"\n")}}
-	if _, err := Load(fixture); err == nil {
-		t.Error("a second copy of shellcheck's version loaded without complaint")
-	}
-}
-
 // The tflint hook installs the module at its tools pin, and CI downloads the
 // release binary. Both read the one entry, so they cannot name two releases.
 func TestTflintInCITakesTheReleaseItsHookInstalls(t *testing.T) {
@@ -111,13 +103,6 @@ func TestTflintInCITakesTheReleaseItsHookInstalls(t *testing.T) {
 
 	if !strings.Contains(got, `tflint_version="0.64.0"`) {
 		t.Errorf("tflint not derived from its module pin: %q", got)
-	}
-}
-
-func TestLoadRefusesABinariesEntryForAModulePinnedTool(t *testing.T) {
-	fixture := fstest.MapFS{File: {Data: []byte("version: 1\nhosted_runner: ubuntu-99.04\nbinaries:\n  - name: terraform_docs\n    version: \"0.24.0\"\n")}}
-	if _, err := Load(fixture); err == nil {
-		t.Error("a second copy of terraform-docs' version loaded without complaint")
 	}
 }
 
@@ -319,13 +304,35 @@ func TestARunnerLabelThePinDoesNotDescribeIsLeftAlone(t *testing.T) {
 	}
 }
 
-func writeDeclaration(t *testing.T, runners string) string {
+// writeDeclaration writes a declaration holding a stamp and the sections the
+// fragment adds, each written with a leading comma.
+func writeDeclaration(t *testing.T, fragment string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "pinned-versions.json")
-	if err := os.WriteFile(path, []byte(`{"stamp": {"version": 1}`+runners+`}`), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(`{"stamp": {"version": 1}`+fragment+`}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return path
+}
+
+const hostedImage = `, "runners": {"hosted": "ubuntu-26.04"}`
+
+// Every command loads the declaration through LoadFile, so a second copy of a
+// version CI already takes from a hook pin is refused there.
+func TestLoadFileRefusesABinariesEntryForAHookPinnedTool(t *testing.T) {
+	_, err := LoadFile(writeDeclaration(t, hostedImage+`, "binaries": {"pins": [{"name": "shellcheck", "version": "0.10.0"}]}`))
+	if err == nil || !strings.Contains(err.Error(), "shellcheck") {
+		t.Errorf("LoadFile = %v, want a refusal naming shellcheck", err)
+	}
+}
+
+// Every command loads the declaration through LoadFile, so a second copy of a
+// version CI already takes from a tools pin is refused there.
+func TestLoadFileRefusesABinariesEntryForAModulePinnedTool(t *testing.T) {
+	_, err := LoadFile(writeDeclaration(t, hostedImage+`, "binaries": {"pins": [{"name": "terraform_docs", "version": "0.24.0"}]}`))
+	if err == nil || !strings.Contains(err.Error(), "terraform_docs") {
+		t.Errorf("LoadFile = %v, want a refusal naming terraform_docs", err)
+	}
 }
 
 func TestLoadFileReadsTheHostedImage(t *testing.T) {

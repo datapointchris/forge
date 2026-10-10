@@ -273,14 +273,17 @@ to a new release on GitHub's schedule, and a job that passed the day before then
 in the repo changed. Both loaders refuse a declaration naming no release, or naming `ubuntu-latest`.
 `ApplyWorkflowPins` rewrites `ubuntu-latest` and every `ubuntu-NN.NN` in a hand-written workflow to
 the pin, so a matrix and the `if:` reading it move together. A variant such as `ubuntu-24.04-arm`
-names a different machine and is left alone, and so are macOS and Windows labels.
+names a different machine and is left alone, and so are macOS and Windows labels. So is a label
+right after `:` or `/`, which is an image tag, and a list naming two distinct Ubuntu labels, which
+tests several releases on purpose.
 
 **The die also writes `.github/actionlint.yaml` into every repo it generates CI for**, declaring the
 labels actionlint cannot discover. actionlint compiles in the hosted images that existed at its
 release, so a pin newer than the pinned actionlint is an unknown label without it. The self-hosted
 pool is declared only where the workflow names it. Its absence in a public repo makes actionlint
 reject a hand-written workflow reaching the pool. A repo that turns public has the pool taken out; a
-hand-written config at `.yaml` or `.yml` is reported and left alone.
+hand-written config at `.yaml` or `.yml` is reported and left alone. The die lints against that
+config too, and holds back `validate.yml` or a repin it refuses.
 
 **The output is `validate.yml`, not `ci.yml`.** `ci.yml` is the name a hand-written pipeline takes
 by default, and generating over one would destroy work nothing could recover. The die refuses any `validate.yml`

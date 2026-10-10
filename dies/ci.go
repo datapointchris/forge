@@ -192,10 +192,49 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			"a generator placeholder survived rendering — forge would write an invalid workflow"))
 	}
 	if finding := lintWorkflow(wanted, lintConfig); finding != "" {
-		state.blockers = append(state.blockers, actionlintFinding(finding, t.Assets.Manifest))
+		state.blockers = append(state.blockers, actionlintFinding("generated workflow", finding, t.Assets.Manifest))
+	}
+
+	// A hand-written lint config is the one the repo's own actionlint hook
+	// reads, and forge never edits it, so it may not declare the hosted image.
+	// A workflow it refuses fails every commit, so that write waits until the
+	// repo's config accepts it. forge owns all of validate.yml, so any finding
+	// holds it back. It owns only the pins of a hand-written workflow, so that
+	// one is held back only when the repin is what the config refuses.
+	if own, ok := ownLintConfig(root); ok {
+		if finding := lintWorkflow(wanted, own); finding != "" {
+			state.blockers = append(state.blockers, actionlintFinding(ci.WorkflowPath,
+				"the repo's own actionlint config refuses the generated workflow: "+finding, t.Assets.Manifest))
+		}
+		var kept []generatedFile
+		for _, file := range state.repinned {
+			if !file.matches() && lintWorkflowAt(file.rel, file.have, own) == "" {
+				if finding := lintWorkflowAt(file.rel, file.want, own); finding != "" {
+					state.blockers = append(state.blockers, actionlintFinding(file.rel,
+						"the repo's own actionlint config refuses the repinned workflow: "+finding, t.Assets.Manifest))
+					continue
+				}
+			}
+			kept = append(kept, file)
+		}
+		state.repinned = kept
 	}
 
 	return state, nil
+}
+
+// ownLintConfig is the hand-written actionlint config a repo carries, at the
+// spelling actionlint prefers when both are present.
+func ownLintConfig(root string) (string, bool) {
+	for _, rel := range []string{ci.ActionlintConfigPath, ci.ActionlintConfigAltPath} {
+		if !handWritten(root, rel) {
+			continue
+		}
+		if data, err := os.ReadFile(filepath.Join(root, rel)); err == nil {
+			return string(data), true
+		}
+	}
+	return "", false
 }
 
 func declaresStack(components []config.Component, stack string) bool {
@@ -285,30 +324,32 @@ func installedActionlint() string {
 // repo. A schema-valid workflow can still be rejected at runtime, and this is
 // the check `pre-commit validate-config`'s equivalent cannot make.
 //
-// config is the repo's actionlint configuration, written into the throwaway
-// repo alongside the workflow. Nothing a repo carries on disk reaches this
-// directory, so without it a workflow naming the self-hosted pool is rejected
-// here as an unknown label — before plan can show the diff or apply can write
-// it, and for every private repo at once.
+// config is an actionlint configuration, written into the throwaway repo
+// alongside the workflow. Nothing a repo carries on disk reaches this
+// directory, so without it a workflow naming the self-hosted pool or the
+// pinned image is rejected here as an unknown label — before plan can show the
+// diff or apply can write it, and for every repo at once.
 //
-// The config handed in is the one the repo is owed, so this lints what would be
-// written rather than a guess. On a public repo it is "", and both halves are
-// then empty: that repo's generated workflow cannot name the pool, so there is
-// nothing here for a declaration to permit. The check a public repo keeps is
-// the file's absence in the repo itself — with no actionlint config on disk, a
-// hand-written workflow naming the pool fails that repo's own actionlint hook.
+// The config handed in is either the one the repo is owed, so this lints what
+// would be written rather than a guess, or the repo's own hand-written one.
 //
 // The finding is returned raw. Whether forge can stand behind it depends on
 // which actionlint answered, and that is the caller's decision rather than a
 // property of the lint itself.
 func lintWorkflow(workflow, config string) string {
+	return lintWorkflowAt(ci.WorkflowPath, workflow, config)
+}
+
+// lintWorkflowAt is lintWorkflow with the workflow written at rel, so a
+// finding names the file it is about.
+func lintWorkflowAt(rel, workflow, config string) string {
 	dir, err := os.MkdirTemp("", "forge-actionlint-")
 	if err != nil {
 		return ""
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	path := filepath.Join(dir, ".github", "workflows", "validate.yml")
+	path := filepath.Join(dir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return ""
 	}
@@ -324,7 +365,7 @@ func lintWorkflow(workflow, config string) string {
 	// the workflow.
 	_, _ = runIn(dir, "git", "init", "-q")
 
-	return runValidator(dir, "actionlint", ".github/workflows/validate.yml")
+	return runValidator(dir, "actionlint", rel)
 }
 
 // actionlintFinding renders a lint finding as the Change a plan shows.
@@ -335,19 +376,19 @@ func lintWorkflow(workflow, config string) string {
 // different question — so the honest verdict is that forge could not tell.
 // Unknown never moves the exit code, which is what keeps an unpinned local
 // install from failing `forge repos check` across the portfolio.
-func actionlintFinding(finding string, manifest *toolchain.Toolchain) reconcile.Change {
+func actionlintFinding(item, finding string, manifest *toolchain.Toolchain) reconcile.Change {
 	pinned := strings.TrimPrefix(pinnedActionlint(manifest), "v")
 	installed := installedActionlint()
 	if pinned != "" && installed != "" && installed != pinned {
 		return reconcile.Change{
-			Item:    "generated workflow",
+			Item:    item,
 			Verdict: reconcile.Unknown,
 			Repair:  reconcile.NoRepair,
 			Detail: "actionlint " + installed + " is installed and the declaration pins " + pinned +
 				", so this is not what the repo's own hook will say: " + finding,
 		}
 	}
-	return blocker("generated workflow", "actionlint: "+finding)
+	return blocker(item, "actionlint: "+finding)
 }
 
 func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
@@ -371,7 +412,8 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 	// A hand-written file is not drift to repair — it is a file forge refuses
 	// to touch — so its change is suppressed while the blocker is there, or the
 	// plan would promise a write Perform would refuse. Asked per file: a
-	// hand-written lint config is no reason to stop regenerating the workflow.
+	// hand-written lint config holds back only a workflow it refuses, and
+	// Observe files that as a blocker on the workflow's own path.
 	for _, file := range state.files {
 		if hasItem(state.blockers, file.rel) {
 			continue
@@ -382,6 +424,7 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 	}
 	// Not suppressed by a blocker on the same path. The one a hand-written
 	// ci.yml draws is about it duplicating jobs, which its pins do not touch.
+	// A repin the repo's own lint config refuses is already out of this list.
 	for _, file := range state.repinned {
 		if change, drifted := file.change(repinReason); drifted {
 			changes = append(changes, change)

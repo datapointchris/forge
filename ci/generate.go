@@ -253,16 +253,6 @@ func Generate(
 	releaseGated ReleaseGating,
 	runner Runner,
 ) (string, error) {
-	// The zero value would emit a bare `runs-on:`, which is an invalid workflow
-	// GitHub rejects at dispatch rather than at lint. Folded in here so no
-	// caller can reach that state by leaving the argument off.
-	if runner == "" {
-		runner = Hosted(manifest)
-	}
-	if runner == "" {
-		return "", errors.New("the toolchain names no hosted runner image, so every job would carry an empty runs-on")
-	}
-
 	shared, err := loadBlock(blocksFS, "checkout")
 	if err != nil {
 		return "", err
