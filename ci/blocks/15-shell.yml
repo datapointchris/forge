@@ -75,18 +75,26 @@
       # a test harness that moves on its own turns an unrelated upstream change
       # into a failing build, and nothing records which version a green run used.
       #
+      # bats-core runs from its clone in RUNNER_TEMP, by PATH. Installed into
+      # /usr/local, it would be one copy every runner on a self-hosted box
+      # rewrites while the others execute it.
+      #
       # The helper libraries go under ~/.local/lib because that is where the
       # suites `load` them from — the same path they use on a workstation, so a
       # test cannot pass locally and fail here over a lookup path. The suites
       # name that path literally, and `load` resolves nothing, so BATS_LIB_PATH
       # cannot move the libraries anywhere cheaper.
       #
-      # Each target is removed before its clone. A self-hosted runner's $HOME
-      # survives between jobs, so a bare clone succeeds once on that runner and
-      # exits 128 on every job after it. A `[ -d ] ||` guard also fixes that and
-      # is worse: the version above is rewritten from the manifest, and a guard
-      # would keep serving whichever tag the runner cloned first while CI
-      # reported green against the pin nobody is running.
+      # On the self-hosted pool that $HOME outlives the job and is shared by
+      # every repo's runner, so concurrent jobs meet at ~/.local/lib. Each
+      # release is cloned once, into a directory named for its version, and
+      # nothing that has been loaded from is ever removed. The clone is staged
+      # beside its target and renamed into place, so a reader never sees a
+      # partial one, and a job that loses the race keeps the winner's copy. The
+      # path the suites load is a symlink to the pinned release, replaced by
+      # rename. A new pin names a new directory, so a runner never serves the
+      # tag it cloned first while CI reports the pin. A real directory at the
+      # symlink's path cannot be renamed over, so it is removed first.
       #
       # Guarded so a shell repo with no suite yet is not a hard failure. The
       # guard covers absence only: if tests exist, bats runs and its exit status
@@ -132,13 +140,23 @@
 
           git clone --depth 1 --branch "v${bats_version}" \
             https://github.com/bats-core/bats-core.git "$RUNNER_TEMP/bats"
-          sudo "$RUNNER_TEMP/bats/install.sh" /usr/local
+          export PATH="$RUNNER_TEMP/bats/bin:$PATH"
 
-          rm -rf "$HOME/.local/lib/bats-support" "$HOME/.local/lib/bats-assert"
-          git clone --depth 1 --branch "v${bats_support_version}" \
-            https://github.com/bats-core/bats-support.git "$HOME/.local/lib/bats-support"
-          git clone --depth 1 --branch "v${bats_assert_version}" \
-            https://github.com/bats-core/bats-assert.git "$HOME/.local/lib/bats-assert"
+          lib="$HOME/.local/lib"
+          mkdir -p "$lib"
+          for helper in "bats-support:${bats_support_version}" "bats-assert:${bats_assert_version}"; do
+            name="${helper%%:*}"
+            release="${name}-v${helper#*:}"
+            if [ ! -d "$lib/$release" ]; then
+              staged=$(mktemp -d "$lib/.$release.XXXXXX")
+              git clone --depth 1 --branch "v${helper#*:}" \
+                "https://github.com/bats-core/$name.git" "$staged"
+              mv -T "$staged" "$lib/$release" 2>/dev/null || rm -rf "$staged"
+            fi
+            [ -L "$lib/$name" ] || rm -rf "${lib:?}/$name"
+            ln -s "$release" "$lib/.$name.$$"
+            mv -T "$lib/.$name.$$" "$lib/$name"
+          done
 
           mkdir -p "$RUNNER_TEMP/jq"
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/jq/jq" \

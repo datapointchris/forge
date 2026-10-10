@@ -467,15 +467,18 @@ func clones(block string) []clone {
 	return found
 }
 
-// A self-hosted runner keeps $HOME between jobs, so a bare clone into it
-// succeeds on that runner exactly once and exits 128 on every job after —
-// "already exists and is not an empty directory". $RUNNER_TEMP is wiped per job
-// and needs nothing.
-//
-// Clearing the target is also what carries a version bump onto that runner. The
-// tag is rewritten from the manifest, and a `[ -d ] ||` guard would keep serving
-// whichever tag arrived first while CI reported green against a pin nobody runs.
-func TestEveryCloneIntoAPathThatOutlivesTheJobIsClearedFirst(t *testing.T) {
+// madeByMktemp matches a shell variable assigned a directory `mktemp -d` makes.
+var madeByMktemp = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=\$\(mktemp -d\b`)
+
+// A self-hosted runner keeps $HOME between jobs and shares it with every other
+// repo's runner on the box. A bare clone into it succeeds there exactly once
+// and exits 128 on every job after — "already exists and is not an empty
+// directory". Clearing the path first fails differently: two jobs at once
+// delete and clone over each other, and one exits 128 with "could not open
+// .../tmp_pack_..." mid-fetch. A directory `mktemp -d` just made is the one
+// target no other job can be writing. $RUNNER_TEMP is wiped per job and needs
+// neither.
+func TestEveryCloneIntoAPathThatOutlivesTheJobLandsInADirectoryMadeForIt(t *testing.T) {
 	entries, err := os.ReadDir("blocks")
 	if err != nil {
 		t.Fatalf("ReadDir(blocks): %v", err)
@@ -495,22 +498,22 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobIsClearedFirst(t *testing.T) {
 			}
 			persistent++
 
-			cleared := false
+			made := false
 			for _, before := range lines[:c.line] {
-				if strings.Contains(before, "rm -rf") && strings.Contains(before, c.destination) {
-					cleared = true
+				if m := madeByMktemp.FindStringSubmatch(before); len(m) > 1 && "$"+m[1] == c.destination {
+					made = true
 					break
 				}
 			}
-			if !cleared {
-				t.Errorf("%s: clone into %s is not cleared first, so it fails on every job after the first on a self-hosted runner",
+			if !made {
+				t.Errorf("%s: clone into %s is not into a directory mktemp -d made for it, so on a self-hosted runner it meets what another job left or is writing",
 					entry.Name(), c.destination)
 			}
 		}
 	}
 
 	if persistent == 0 {
-		t.Fatal("no clone outside $RUNNER_TEMP found; the shell block's bats step writes two into $HOME")
+		t.Fatal("no clone outside $RUNNER_TEMP found; the shell block's bats step clones its helpers under $HOME")
 	}
 }
 
