@@ -275,8 +275,7 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 
 // lockWithPinnedUV re-locks with the release the uv-lock hook pins. A lock whose
 // content changes takes the format revision of the uv that wrote it, so the uv
-// on PATH would leave a revision the hook and a release build each rewrite on
-// their next change.
+// on PATH would leave a revision the hook rewrites on its next change.
 func lockWithPinnedUV(t reconcile.Target) error {
 	version, err := pinnedUV(t.Assets.Manifest)
 	if err != nil {

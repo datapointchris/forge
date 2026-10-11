@@ -565,27 +565,6 @@ func TestIntegration_PythonRepo(t *testing.T) {
 	}
 }
 
-// The regex below is the one a Python release's build_command uses to install
-// its uv. A rev moved off the line after the hook's repo matches nothing, and
-// every release fails at that install.
-func TestIntegration_AReleaseBuildReadsTheUvHookRev(t *testing.T) {
-	manifest := testToolchain(t)
-	for i, hook := range manifest.Hooks {
-		if hook.Repo == "https://github.com/astral-sh/uv-pre-commit" {
-			manifest.Hooks[i].Rev = "9.9.9"
-		}
-	}
-	config, err := Generate(realBlocks(t), manifest, detected("python"), nil, Observed{Versioning: Versioned})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	read := regexp.MustCompile(`uv-pre-commit\s+rev: "?([\w.]+)`).FindStringSubmatch(config)
-	if len(read) < 2 || read[1] != "9.9.9" {
-		t.Errorf("a release build reads %v from the generated config, want 9.9.9:\n%s", read, config)
-	}
-}
-
 // The marker hook goes where go-semantic-release cuts a Go module's releases.
 // Under python-semantic-release its remedy cuts nothing, and a shell tool's
 // major strands no install.
