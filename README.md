@@ -117,7 +117,8 @@ forge repos plan precommit -F alpha,beta
 forge repos apply gitignore -F refcheck
 forge repos apply -F refcheck
 
-# Which repos a verb would visit
+# Which repos a verb would visit: the active ones the registry owns.
+# stderr counts what that left out (dormant, reference clones, retired).
 forge repos list
 
 # Anything that is not a die

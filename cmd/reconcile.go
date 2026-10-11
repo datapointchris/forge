@@ -52,6 +52,10 @@ type reconcileNoun struct {
 	// selection and flags these four use, and a verb reaching back for the
 	// package variable is an initialization cycle the compiler rejects.
 	only func(*reconcileNoun) []*cobra.Command
+	// scope names the set the default selection takes from the registry, and
+	// what it leaves out, for list to print beside the names. Nil where a noun
+	// takes everything declared.
+	scope func(registry []config.Repo, selected int) []string
 
 	filterNames []string
 	asJSON      bool
@@ -217,7 +221,7 @@ func (n *reconcileNoun) runReconcile(cmd *cobra.Command, args []string, lens rec
 	}
 
 	render(cmd, results)
-	reconcile.RenderSummary(cmd.OutOrStdout(), results)
+	reconcile.RenderSummary(cmd.OutOrStdout(), results, n.coverage(results))
 	recordReconcileRun(chosen, results)
 	return reconcile.ExitFor(results)
 }
@@ -272,7 +276,7 @@ func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	} else {
-		reconcile.RenderSummary(cmd.OutOrStdout(), results)
+		reconcile.RenderSummary(cmd.OutOrStdout(), results, n.coverage(results))
 	}
 	recordReconcileRun(chosen, results)
 
@@ -328,7 +332,7 @@ func (n *reconcileNoun) confirmApply(cmd *cobra.Command, args []string, planned 
 }
 
 func (n *reconcileNoun) runList(cmd *cobra.Command, _ []string) error {
-	selected, _, err := n.resolve(cmd, n.filterNames)
+	selected, cfg, err := n.resolve(cmd, n.filterNames)
 	if err != nil {
 		return err
 	}
@@ -342,7 +346,24 @@ func (n *reconcileNoun) runList(cmd *cobra.Command, _ []string) error {
 	for _, target := range selected {
 		row(cmd.OutOrStdout(), "%s\n", target.Name)
 	}
+	// Under -F the set is the names typed, so there is nothing to explain.
+	if n.scope != nil && len(n.filterNames) == 0 {
+		for _, line := range n.scope(cfg.Repos, len(selected)) {
+			row(cmd.ErrOrStderr(), "%s\n", line)
+		}
+	}
 	return nil
+}
+
+// coverage names what a summary's counts were taken over. Each row is one die
+// on one target, so the counts alone read as targets when they are pairs.
+func (n *reconcileNoun) coverage(results []reconcile.Result) string {
+	targets, dies := map[string]bool{}, map[string]bool{}
+	for _, result := range results {
+		targets[result.Repo] = true
+		dies[result.Die] = true
+	}
+	return plural(len(dies), "die", "dies") + " on " + plural(len(targets), n.one, n.many)
 }
 
 // atMostOneDie constrains the die argument and names both ways out of the

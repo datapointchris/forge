@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -36,7 +37,12 @@ question: a repo missing a standard .gitignore entry is drift, which is what
 apply is for, while a hand-written pipeline or an unmarked custom hook needs a
 person. One verb answering both means one exit code carrying both.
 
-Naming a die selects it; omitting one selects them all. -F narrows the repos.
+Naming a die selects it; omitting one selects them all.
+
+With no -F, a verb acts on the active repos the registry owns. Dormant repos
+and reference clones are left out, and -F reaches either by name. Nothing
+reaches a retired repo. ` + "`forge repos list`" + ` names the set and counts what it
+left out.
 
 Exit codes: 0 converged, 1 changes pending (plan only), 3 something is wrong.`,
 	resolve: func(cmd *cobra.Command, names []string) ([]config.Repo, *config.SyncerConfig, error) {
@@ -46,7 +52,47 @@ Exit codes: 0 converged, 1 changes pending (plan only), 3 something is wrong.`,
 		}
 		return runner.SelectRepos(cfg.Repos, names), cfg, nil
 	},
-	only: func(*reconcileNoun) []*cobra.Command { return []*cobra.Command{execCmd} },
+	only:  func(*reconcileNoun) []*cobra.Command { return []*cobra.Command{execCmd} },
+	scope: reposScope,
+}
+
+// reposScope says which repos the default selection took and what it left out,
+// each entry counted once under the first reason that drops it. A registry is
+// read by other tools that take a wider set, so a bare list of names reads as
+// the whole registry.
+func reposScope(registry []config.Repo, selected int) []string {
+	var dormant, unstated, reference, retired int
+	for _, repo := range registry {
+		switch {
+		case repo.Status == "retired":
+			retired++
+		case repo.Status == "dormant":
+			dormant++
+		case repo.Status != "active":
+			unstated++
+		case repo.Reference:
+			reference++
+		}
+	}
+	lines := []string{plural(selected, "repo", "repos") + ": the active ones the registry owns."}
+	var left []string
+	for _, part := range []struct {
+		count     int
+		one, many string
+	}{
+		{dormant, "dormant", "dormant"},
+		{reference, "reference clone", "reference clones"},
+		{unstated, "with no status", "with no status"},
+		{retired, "retired", "retired"},
+	} {
+		if part.count > 0 {
+			left = append(left, plural(part.count, part.one, part.many))
+		}
+	}
+	if len(left) > 0 {
+		lines = append(lines, "Left out: "+strings.Join(left, ", ")+". -F reaches any but a retired one by name.")
+	}
+	return lines
 }
 
 func init() {

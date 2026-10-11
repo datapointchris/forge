@@ -127,8 +127,9 @@ func RenderOutcome(w io.Writer, o Outcome) {
 	writeLine(w, "  %s %-32s %s\n", paint.Sprintf("%-11s", o.Status), o.Change.Item, message)
 }
 
-// RenderSummary writes the count of each status across every result.
-func RenderSummary(w io.Writer, results []Result) {
+// RenderSummary writes the count of each status across every result, after the
+// coverage the caller names: how many dies on how many targets.
+func RenderSummary(w io.Writer, results []Result, coverage string) {
 	counts := map[Status]int{}
 	for _, r := range results {
 		counts[r.Status]++
@@ -143,7 +144,7 @@ func RenderSummary(w io.Writer, results []Result) {
 	if len(parts) == 0 {
 		parts = append(parts, "nothing measured")
 	}
-	writeLine(w, "\n  %s\n", strings.Join(parts, "  │  "))
+	writeLine(w, "\n  %s:  %s\n", coverage, strings.Join(parts, "  │  "))
 }
 
 // EmitJSON writes the machine-readable document, and nothing else goes to that
