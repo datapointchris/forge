@@ -247,6 +247,26 @@ func TestGitignoreRemovesARetiredEntryAndKeepsTheRest(t *testing.T) {
 	}
 }
 
+// The blank line separating a retired entry from what came before goes with it,
+// so a removal leaves neither a trailing blank line nor two blank lines in a row.
+func TestGitignoreRetiredEntryTakesTheBlankLineAboveIt(t *testing.T) {
+	cases := map[string]struct{ before, after string }{
+		"last line":   {"bin/\n\n.planning\n", "bin/\n"},
+		"between two": {"bin/\n\n.planning\n\n# docs\nsite/\n", "bin/\n\n# docs\nsite/\n"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			target := fixture(t, stacks("go"), map[string]string{".gitignore": c.before})
+
+			applyAll(t, target, Gitignore{})
+
+			if got := readFile(t, target.Path(".gitignore")); got != c.after {
+				t.Errorf(".gitignore = %q, want %q", got, c.after)
+			}
+		})
+	}
+}
+
 // Only the exact line this die wrote is retired. Another spelling is a line the
 // repo chose, and a match that guessed would take a repo's own entry with it.
 func TestGitignoreLeavesAnotherSpellingOfARetiredEntry(t *testing.T) {

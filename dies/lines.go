@@ -77,9 +77,11 @@ func appendBlock(path string, block []string) error {
 // removeLine deletes every whole-line occurrence of entry, matched the way count
 // matches, and leaves every other line byte for byte.
 //
-// Blank lines the removal leaves at the top of the file go with it. A file left
-// with nothing but blank lines is deleted rather than kept empty, which is the
-// inverse of appendBlock creating one.
+// The blank line separating an occurrence from the line above goes with it, as
+// do blank lines the removal leaves at the top of the file, so no removal leaves
+// a trailing blank line or two in a row. A file left with nothing but blank
+// lines is deleted rather than kept empty, which is the inverse of appendBlock
+// creating one.
 func removeLine(path, entry string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -92,6 +94,9 @@ func removeLine(path, entry string) error {
 			continue
 		}
 		if strings.TrimRight(line, "\r\n") == entry {
+			if n := len(kept); n > 0 && strings.TrimSpace(kept[n-1]) == "" {
+				kept = kept[:n-1]
+			}
 			continue
 		}
 		if len(kept) == 0 && strings.TrimSpace(line) == "" {
