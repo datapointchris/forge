@@ -121,9 +121,11 @@ forge repos apply -F refcheck
 # stderr counts what that left out (dormant, reference clones, retired).
 forge repos list
 
-# Anything that is not a die
+# Anything that is not a die. Each output line is `<repo>\t<line>` on the
+# stream it was written to; per-repo status and the tally go to stderr.
 forge repos exec -- git status --short
 forge repos exec -f ./one-off.sh
+forge repos exec -- git log --oneline --since=14.days | cut -f1 | sort | uniq -c
 ```
 
 Exit codes: `0` converged, `1` changes pending (`plan` only), `2` usage, `3` something

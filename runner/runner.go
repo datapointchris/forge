@@ -18,36 +18,29 @@ const ExitSkip = 2
 
 const lineWidth = 80
 
-// Nerd font icons (2-char display width)
+// Nerd font icons (2-char display width). They mark the status lines, which go
+// to stderr, and never a line of the command's own output.
 const (
 	IconOK   = "\uf00c" // ✔
 	IconWarn = "\uf071" // ⚠
 	IconFail = "\uf00d" // ✘
-	IconRun  = "\uf013" // ⚙
 )
 
-// Reusable color printers.
 var (
-	cRed     = color.New(color.FgHiRed)
-	cGreen   = color.New(color.FgHiGreen)
-	cYellow  = color.New(color.FgHiYellow)
-	cCyan    = color.New(color.FgHiCyan)
-	cDim     = color.New(color.Faint)
-	cBoldRed = color.New(color.Bold, color.FgHiRed)
+	cRed    = color.New(color.FgHiRed)
+	cGreen  = color.New(color.FgHiGreen)
+	cYellow = color.New(color.FgHiYellow)
+	cDim    = color.New(color.Faint)
 )
 
 type Result struct {
 	Name   string
-	Status string // "OK", "SKIP (reason)", "FAIL (exit N)"
-	Output string // captured output (only when CaptureOutput is set)
+	Status string // "OK", "SKIP (reason)", "FAIL (exit N)", "FAIL (did not start)"
 }
 
 type Opts struct {
-	ScriptFile    string   // absolute path to script (empty for inline mode)
-	InlineArgs    []string // command + args (empty for script mode)
-	Env           []string // additional env vars (e.g., "FORGE_DATA_DIR=/tmp/forge-xxx")
-	DryRun        bool
-	CaptureOutput bool // tee stdout/stderr to buffer for failure replay
+	ScriptFile string   // absolute path to script (empty for inline mode)
+	InlineArgs []string // command + args (empty for script mode)
 }
 
 // ActiveRepos returns the repos being worked on, dropping dormant ones as well
@@ -122,12 +115,11 @@ func FilterRepos(repos []config.Repo, names []string) []config.Repo {
 	return filtered
 }
 
-func ExecuteInRepo(repo config.Repo, opts Opts) Result {
-	if opts.DryRun {
-		cCyan.Printf("  %s  %s\n", IconRun, repo.Name)
-		return Result{Name: repo.Name, Status: "OK"}
-	}
-
+// ExecuteInRepo runs the command in one repo. Every line it writes reaches the
+// matching stream behind the repo's registry name and a tab, so many repos'
+// output in one stream still says which repo each line came from, the way
+// `grep -H` names the file.
+func ExecuteInRepo(repo config.Repo, opts Opts, stdout, stderr io.Writer) Result {
 	info, err := os.Stat(repo.Path)
 	if err != nil || !info.IsDir() {
 		return Result{Name: repo.Name, Status: "SKIP (not found)"}
@@ -150,27 +142,69 @@ func ExecuteInRepo(repo config.Repo, opts Opts) Result {
 	// a portfolio repo — nor always equal to the registry name, which can differ
 	// from the directory the repo sits in.
 	c.Env = append(os.Environ(), "FORGE_REPO_NAME="+repo.Name)
-	c.Env = append(c.Env, opts.Env...)
 
-	var buf bytes.Buffer
-	if opts.CaptureOutput {
-		c.Stdout = io.MultiWriter(os.Stdout, &buf)
-		c.Stderr = io.MultiWriter(os.Stderr, &buf)
-	} else {
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
+	out := &taggedLines{out: stdout, tag: repo.Name + "\t"}
+	errs := &taggedLines{out: stderr, tag: repo.Name + "\t"}
+	c.Stdout = out
+	c.Stderr = errs
+	runErr := c.Run()
+	out.finish()
+
+	if runErr != nil && c.ProcessState == nil {
+		_, _ = fmt.Fprintf(errs, "%v\n", runErr)
+		errs.finish()
+		return Result{Name: repo.Name, Status: "FAIL (did not start)"}
 	}
-
-	if err := c.Run(); err != nil {
+	errs.finish()
+	if runErr != nil {
 		exitCode := c.ProcessState.ExitCode()
-		output := buf.String()
 		if exitCode == ExitSkip {
-			return Result{Name: repo.Name, Status: "SKIP (nothing to do)", Output: output}
+			return Result{Name: repo.Name, Status: "SKIP (nothing to do)"}
 		}
-		return Result{Name: repo.Name, Status: fmt.Sprintf("FAIL (exit %d)", exitCode), Output: output}
+		return Result{Name: repo.Name, Status: fmt.Sprintf("FAIL (exit %d)", exitCode)}
 	}
 
-	return Result{Name: repo.Name, Status: "OK", Output: buf.String()}
+	return Result{Name: repo.Name, Status: "OK"}
+}
+
+// taggedLines writes what it is given with a tag at the start of every line. A
+// line split across two writes carries one tag, because the tag goes out only
+// where the previous write ended a line.
+type taggedLines struct {
+	out     io.Writer
+	tag     string
+	midLine bool
+}
+
+func (w *taggedLines) Write(p []byte) (int, error) {
+	written := len(p)
+	for len(p) > 0 {
+		if !w.midLine {
+			if _, err := io.WriteString(w.out, w.tag); err != nil {
+				return 0, err
+			}
+		}
+		end := bytes.IndexByte(p, '\n')
+		line := p
+		if end >= 0 {
+			line = p[:end+1]
+		}
+		if _, err := w.out.Write(line); err != nil {
+			return 0, err
+		}
+		w.midLine = end < 0
+		p = p[len(line):]
+	}
+	return written, nil
+}
+
+// finish ends a last line the command left open, so the next repo's first tag
+// starts a line of its own.
+func (w *taggedLines) finish() {
+	if w.midLine {
+		_, _ = io.WriteString(w.out, "\n")
+		w.midLine = false
+	}
 }
 
 func statusLine(icon, name, msg string, c *color.Color) string {
@@ -187,42 +221,25 @@ func statusLine(icon, name, msg string, c *color.Color) string {
 	return c.Sprintf("%s", prefix) + cDim.Sprintf(" %s ", padding) + c.Sprintf("%s", msg)
 }
 
-func PrintResult(r Result) {
+// PrintResult writes one repo's status line. It is about the run rather than the
+// command's output, so the caller hands it stderr, and a console row's failed
+// write has no one to report to.
+func PrintResult(w io.Writer, r Result) {
 	switch {
 	case r.Status == "OK":
-		msg := "ok"
-		if line := lastLine(r.Output); line != "" {
-			msg = line
-		}
-		fmt.Println(statusLine(IconOK, r.Name, msg, cGreen))
+		_, _ = fmt.Fprintln(w, statusLine(IconOK, r.Name, "ok", cGreen))
 	case strings.HasPrefix(r.Status, "SKIP"):
 		reason := "skipped"
-		if line := lastLine(r.Output); line != "" {
-			reason = line
-		} else if i := strings.Index(r.Status, "("); i >= 0 {
+		if i := strings.Index(r.Status, "("); i >= 0 {
 			reason = r.Status[i+1 : len(r.Status)-1]
 		}
-		fmt.Println(statusLine(IconWarn, r.Name, reason, cYellow))
+		_, _ = fmt.Fprintln(w, statusLine(IconWarn, r.Name, reason, cYellow))
 	case strings.HasPrefix(r.Status, "FAIL"):
-		msg := r.Status
-		if line := lastLine(r.Output); line != "" {
-			msg = line
-		}
-		fmt.Println(statusLine(IconFail, r.Name, msg, cRed))
+		_, _ = fmt.Fprintln(w, statusLine(IconFail, r.Name, r.Status, cRed))
 	}
 }
 
-func PrintDryRunHeader() {
-	bar := strings.Repeat("═", 28)
-	cYellow.Printf("\n%s┤  DRY RUN  ├%s\n\n", bar, bar)
-}
-
-func PrintDryRunFooter() {
-	bar := strings.Repeat("═", 26)
-	cYellow.Printf("\n%s┤  END DRY RUN  ├%s\n", bar, bar)
-}
-
-func PrintSummary(results []Result) {
+func PrintSummary(w io.Writer, results []Result) {
 	var ok, skip, fail int
 	for _, r := range results {
 		switch {
@@ -235,7 +252,7 @@ func PrintSummary(results []Result) {
 		}
 	}
 
-	fmt.Println()
+	_, _ = fmt.Fprintln(w)
 	var parts []string
 	if ok > 0 {
 		parts = append(parts, cGreen.Sprintf("%s %d ok", IconOK, ok))
@@ -247,43 +264,5 @@ func PrintSummary(results []Result) {
 		parts = append(parts, cRed.Sprintf("%s %d fail", IconFail, fail))
 	}
 	sep := cDim.Sprintf("│")
-	fmt.Printf("  %s\n", strings.Join(parts, fmt.Sprintf("  %s  ", sep)))
-}
-
-func PrintFailures(results []Result) {
-	var failures []Result
-	for _, r := range results {
-		if strings.HasPrefix(r.Status, "FAIL") {
-			failures = append(failures, r)
-		}
-	}
-	if len(failures) == 0 {
-		return
-	}
-
-	line := strings.Repeat("─", lineWidth)
-	cRed.Printf("\n%s\n", line)
-	cBoldRed.Printf("%sFailures (%d):\n", IconFail, len(failures))
-	cRed.Printf("%s\n", line)
-
-	for _, r := range failures {
-		fmt.Printf("\n%s — %s\n", cRed.Sprintf("%s  %s", IconFail, r.Name), r.Status)
-		if r.Output != "" {
-			// Indent failure output for readability
-			for _, line := range strings.Split(strings.TrimRight(r.Output, "\n"), "\n") {
-				fmt.Printf("    %s\n", line)
-			}
-		}
-	}
-}
-
-func lastLine(s string) string {
-	s = strings.TrimRight(s, "\n")
-	if s == "" {
-		return ""
-	}
-	if i := strings.LastIndex(s, "\n"); i >= 0 {
-		return s[i+1:]
-	}
-	return s
+	_, _ = fmt.Fprintf(w, "  %s\n", strings.Join(parts, fmt.Sprintf("  %s  ", sep)))
 }

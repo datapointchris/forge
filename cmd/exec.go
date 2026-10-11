@@ -31,6 +31,11 @@ Inline:
 Script file:
   forge repos exec -f ./one-off.sh
 
+Every line the command prints is tagged with the repo's registry name and a
+tab, on the stream it was written to. Each repo's status and the closing tally
+go to stderr, so stdout is the commands' output alone:
+  forge repos exec -- git log --oneline --since=14.days | cut -f1 | sort | uniq -c
+
 For anything reusable, write a die instead — it gets plan, check and apply.`,
 	RunE: runExec,
 }
@@ -73,21 +78,29 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no repos matched filter: %s", strings.Join(execFilterNames, ", "))
 	}
 
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	if execDryRun {
+		for _, repo := range repos {
+			if _, err := fmt.Fprintln(stdout, repo.Name); err != nil {
+				return err
+			}
+		}
+		_, _ = fmt.Fprintf(stderr, "%d repo(s) would run it; nothing ran.\n", len(repos))
+		return nil
+	}
+
 	opts := runner.Opts{
 		ScriptFile: scriptFile,
 		InlineArgs: args,
-		DryRun:     execDryRun,
 	}
 
 	var results []runner.Result
 	for _, repo := range repos {
-		r := runner.ExecuteInRepo(repo, opts)
+		r := runner.ExecuteInRepo(repo, opts, stdout, stderr)
 		results = append(results, r)
-		if !execDryRun {
-			runner.PrintResult(r)
-		}
+		runner.PrintResult(stderr, r)
 	}
 
-	runner.PrintSummary(results)
+	runner.PrintSummary(stderr, results)
 	return nil
 }
