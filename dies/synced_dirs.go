@@ -4,33 +4,37 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/reconcile"
 )
 
-// Planning keeps a repo's local-only directories inside the sync base, by
-// symlink, so a file-sync tool carries them between machines.
+// SyncedDirs keeps a repo's declared local-only directories inside the sync
+// base, by symlink, so a file-sync tool carries them between machines.
 //
-// `.planning` is gitignored in every repo, which is what makes it useful — the
-// notes are for one person across several machines rather than for the project
-// — and also what makes it invisible to git. The symlink is how it reaches the
-// other desk.
+// The directories come from the registry's synced_dirs, because the repo is what
+// knows it keeps generated data outside git; forge only has to know the
+// operation. A repo declaring none is converged.
 //
-// This is sync-planning and has-planning-dir in one. The check reported a
-// missing .planning as a failure; here it is Automatic drift, because the very
-// die reporting it is the one that creates it.
-type Planning struct{}
+// It also removes a `.planning` link into the sync base, and an empty `.planning`
+// directory. A repo's status is kept in the sync base itself and read from there
+// by path, so a link to it from inside the checkout is a second path to the same
+// files, and git shows it as untracked because no .gitignore lists it.
+type SyncedDirs struct{}
 
-func (Planning) Name() string { return "planning" }
+func (SyncedDirs) Name() string { return "synced-dirs" }
 
-func (Planning) Description() string {
-	return "Link .planning (and any declared synced_dirs) into the sync base, migrating a real directory when it is safe to. Refuses to migrate over a diverged copy."
+func (SyncedDirs) Description() string {
+	return "Link each declared synced_dirs entry into the sync base, migrating a real directory when it is safe to, and remove the retired .planning link. Refuses to migrate over a diverged copy."
 }
 
-func (Planning) Tags() []string {
-	return []string{"planning", "symlink", "sync", "setup"}
+func (SyncedDirs) Tags() []string {
+	return []string{"symlink", "sync", "setup"}
 }
+
+// retiredLink is the repo-relative path this die removes when it points into the sync base.
+const retiredLink = ".planning"
 
 // syncedDir is one repo-relative directory and where it belongs.
 type syncedDir struct {
@@ -47,55 +51,98 @@ type syncedDir struct {
 // linked reports whether the repo already points at the right place.
 func (d syncedDir) linked() bool { return d.link == d.target }
 
-type planningState struct {
+// retiredPath is what sits at the retired link's path: a link, a directory, or nothing.
+type retiredPath struct {
+	link      string
+	isRealDir bool
+	entries   int
+}
+
+type syncedDirsState struct {
+	base        string
 	dirs        []syncedDir
+	retired     retiredPath
 	unversioned bool
 }
 
-func (s planningState) Summary() string {
+func (s syncedDirsState) Summary() string {
 	if s.unversioned {
 		return "already synced; nothing to link out of git"
+	}
+	if len(s.dirs) == 0 {
+		return "no synced directories declared"
 	}
 	return fmt.Sprintf("%s synced", plural(len(s.dirs), "directory", "directories"))
 }
 
-func (Planning) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (SyncedDirs) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// This die exists to carry a gitignored directory out to where a file-sync
 	// tool can see it. A target that git does not version is already there —
 	// and where the sync base is inside the target, the link would point
 	// from a synced folder into itself.
 	if !t.Versioned() {
-		return planningState{unversioned: true}, nil
+		return syncedDirsState{unversioned: true}, nil
+	}
+
+	retired, err := observeRetired(t.Path(retiredLink))
+	if err != nil {
+		return nil, err
+	}
+	state := syncedDirsState{retired: retired}
+
+	// The sync base is needed only to make a link or to judge one. A registry
+	// that declares none still converges a repo that has neither.
+	if len(t.Repo.SyncedDirs) == 0 && retired.link == "" {
+		return state, nil
 	}
 
 	base, err := syncBase(t)
 	if err != nil {
 		return nil, err
 	}
+	state.base = base
 
 	// The registry name, never the basename: basenames are neither unique — a
 	// reference clone can share a name with a portfolio repo — nor always equal
 	// to the registry name, which can differ from the directory it sits in.
 	repoBase := filepath.Join(base, t.Repo.Name)
 
-	wanted := []syncedDir{{rel: ".planning", target: filepath.Join(repoBase, "planning")}}
 	for _, declared := range t.Repo.SyncedDirs {
 		name := declared.As
 		if name == "" {
 			name = filepath.Base(declared.Dir)
 		}
-		wanted = append(wanted, syncedDir{rel: declared.Dir, target: filepath.Join(repoBase, name)})
-	}
-
-	state := planningState{}
-	for _, dir := range wanted {
-		observed, err := observeSyncedDir(t.Path(dir.rel), dir)
+		observed, err := observeSyncedDir(t.Path(declared.Dir), syncedDir{rel: declared.Dir, target: filepath.Join(repoBase, name)})
 		if err != nil {
 			return nil, err
 		}
 		state.dirs = append(state.dirs, observed)
 	}
 	return state, nil
+}
+
+func observeRetired(path string) (retiredPath, error) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return retiredPath{}, nil
+	}
+	if err != nil {
+		return retiredPath{}, err
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		link, err := os.Readlink(path)
+		return retiredPath{link: link}, err
+	}
+	if !info.IsDir() {
+		return retiredPath{}, nil
+	}
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return retiredPath{}, err
+	}
+	return retiredPath{isRealDir: true, entries: len(entries)}, nil
 }
 
 func observeSyncedDir(path string, dir syncedDir) (syncedDir, error) {
@@ -148,10 +195,10 @@ func observeSyncedDir(path string, dir syncedDir) (syncedDir, error) {
 	return dir, nil
 }
 
-func (Planning) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
-	state, ok := observed.(planningState)
+func (SyncedDirs) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
+	state, ok := observed.(syncedDirsState)
 	if !ok {
-		return nil, fmt.Errorf("planning: unexpected observation %T", observed)
+		return nil, fmt.Errorf("synced-dirs: unexpected observation %T", observed)
 	}
 
 	var changes []reconcile.Change
@@ -194,21 +241,48 @@ func (Planning) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reco
 			})
 		}
 	}
+
+	// A link aimed anywhere else, or a file, is the repo's own and not this die's.
+	switch retired := state.retired; {
+	case retired.link != "" && within(state.base, retired.link):
+		changes = append(changes, reconcile.Change{
+			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
+			Detail: "a retired link into the sync base — remove it", Observed: retired.link,
+		})
+
+	case retired.isRealDir && retired.entries == 0:
+		changes = append(changes, reconcile.Change{
+			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
+			Detail: "an empty retired directory — remove it",
+		})
+
+	case retired.isRealDir:
+		changes = append(changes, reconcile.Change{
+			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
+			Detail: fmt.Sprintf("a retired directory holding %s — move them into the repo's directory in the sync base, then delete it",
+				plural(retired.entries, "entry", "entries")),
+		})
+	}
 	return changes, nil
 }
 
-func (p Planning) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	if !change.Actionable() {
 		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
 	}
 
-	observed, err := p.Observe(t)
+	observed, err := s.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
+	state := observed.(syncedDirsState)
+
+	if change.Item == retiredLink {
+		return removeRetired(t, change, state)
+	}
 
 	var dir syncedDir
-	for _, candidate := range observed.(planningState).dirs {
+	for _, candidate := range state.dirs {
 		if candidate.rel == change.Item {
 			dir = candidate
 		}
@@ -256,6 +330,36 @@ func (p Planning) Perform(t reconcile.Target, change reconcile.Change) (reconcil
 		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: fmt.Sprintf("migrated %s and linked", plural(len(dir.entries), "entry", "entries"))}, nil
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "linked"}, nil
+}
+
+// removeRetired deletes the retired link or empty directory, re-checked live: a
+// link repointed since the plan is somebody's decision, and a directory that
+// gained a file holds something only a person can place.
+func removeRetired(t reconcile.Target, change reconcile.Change, state syncedDirsState) (reconcile.Outcome, error) {
+	retired := state.retired
+	removable := (retired.link != "" && within(state.base, retired.link)) || (retired.isRealDir && retired.entries == 0)
+	if !removable {
+		if retired.link == "" && !retired.isRealDir {
+			return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already gone"}, nil
+		}
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "changed since the plan"}, nil
+	}
+
+	// os.Remove, never RemoveAll: on a link it removes the link and not what it
+	// points at, and on a directory it refuses one that is not empty.
+	if err := os.Remove(t.Path(retiredLink)); err != nil {
+		return reconcile.Outcome{}, err
+	}
+	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "removed"}, nil
+}
+
+// within reports whether path sits inside base. An empty base holds nothing.
+func within(base, path string) bool {
+	if base == "" {
+		return false
+	}
+	rel, err := filepath.Rel(base, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func syncBase(t reconcile.Target) (string, error) {

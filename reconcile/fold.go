@@ -16,8 +16,8 @@ const (
 	LensPlan Lens = "plan"
 
 	// LensCheck keeps what is wrong — findings apply cannot fix. A hand-written
-	// ci.yml, unmarked custom hooks that would abort a sync, a .planning
-	// directory diverged from its synced copy, a missing CLAUDE.md. Plus
+	// ci.yml, unmarked custom hooks that would abort a sync, a synced
+	// directory diverged from its copy in the sync base, a missing CLAUDE.md. Plus
 	// anything that refused to be measured.
 	LensCheck Lens = "check"
 )

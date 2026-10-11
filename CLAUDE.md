@@ -2,9 +2,9 @@
 
 ## What is Forge
 
-Forge **acts on repos**: it runs an operation against a selection of them, one at a time. Planning
-directory sync, command execution, reusable maintenance scripts ("dies"), and the composable
-pre-commit and CI standardization systems.
+Forge **acts on repos**: it runs an operation against a selection of them, one at a time. Command
+execution, reusable maintenance scripts ("dies"), and the composable pre-commit and CI
+standardization systems.
 
 **The split with fleet is granularity, not read versus write.** Every operation here is "do this to
 a repo"; the sweep machinery — selection, `-F`, running across the portfolio — is how one operation
@@ -105,7 +105,7 @@ A die is a Go value implementing `reconcile.Die`: `Observe` reads, `Diff` is pur
 **`Change` is the contract.** `Verdict` is matched/missing/stale/undeclared/**unknown**; `Repair` is automatic/by_hand/none.
 
 - **`plan` keeps `Automatic` repairs** — the repo differs from the standard, which is what apply is for.
-- **`check` keeps `ByHand` findings** — a hand-written pipeline, an unmarked custom hook, a `.planning` diverged from its synced copy, a missing CLAUDE.md. Real drift apply cannot fix.
+- **`check` keeps `ByHand` findings** — a hand-written pipeline, an unmarked custom hook, a synced directory diverged from its copy in the sync base, a missing CLAUDE.md. Real drift apply cannot fix.
 - **`Unknown` is neither**, and never moves the exit code. `gh` unauthenticated is not fifty drifted repos, and apply is not the fix for a login. *Unverified is not permission.*
 - **`Undeclared` is never actionable.** Forge does not delete what it did not put there.
 

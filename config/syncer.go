@@ -63,14 +63,13 @@ type Repo struct {
 	// Go service lives" exist across the portfolio, and facts like the SQL
 	// dialect are not derivable from the layout at all.
 	Toolchain *Toolchain `json:"toolchain,omitempty" yaml:"toolchain,omitempty"`
-	// SyncedDirs are extra repo-relative directories kept in the sync base
-	// alongside .planning, which every repo gets.
+	// SyncedDirs are repo-relative directories the synced-dirs die keeps in the
+	// sync base, by symlink.
 	//
-	// Declared because the planning die hardcoded one repo's name in a branch
-	// to reach that repo's stats/data — a fleet-specific fact inside a generic
-	// tool, which is the thing DefaultReposPath's comment above rules out. The
-	// repo is what knows it keeps generated data outside git; forge only has to
-	// know the operation.
+	// Declared rather than built into the die, because a repo's name inside a
+	// generic tool is a fact about one deployment, which DefaultReposPath's
+	// comment above rules out. The repo is what knows it keeps generated data outside
+	// git; forge only has to know the operation.
 	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty" yaml:"synced_dirs,omitempty"`
 	// Binary is the command this repo installs, when that name cannot be read
 	// out of the repo. Declared for the same reason Toolchain is: a Go CLI has
@@ -176,7 +175,8 @@ type SyncerConfig struct {
 	SearchPaths []string `json:"search_paths"`
 	Repos       []Repo   `json:"repos"`
 	// SyncBase is where per-repo directories are kept so a file-sync tool can
-	// see them — the target every .planning symlink points into.
+	// see them: one directory per registry name, which the synced-dirs die links
+	// declared directories into.
 	//
 	// Declared, with no default to fall back on. The path is a property of one
 	// deployment rather than of the tool, so a binary carrying one would point
@@ -190,8 +190,8 @@ type SyncerConfig struct {
 // edit to make; a path error further down would only be the symptom.
 var ErrNoSyncBase = errors.New(
 	"no sync_base in the repo registry\n\n" +
-		"The planning die keeps each repo's .planning directory under one base, so a\n" +
-		"file-sync tool can see them all. Declare where that is, as a top-level key\n" +
+		"The synced-dirs die keeps each repo's declared synced_dirs under one base, so\n" +
+		"a file-sync tool can see them all. Declare where that is, as a top-level key\n" +
 		"beside the repo list:\n\n" +
 		`    "sync_base": "~/somewhere/synced"` + "\n\n" +
 		"`forge config show` prints which registry answered",

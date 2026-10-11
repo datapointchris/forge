@@ -69,7 +69,7 @@ var rootCmd = &cobra.Command{
 		"caught your eye. It names the file every generated pin comes from.\n" +
 		"\n" +
 		"Questions about the portfolio as a whole belong to fleet: `fleet status`\n" +
-		"for what each repo's planning says, `fleet info` for everything in\n" +
+		"for what each repo's status says, `fleet info` for everything in\n" +
 		"flight on one page, `fleet stats` for the shape of the set.\n" +
 		"\n" +
 		"`forge config show` prints the registry it resolved and which layer\n" +

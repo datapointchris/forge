@@ -36,8 +36,8 @@ const (
 
 // Repair is who can fix this, which is not always us.
 //
-// A repo with unmarked custom hooks, a hand-written ci.yml, or a .planning
-// directory that has diverged from its synced copy is real drift that apply
+// A repo with unmarked custom hooks, a hand-written ci.yml, or a synced
+// directory that has diverged from its copy in the sync base is real drift that apply
 // must not silently swallow and cannot itself repair. Saying so on the Change
 // is what lets `check` report it without `apply` reporting a failure for work
 // it was never able to do — the collision that had rename-master-to-main exit

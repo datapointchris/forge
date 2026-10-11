@@ -74,6 +74,39 @@ func appendBlock(path string, block []string) error {
 	return err
 }
 
+// removeLine deletes every whole-line occurrence of entry, matched the way count
+// matches, and leaves every other line byte for byte.
+//
+// Blank lines the removal leaves at the top of the file go with it. A file left
+// with nothing but blank lines is deleted rather than kept empty, which is the
+// inverse of appendBlock creating one.
+func removeLine(path, entry string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	var kept []string
+	for _, line := range strings.SplitAfter(string(data), "\n") {
+		if line == "" {
+			continue
+		}
+		if strings.TrimRight(line, "\r\n") == entry {
+			continue
+		}
+		if len(kept) == 0 && strings.TrimSpace(line) == "" {
+			continue
+		}
+		kept = append(kept, line)
+	}
+
+	content := strings.Join(kept, "")
+	if strings.TrimSpace(content) == "" {
+		return os.Remove(path)
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
 // plural renders a count with its noun, so a summary never reads "1 lines".
 //
 // Both forms are named by the caller. Appending "s" mangled "directory" in the

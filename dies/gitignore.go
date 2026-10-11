@@ -22,6 +22,10 @@ const generatedMarker = "toptal.com/developers/gitignore"
 // so this asserts a baseline is PRESENT and leaves everything else alone. It is
 // also why this cannot be a plain file deploy like .editorconfig.
 //
+// The one removal is a retired entry: a line this die itself asserted in every
+// repo, matched whole and literally. That is no repo's own line, and removing it
+// here is what reaches every clone rather than only the ones edited by hand.
+//
 // Absent, it creates. That does not weaken the rule: append-only exists to
 // protect a repo's own entries, and a file that does not exist has none.
 // Skipping instead made a new repo the one case the golden path did not cover,
@@ -53,9 +57,9 @@ type wanted struct {
 	reason string
 }
 
-// universal applies whatever the repo holds.
-var universalIgnores = []wanted{
-	{".planning", "planning docs are local-only and synced out of band, never committed"},
+// retiredIgnores are lines this die removes wherever it finds them, each with why.
+var retiredIgnores = []wanted{
+	{".planning", "no repo holds a .planning; a repo's status is kept in the sync base"},
 }
 
 // Deliberately omitted, because the tool that creates them writes a .gitignore
@@ -113,7 +117,7 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 		return nil, fmt.Errorf("gitignore: unexpected observation %T", observed)
 	}
 
-	entries := slices.Clone(universalIgnores)
+	var entries []wanted
 	if slices.Contains(t.Repo.Toolchain.Stacks(), "python") {
 		entries = append(entries, pythonIgnores...)
 	}
@@ -141,6 +145,18 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 				Repair:   reconcile.ByHand,
 				Detail:   "listed more than once",
 				Observed: fmt.Sprintf("%d occurrences", count),
+			})
+		}
+	}
+
+	for _, entry := range retiredIgnores {
+		if count := state.count(entry.line); count > 0 {
+			changes = append(changes, reconcile.Change{
+				Item:     entry.line,
+				Verdict:  reconcile.Stale,
+				Repair:   reconcile.Automatic,
+				Detail:   "retired: " + entry.reason,
+				Observed: plural(count, "occurrence", "occurrences"),
 			})
 		}
 	}
@@ -174,6 +190,17 @@ func (g Gitignore) Perform(t reconcile.Target, change reconcile.Change) (reconci
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
+
+	if slices.ContainsFunc(retiredIgnores, func(entry wanted) bool { return entry.line == change.Item }) {
+		if observed.(gitignoreState).count(change.Item) == 0 {
+			return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already gone"}, nil
+		}
+		if err := removeLine(t.Path(".gitignore"), change.Item); err != nil {
+			return reconcile.Outcome{}, err
+		}
+		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "removed"}, nil
+	}
+
 	if observed.(gitignoreState).count(change.Item) > 0 {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil
 	}

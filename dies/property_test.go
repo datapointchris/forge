@@ -68,7 +68,7 @@ func TestReadVerbsWriteNothing(t *testing.T) {
 			for _, die := range Builtin() {
 				t.Run(die.Name(), func(t *testing.T) {
 					target := build(t)
-					// The whole sandbox, not just the repo: planning writes into the
+					// The whole sandbox, not just the repo: synced-dirs writes into the
 					// sync base, so a property scoped to the repo would miss it.
 					before := snapshot(t, sandbox(target))
 
@@ -125,7 +125,7 @@ func TestEveryChangeIsClassified(t *testing.T) {
 // will ever run.
 func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
 	gitOnly := []string{
-		"ci", "planning", "branch-protection", "default-branch", "merge-settings",
+		"ci", "synced-dirs", "branch-protection", "default-branch", "merge-settings",
 	}
 
 	for _, name := range gitOnly {

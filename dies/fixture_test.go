@@ -84,7 +84,7 @@ func testAssets(t *testing.T) reconcile.Assets {
 // fixture builds a repo in a temp directory and the Target that addresses it.
 //
 // The sync base is a sibling of the repo inside the same temp directory, so a
-// die that writes outside the repo — planning links .planning into it — is
+// die that writes outside the repo — synced-dirs links a declared directory into it — is
 // still contained, and a test never reads or writes the real sync base.
 //
 // The .git directory is what makes this a repo rather than a directory, which

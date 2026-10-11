@@ -15,7 +15,7 @@ func applyAll(t *testing.T, target reconcile.Target, die reconcile.Die) []reconc
 }
 
 func TestGitignorePythonRepoGetsBytecodeCoverageAndBuildArtifacts(t *testing.T) {
-	target := fixture(t, stacks("python"), map[string]string{".gitignore": ".planning\n"})
+	target := fixture(t, stacks("python"), map[string]string{".gitignore": "bin/\n"})
 
 	applyAll(t, target, Gitignore{})
 
@@ -28,7 +28,7 @@ func TestGitignorePythonRepoGetsBytecodeCoverageAndBuildArtifacts(t *testing.T) 
 }
 
 func TestGitignoreRustRepoGetsCargoBuildOutput(t *testing.T) {
-	target := fixture(t, stacks("rust"), map[string]string{".gitignore": ".planning\n"})
+	target := fixture(t, stacks("rust"), map[string]string{".gitignore": "bin/\n"})
 
 	applyAll(t, target, Gitignore{})
 
@@ -41,7 +41,7 @@ func TestGitignoreRustRepoGetsCargoBuildOutput(t *testing.T) {
 // add a second line saying the same thing, which the duplicate check cannot see
 // because it compares strings.
 func TestGitignoreAddsNothingToARepoCargoNewAlreadyIgnored(t *testing.T) {
-	target := fixture(t, stacks("rust"), map[string]string{".gitignore": ".planning\n/target\n"})
+	target := fixture(t, stacks("rust"), map[string]string{".gitignore": "/target\n"})
 
 	measured := reconcile.Assess(target, Gitignore{})
 
@@ -51,7 +51,7 @@ func TestGitignoreAddsNothingToARepoCargoNewAlreadyIgnored(t *testing.T) {
 }
 
 func TestGitignoreGoRepoGetsNoRustOrPythonEntries(t *testing.T) {
-	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\n"})
+	target := fixture(t, stacks("go"), map[string]string{".gitignore": "bin/\n"})
 
 	applyAll(t, target, Gitignore{})
 
@@ -61,12 +61,12 @@ func TestGitignoreGoRepoGetsNoRustOrPythonEntries(t *testing.T) {
 }
 
 func TestGitignoreGoRepoGetsNoPythonEntries(t *testing.T) {
-	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\n"})
+	target := fixture(t, stacks("go"), map[string]string{".gitignore": "bin/\n"})
 
 	measured := reconcile.Assess(target, Gitignore{})
 
 	if len(measured.Changes) != 0 {
-		t.Fatalf("changes = %v, want none — the only universal entry is present", measured.Changes)
+		t.Fatalf("changes = %v, want none — a go repo has no entry to assert", measured.Changes)
 	}
 	if has(lines(t, target.Path(".gitignore")), ".coverage") {
 		t.Error(".coverage leaked into a repo declaring no python component")
@@ -92,11 +92,11 @@ func TestGitignoreKeepsTheReposOwnEntries(t *testing.T) {
 // Skipping instead made a new repo the one case the golden path did not cover,
 // which is where it is needed most.
 func TestGitignoreCreatesTheFileWhenAbsent(t *testing.T) {
-	target := fixture(t, stacks("go"), nil)
+	target := fixture(t, stacks("python"), nil)
 
 	applyAll(t, target, Gitignore{})
 
-	if !has(lines(t, target.Path(".gitignore")), ".planning") {
+	if !has(lines(t, target.Path(".gitignore")), "__pycache__/") {
 		t.Error("a repo with no .gitignore did not get one")
 	}
 }
@@ -104,7 +104,7 @@ func TestGitignoreCreatesTheFileWhenAbsent(t *testing.T) {
 // Without the newline guard the first entry lands glued to whatever the last
 // line was, silently changing that line's meaning.
 func TestGitignoreAppendsAfterAFileWithNoTrailingNewline(t *testing.T) {
-	target := fixture(t, stacks("go"), map[string]string{".gitignore": "node_modules/"})
+	target := fixture(t, stacks("python"), map[string]string{".gitignore": "node_modules/"})
 
 	applyAll(t, target, Gitignore{})
 
@@ -112,13 +112,13 @@ func TestGitignoreAppendsAfterAFileWithNoTrailingNewline(t *testing.T) {
 	if !has(present, "node_modules/") {
 		t.Errorf("the last line was mangled: %v", present)
 	}
-	if !has(present, ".planning") {
+	if !has(present, "__pycache__/") {
 		t.Errorf("the new entry did not land on its own line: %v", present)
 	}
 }
 
 func TestGitignoreIsIdempotent(t *testing.T) {
-	target := fixture(t, stacks("python"), map[string]string{".gitignore": ".planning\n"})
+	target := fixture(t, stacks("python"), map[string]string{".gitignore": "bin/\n"})
 
 	applyAll(t, target, Gitignore{})
 	first, err := os.ReadFile(target.Path(".gitignore"))
@@ -142,7 +142,7 @@ func TestGitignoreIsIdempotent(t *testing.T) {
 // judgment about what the repo actually builds.
 func TestGitignoreReportsAGeneratedFileAsByHand(t *testing.T) {
 	target := fixture(t, stacks("go"), map[string]string{
-		".gitignore": "# Created by https://www.toptal.com/developers/gitignore\n.planning\n",
+		".gitignore": "# Created by https://www.toptal.com/developers/gitignore\nbin/\n",
 	})
 
 	measured := reconcile.Assess(target, Gitignore{})
@@ -170,26 +170,26 @@ func TestGitignoreReportsAGeneratedFileAsByHand(t *testing.T) {
 }
 
 func TestGitignoreReportsDuplicatesWithoutRemovingThem(t *testing.T) {
-	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\nsrc/\n.planning\n"})
+	target := fixture(t, stacks("python"), map[string]string{".gitignore": "__pycache__/\nsrc/\n__pycache__/\n"})
 
 	applyAll(t, target, Gitignore{})
 
 	present := lines(t, target.Path(".gitignore"))
 	var count int
 	for _, line := range present {
-		if line == ".planning" {
+		if line == "__pycache__/" {
 			count++
 		}
 	}
 	if count != 2 {
-		t.Errorf(".planning appears %d times, want 2 — removing a line is never this die's to do", count)
+		t.Errorf("__pycache__/ appears %d times, want 2 — removing an asserted line is never this die's to do", count)
 	}
 }
 
 // Perform is unreachable from the read verbs, but the method exists on the
 // interface, so a by-hand change reaching it must refuse rather than write.
 func TestGitignorePerformRefusesAByHandChange(t *testing.T) {
-	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\n"})
+	target := fixture(t, stacks("go"), map[string]string{".gitignore": "bin/\n"})
 	before, _ := os.ReadFile(target.Path(".gitignore"))
 
 	outcome, err := Gitignore{}.Perform(target, reconcile.Change{
@@ -213,10 +213,10 @@ func TestGitignorePerformRefusesAByHandChange(t *testing.T) {
 // Observe ran before the plan was printed, and the operator may have read it
 // for a while. Perform re-verifies rather than trusting what Diff saw.
 func TestGitignorePerformSkipsAChangeThatHasSinceLanded(t *testing.T) {
-	target := fixture(t, stacks("go"), nil)
+	target := fixture(t, stacks("python"), nil)
 	measured := reconcile.Assess(target, Gitignore{})
 
-	if err := os.WriteFile(target.Path(".gitignore"), []byte(".planning\n"), 0o644); err != nil {
+	if err := os.WriteFile(target.Path(".gitignore"), []byte(measured.Changes[0].Item+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -229,5 +229,52 @@ func TestGitignorePerformSkipsAChangeThatHasSinceLanded(t *testing.T) {
 	}
 	if count := len(lines(t, target.Path(".gitignore"))); count != 1 {
 		t.Errorf("the entry was written twice: %d lines", count)
+	}
+}
+
+func TestGitignoreRemovesARetiredEntryAndKeepsTheRest(t *testing.T) {
+	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\n\n# what this project builds\nbin/\n.planning\n"})
+
+	measured := reconcile.Assess(target, Gitignore{})
+	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.Automatic {
+		t.Fatalf("changes = %v, want one automatic removal", measured.Changes)
+	}
+
+	applyAll(t, target, Gitignore{})
+
+	if got := readFile(t, target.Path(".gitignore")); got != "# what this project builds\nbin/\n" {
+		t.Errorf(".gitignore = %q, want the repo's own lines and nothing above them", got)
+	}
+}
+
+// Only the exact line this die wrote is retired. Another spelling is a line the
+// repo chose, and a match that guessed would take a repo's own entry with it.
+func TestGitignoreLeavesAnotherSpellingOfARetiredEntry(t *testing.T) {
+	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning/\n"})
+
+	if measured := reconcile.Assess(target, Gitignore{}); len(measured.Changes) != 0 {
+		t.Fatalf("changes = %v, want none", measured.Changes)
+	}
+}
+
+func TestGitignoreDeletesAFileHoldingOnlyARetiredEntry(t *testing.T) {
+	target := fixture(t, stacks("go"), map[string]string{".gitignore": ".planning\n"})
+
+	applyAll(t, target, Gitignore{})
+
+	if _, err := os.Stat(target.Path(".gitignore")); !os.IsNotExist(err) {
+		t.Errorf("a .gitignore left with nothing in it was kept: %v", err)
+	}
+}
+
+func TestGitignoreRetiredEntryRemovalIsIdempotent(t *testing.T) {
+	target := fixture(t, stacks("python"), map[string]string{".gitignore": ".planning\nbin/\n"})
+
+	applyAll(t, target, Gitignore{})
+	if measured := reconcile.Assess(target, Gitignore{}); len(measured.Changes) != 0 {
+		t.Errorf("a second look found %v, want nothing", measured.Changes)
+	}
+	if has(lines(t, target.Path(".gitignore")), ".planning") {
+		t.Error("the retired entry survived apply")
 	}
 }

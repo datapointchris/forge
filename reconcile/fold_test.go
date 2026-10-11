@@ -50,7 +50,7 @@ func TestUnmeasuredIsNeitherLensAndDoesNotDrift(t *testing.T) {
 
 func TestPlanAndCheckKeepDifferentChanges(t *testing.T) {
 	changes := []Change{
-		{Item: ".gitignore", Verdict: Missing, Repair: Automatic, Detail: "would add .planning"},
+		{Item: ".gitignore", Verdict: Missing, Repair: Automatic, Detail: "would add __pycache__/"},
 		{Item: "ci.yml", Verdict: Undeclared, Repair: ByHand, Detail: "hand-written pipeline"},
 	}
 
