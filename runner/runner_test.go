@@ -60,7 +60,7 @@ func TestOwnedRepos(t *testing.T) {
 
 func TestSelectRepos(t *testing.T) {
 	repos := []config.Repo{
-		{Name: "forge", Path: "~/src/forge"},
+		{Name: "forge", Path: "~/src/forge", Status: "active"},
 		{Name: "httpx", Path: "~/code/refs/httpx", Owner: "encode", Reference: true},
 		{Name: "sess", Path: "~/src/sess", Status: "retired"},
 		{Name: "reddit-nlp", Path: "~/code/reddit-nlp", Status: "dormant"},
@@ -90,12 +90,15 @@ func TestSelectRepos(t *testing.T) {
 		}
 	})
 
-	// repos.json is hand-edited; an entry that omits status must not vanish
-	// from every maintenance operation without a word.
-	t.Run("an entry with no status is treated as active", func(t *testing.T) {
-		got := SelectRepos([]config.Repo{{Name: "fresh", Path: "~/src/fresh"}}, nil)
-		if len(got) != 1 {
-			t.Errorf("got %v, want fresh — a missing status must not silently exclude", got)
+	// The registry suite refuses an entry with no status, so the only way one
+	// arrives is a registry that skipped it. forge supplies no meaning for it.
+	t.Run("an entry with no status is not swept implicitly", func(t *testing.T) {
+		fresh := []config.Repo{{Name: "fresh", Path: "~/src/fresh"}}
+		if got := SelectRepos(fresh, nil); len(got) != 0 {
+			t.Errorf("got %v, want none — an absent status is not active", got)
+		}
+		if got := SelectRepos(fresh, []string{"fresh"}); len(got) != 1 {
+			t.Errorf("got %v, want fresh — naming it with -F still reaches it", got)
 		}
 	})
 

@@ -54,14 +54,13 @@ type Opts struct {
 // as retired. Dormant is most of the portfolio and none of it takes another
 // release, so a maintenance die swept across it is pure churn: a config every
 // repo "should" have is worth nothing in one that will never run the tool.
-// An entry with no status counts as active. repos.json is hand-edited, and the
-// opposite default drops such a repo out of every maintenance operation
-// silently — a repo that stops receiving the standards while still looking
-// registered is far worse than one swept that should not have been.
+// Status is matched plainly: the registry suite refuses an entry without one,
+// so a reader supplying a meaning for the absent case would be choosing for a
+// value the file never holds.
 func ActiveRepos(repos []config.Repo) []config.Repo {
 	var active []config.Repo
 	for _, r := range repos {
-		if r.Status == "active" || r.Status == "" {
+		if r.Status == "active" {
 			active = append(active, r)
 		}
 	}
