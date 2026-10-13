@@ -211,14 +211,6 @@ reads it, and a file at a managed path without it is reported rather than overwr
 - **`rust-toolchain.toml` is the one template the declaration fills.** Its channel is
   `languages.rust.toolchain`, named by the entry's `toolchainOf`. A declaration without one refuses
   every Rust repo, because a channel rustup cannot resolve fails every cargo call there.
-- **`ruff.toml` goes only to a repo with `uv run --script` apps and no `pyproject.toml`.** The
-  scripts block runs ruff there, and without it ruff formats at its defaults. Its tables are the
-  `[tool.ruff]` tables of `pyproject-tools.toml` with the prefix dropped, so the settings have one
-  source. Its `target-version` is `languages.python.floor`, named by `floorOf`, because ruff reads no
-  script's inline `requires-python` and otherwise assumes 3.9. ruff reads `ruff.toml` ahead of
-  `pyproject.toml`, so the entry's `yieldsTo` withdraws it
-  once a pyproject arrives. Any marked config whose gate closes is removed the same way; a file
-  without the marker is never touched.
 
 **`merge_pyproject_tools.py`** merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing). **The standard owns exactly the keys it writes**, recorded as `[tool.forge] managed` in each repo's pyproject. That record is what makes retraction possible: a key dropped from the template is removed everywhere on the next sync, because the record proves forge put it there, and the retraction is printed rather than silent. A key absent from the record is the project's and is unreachable from the delete path.
 

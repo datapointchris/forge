@@ -1,12 +1,10 @@
 package dies
 
 import (
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/datapointchris/forge/reconcile"
-	"github.com/datapointchris/forge/toolchain"
 )
 
 // trackAll turns the fixture into a real repo with everything staged, which is
@@ -61,7 +59,6 @@ func TestPreCommitConfigReachesTheScannedScripts(t *testing.T) {
 	target := fixture(t, stacks("python"), map[string]string{
 		"apps/worktree": "#!/usr/bin/env -S uv run --script\nimport os\n",
 	})
-	target.Assets.Manifest.Languages = map[string]toolchain.Language{"python": {Floor: "3.13"}}
 	trackAll(t, target)
 
 	applyAll(t, target, PreCommit{})
@@ -72,45 +69,6 @@ func TestPreCommitConfigReachesTheScannedScripts(t *testing.T) {
 	}
 	if !strings.Contains(generated, `files: '^(apps/worktree)$'`) {
 		t.Errorf("the scanned path did not reach the config:\n%s", generated)
-	}
-}
-
-// Without ruff.toml the script hooks in a repo with no pyproject.toml format at
-// ruff's defaults. With it beside a pyproject.toml, ruff reads it first and the
-// project's [tool.ruff] goes dark. A ruff.toml a person wrote is never forge's
-// to remove.
-func TestRuffTomlServesAScriptsRepoUntilAPyprojectArrives(t *testing.T) {
-	target := fixture(t, stacks("shell"), map[string]string{
-		"checks/audit": "#!/usr/bin/env -S uv run --script\nimport os\n",
-	})
-	target.Assets.Manifest.Languages = map[string]toolchain.Language{"python": {Floor: "3.13"}}
-	trackAll(t, target)
-
-	applyAll(t, target, PreCommit{})
-	deployed := readFile(t, target.Path("ruff.toml"))
-	settings, _, _ := strings.Cut(deployed, "\n[")
-	if !strings.Contains(settings, "\nline-length = 140\n") || !strings.Contains(settings, "\ntarget-version = \"py313\"\n") {
-		t.Errorf("line-length and target-version are not top-level keys of the deployed ruff.toml:\n%s", deployed)
-	}
-	if !strings.Contains(deployed, "\n[format]\nquote-style = \"single\"\n") || strings.Contains(deployed, "\n[tool.") {
-		t.Errorf("the ruff tables did not land under their own names:\n%s", deployed)
-	}
-
-	if err := writeFile(target.Path("pyproject.toml"), "[project]\nname = \"fixture\"\n"); err != nil {
-		t.Fatal(err)
-	}
-	applyAll(t, target, PreCommit{})
-	if _, err := os.Stat(target.Path("ruff.toml")); !os.IsNotExist(err) {
-		t.Errorf("forge's ruff.toml stayed beside a pyproject.toml, where it shadows [tool.ruff]")
-	}
-
-	mine := "line-length = 100\n"
-	if err := writeFile(target.Path("ruff.toml"), mine); err != nil {
-		t.Fatal(err)
-	}
-	applyAll(t, target, PreCommit{})
-	if got := readFile(t, target.Path("ruff.toml")); got != mine {
-		t.Errorf("a hand-written ruff.toml was changed or removed; got %q", got)
 	}
 }
 
