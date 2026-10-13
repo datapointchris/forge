@@ -50,5 +50,8 @@
           *) exit $status ;;
           esac' --
         language: system
+        # pre-commit otherwise splits the files across parallel mypy processes
+        # that share one .mypy_cache, and one crashes with an INTERNAL ERROR.
+        require_serial: true
         types: [text]
         files: '{{scripts}}'
