@@ -214,7 +214,9 @@ reads it, and a file at a managed path without it is reported rather than overwr
 - **`ruff.toml` goes only to a repo with `uv run --script` apps and no `pyproject.toml`.** The
   scripts block runs ruff there, and without it ruff formats at its defaults. Its tables are the
   `[tool.ruff]` tables of `pyproject-tools.toml` with the prefix dropped, so the settings have one
-  source. ruff reads `ruff.toml` ahead of `pyproject.toml`, so the entry's `yieldsTo` withdraws it
+  source. Its `target-version` is `languages.python.floor`, named by `floorOf`, because ruff reads no
+  script's inline `requires-python` and otherwise assumes 3.9. ruff reads `ruff.toml` ahead of
+  `pyproject.toml`, so the entry's `yieldsTo` withdraws it
   once a pyproject arrives. Any marked config whose gate closes is removed the same way; a file
   without the marker is never touched.
 
