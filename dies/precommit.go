@@ -70,9 +70,53 @@ type toolConfig struct {
 	// the template's toolchain.Pin, or is empty where the template names no
 	// version.
 	toolchainOf string
+	// yieldsTo is a root file the tool reads its settings from instead. Where
+	// it exists this config is not deployed, and a copy forge wrote comes out.
+	yieldsTo string
+	// pyprojectTables names a tool whose [tool.<name>] tables in the pyproject
+	// standard are appended to the asset, so a setting has one source whether
+	// it lands in a pyproject.toml or in the tool's own file.
+	pyprojectTables string
 }
 
-// Deployed to every repo, or gated on a declared category. The three generic
+// appliesTo reports whether this config belongs in a repo with these
+// categories.
+func (tool toolConfig) appliesTo(root string, categories []string) bool {
+	if tool.category != "" && !slices.Contains(categories, tool.category) {
+		return false
+	}
+	if tool.yieldsTo != "" {
+		if _, err := os.Stat(filepath.Join(root, tool.yieldsTo)); err == nil {
+			return false
+		}
+	}
+	return true
+}
+
+// content is what forge writes at rel, before the edits that depend on the
+// repo's declaration.
+func (tool toolConfig) content(assets fs.FS) (string, error) {
+	content, err := fs.ReadFile(assets, tool.asset)
+	if err != nil {
+		return "", fmt.Errorf("reading embedded %s: %w", tool.asset, err)
+	}
+	if tool.pyprojectTables == "" {
+		return string(content), nil
+	}
+	standard, err := fs.ReadFile(assets, pyprojectStandardAsset)
+	if err != nil {
+		return "", fmt.Errorf("reading embedded %s: %w", pyprojectStandardAsset, err)
+	}
+	tables, err := toolTables(string(standard), tool.pyprojectTables)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", tool.rel, err)
+	}
+	return string(content) + "\n" + tables, nil
+}
+
+// Deployed to every repo, or gated on a category the repo declares or the scan
+// finds. Every gated one that forge wrote comes out when its gate closes, and
+// a file without the marker never does. The three generic
 // ones are generic because the shell block is: a repo that got the hook without
 // .editorconfig would be formatted at shfmt's tab default, and one without
 // .shellcheckrc would follow sourced files it cannot resolve.
@@ -98,6 +142,12 @@ var toolConfigs = []toolConfig{
 	},
 	{asset: "configs/prettierignore.txt", rel: ".prettierignore", category: "vue"},
 	{asset: "configs/sqlfluff.ini", rel: ".sqlfluff", category: "sql"},
+	// The scripts block runs ruff on extensionless uv scripts, and a repo with
+	// no pyproject.toml has nowhere else to give ruff its settings.
+	{
+		asset: "configs/ruff.toml", rel: "ruff.toml", category: precommit.ScriptCategory,
+		supersedes: []string{".ruff.toml"}, yieldsTo: "pyproject.toml", pyprojectTables: "ruff",
+	},
 }
 
 // hookStages are the stages a generated config can use. Every one it names has
@@ -110,9 +160,12 @@ var toolConfigs = []toolConfig{
 var hookStages = []string{"pre-commit", "commit-msg"}
 
 type preCommitState struct {
-	basis        maintenance
-	config       generatedFile
-	configs      []generatedFile
+	basis   maintenance
+	config  generatedFile
+	configs []generatedFile
+	// withdrawn are tool configs forge wrote to a repo that does not qualify
+	// for them.
+	withdrawn    []generatedFile
 	missingHooks []string
 	blockers     []reconcile.Change
 }
@@ -481,15 +534,23 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	categories := declaredCategories(declared)
+	// Seeded from the scan, as Generate seeds the block itself.
+	if precommit.ScriptsPattern(owed.observed.Scripts) != "" {
+		categories = append(categories, precommit.ScriptCategory)
+	}
 	for _, tool := range toolConfigs {
-		if tool.category != "" && !slices.Contains(categories, tool.category) {
+		if !tool.appliesTo(root, categories) {
+			// A copy forge wrote stays in force after the repo stops
+			// qualifying for it, and every verb would call that converged.
+			if stale := readGenerated(root, tool.rel, ""); stale.exists && !handWritten(root, tool.rel) {
+				state.withdrawn = append(state.withdrawn, stale)
+			}
 			continue
 		}
-		content, err := fs.ReadFile(t.Assets.PreCommit, tool.asset)
+		want, err := tool.content(t.Assets.PreCommit)
 		if err != nil {
-			return nil, fmt.Errorf("reading embedded %s: %w", tool.asset, err)
+			return nil, err
 		}
-		want := string(content)
 		if tool.rel == ".shellcheckrc" {
 			want += precommit.ShellcheckDisables(declared)
 		}
@@ -723,6 +784,11 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 			changes = append(changes, change)
 		}
 	}
+	for _, file := range state.withdrawn {
+		if change, drifted := file.change("the repo does not qualify for this config, and forge wrote this copy, so it comes out"); drifted {
+			changes = append(changes, change)
+		}
+	}
 
 	// Missing either way, because the hook is genuinely absent. Who may fix it
 	// is what the basis decides: a declaration authorizes the install, a stamp
@@ -794,6 +860,17 @@ func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconci
 			return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "removed " + file.rel}, nil
 		}
 		return writeIfStale(t.Repo.Path, file, change)
+	}
+	// Re-measured by the Observe above, so a person who took the file over
+	// since the plan has made it handWritten and it is not in this list.
+	for _, file := range state.withdrawn {
+		if file.rel != change.Item {
+			continue
+		}
+		if err := removeGenerated(t.Repo.Path, file); err != nil {
+			return reconcile.Outcome{}, err
+		}
+		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "removed " + file.rel}, nil
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "no longer part of the standard"}, nil
 }

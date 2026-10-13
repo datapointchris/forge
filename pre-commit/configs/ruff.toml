@@ -1,0 +1,11 @@
+# forge-managed
+#
+# ruff reads this file because the repo has no pyproject.toml. Without one the
+# extensionless uv scripts here would format and lint at ruff's defaults, which
+# are double quotes, 88 columns and two rule families. The tables below are the
+# [tool.ruff] tables a Python project carries in its pyproject.toml, with the
+# tool.ruff prefix dropped, so a script here and a project elsewhere agree.
+#
+# ruff reads ruff.toml ahead of pyproject.toml in the same directory. A
+# pyproject.toml added here takes these settings over, and this file comes out
+# rather than shadowing it.

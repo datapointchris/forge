@@ -46,6 +46,10 @@ import (
 // wherever the repo keeps a uv.lock, so the lock never lags the spec it records.
 type Pyproject struct{}
 
+// pyprojectStandardAsset is the [tool.*] standard within the embedded
+// pre-commit tree.
+const pyprojectStandardAsset = "configs/pyproject-tools.toml"
+
 // devPinnedTools are the tools a repo's development dependencies hold at the
 // release their pre-commit hook pins.
 var devPinnedTools = []string{"ruff"}
@@ -257,7 +261,7 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	standard, err := materialize(t.Assets.PreCommit, "configs/pyproject-tools.toml", dir)
+	standard, err := materialize(t.Assets.PreCommit, pyprojectStandardAsset, dir)
 	if err != nil {
 		return "", err
 	}
