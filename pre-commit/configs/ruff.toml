@@ -9,3 +9,10 @@
 # ruff reads ruff.toml ahead of pyproject.toml in the same directory. A
 # pyproject.toml added here takes these settings over, and this file comes out
 # rather than shadowing it.
+#
+# ruff infers its target Python from a pyproject's requires-python, and does
+# not read the one in a script's inline metadata. With no target it assumes an
+# old release, so it files tomllib under third-party imports and its pyupgrade
+# rules stop at that release. The target is the oldest Python the scripts here
+# may declare.
+target-version = "py{{floor-without-dots}}"

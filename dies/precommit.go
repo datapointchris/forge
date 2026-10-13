@@ -77,6 +77,22 @@ type toolConfig struct {
 	// standard are appended to the asset, so a setting has one source whether
 	// it lands in a pyproject.toml or in the tool's own file.
 	pyprojectTables string
+	// floorOf names the declared language whose floor fills the template's
+	// floorWithoutDots.
+	floorOf string
+}
+
+// floorWithoutDots is replaced by a declared language floor with its dots
+// dropped, which is how ruff's target-version spells one after its py prefix.
+const floorWithoutDots = "{{floor-without-dots}}"
+
+// fillFloor writes the declared floor into a template that names one.
+func fillFloor(template string, manifest *toolchain.Toolchain, language string) (string, error) {
+	lang, declared := manifest.LanguageFor(language)
+	if !declared || lang.Floor == "" {
+		return "", fmt.Errorf("the versions file declares no %s floor (languages.%s.floor)", language, language)
+	}
+	return strings.ReplaceAll(template, floorWithoutDots, strings.ReplaceAll(lang.Floor, ".", "")), nil
 }
 
 // appliesTo reports whether this config belongs in a repo with these
@@ -146,7 +162,7 @@ var toolConfigs = []toolConfig{
 	// no pyproject.toml has nowhere else to give ruff its settings.
 	{
 		asset: "configs/ruff.toml", rel: "ruff.toml", category: precommit.ScriptCategory,
-		supersedes: []string{".ruff.toml"}, yieldsTo: "pyproject.toml", pyprojectTables: "ruff",
+		supersedes: []string{".ruff.toml"}, yieldsTo: "pyproject.toml", pyprojectTables: "ruff", floorOf: "python",
 	},
 }
 
@@ -556,6 +572,11 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		}
 		if tool.toolchainOf != "" {
 			if want, err = pinToolchain(want, t.Assets.Manifest, tool.toolchainOf); err != nil {
+				return nil, fmt.Errorf("%s: %w", tool.rel, err)
+			}
+		}
+		if tool.floorOf != "" {
+			if want, err = fillFloor(want, t.Assets.Manifest, tool.floorOf); err != nil {
 				return nil, fmt.Errorf("%s: %w", tool.rel, err)
 			}
 		}

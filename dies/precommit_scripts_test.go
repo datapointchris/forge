@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/toolchain"
 )
 
 // trackAll turns the fixture into a real repo with everything staged, which is
@@ -60,6 +61,7 @@ func TestPreCommitConfigReachesTheScannedScripts(t *testing.T) {
 	target := fixture(t, stacks("python"), map[string]string{
 		"apps/worktree": "#!/usr/bin/env -S uv run --script\nimport os\n",
 	})
+	target.Assets.Manifest.Languages = map[string]toolchain.Language{"python": {Floor: "3.13"}}
 	trackAll(t, target)
 
 	applyAll(t, target, PreCommit{})
@@ -81,13 +83,14 @@ func TestRuffTomlServesAScriptsRepoUntilAPyprojectArrives(t *testing.T) {
 	target := fixture(t, stacks("shell"), map[string]string{
 		"checks/audit": "#!/usr/bin/env -S uv run --script\nimport os\n",
 	})
+	target.Assets.Manifest.Languages = map[string]toolchain.Language{"python": {Floor: "3.13"}}
 	trackAll(t, target)
 
 	applyAll(t, target, PreCommit{})
 	deployed := readFile(t, target.Path("ruff.toml"))
 	settings, _, _ := strings.Cut(deployed, "\n[")
-	if !strings.Contains(settings, "\nline-length = 140\n") {
-		t.Errorf("line-length is not a top-level key of the deployed ruff.toml:\n%s", deployed)
+	if !strings.Contains(settings, "\nline-length = 140\n") || !strings.Contains(settings, "\ntarget-version = \"py313\"\n") {
+		t.Errorf("line-length and target-version are not top-level keys of the deployed ruff.toml:\n%s", deployed)
 	}
 	if !strings.Contains(deployed, "\n[format]\nquote-style = \"single\"\n") || strings.Contains(deployed, "\n[tool.") {
 		t.Errorf("the ruff tables did not land under their own names:\n%s", deployed)
