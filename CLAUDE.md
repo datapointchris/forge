@@ -144,7 +144,8 @@ Four categories are seeded by `Generate` rather than by a component:
 **The shell block's bats hook is guarded both ways.** A repo with no `tests/*.bats` passes; a repo
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck
 findings by reporting success there. In CI, the hooks job installs bats, its helper libraries and
-the declared jq wherever `tests/*.bats` exists.
+the declared jq wherever `tests/*.bats` exists. The hook runs `bats --jobs` at the online core
+count where GNU parallel is on PATH, and serially where it is not.
 
 **Blocks name no version.** Each writes `{{pin}}` where one belongs, generation fills it from the
 declaration, and a pin the declaration cannot fill is a refusal rather than a placeholder shipped to
