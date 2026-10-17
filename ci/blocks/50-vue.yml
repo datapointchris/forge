@@ -1,2 +1,10 @@
 # Vue
       - run: npm run build
+
+      # test:unit where the component has one, because test is where a
+      # frontend hangs its browser run or a second build; otherwise test. A
+      # component with neither has no suite, which is not a failure.
+      - name: Test
+        run: |
+          script=$(node -p "const s = require('./package.json').scripts ?? {}; s['test:unit'] ? 'test:unit' : s.test ? 'test' : ''")
+          if [ -n "$script" ]; then npm run "$script"; fi

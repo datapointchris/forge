@@ -156,14 +156,16 @@ func TestOnlyASectionBesideAMissingJobIsOrphaned(t *testing.T) {
 	}
 }
 
-// A node component lints with the vue block's hooks, and builds in the vue job.
+// A node component lints with the vue block's hooks, and builds and tests in the vue job.
 func TestANodeComponentGetsTheVueJob(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("node", "server"), "", nil, Ungated, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
 	vue := jobSteps(workflow, "node-server")
-	if !strings.Contains(vue, "working-directory: server") || !strings.Contains(vue, "npm run build") {
-		t.Errorf("no vue job for the node component:\n%s", workflow)
+	for _, want := range []string{"working-directory: server", "npm run build", `npm run "$script"`} {
+		if !strings.Contains(vue, want) {
+			t.Errorf("node job lacks %q:\n%s", want, workflow)
+		}
 	}
 }
