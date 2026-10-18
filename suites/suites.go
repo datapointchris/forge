@@ -70,9 +70,9 @@ func (r Result) OK() bool { return r.Outcome == Passed || r.Outcome == NoSuite }
 const Timeout = 5 * time.Minute
 
 // tested are the stacks that carry a suite. The rest — actions, docker,
-// terraform, shell — are linted rather than tested, and asking them for a test
-// result would produce a row that is `no_suite` forever and says nothing.
-var tested = map[string]bool{"go": true, "python": true, "vue": true, "node": true}
+// terraform, shell and lua — are linted rather than tested, and asking them for
+// a test result would produce a row that is `no_suite` forever and says nothing.
+var tested = map[string]bool{"go": true, "python": true, "rust": true, "vue": true, "node": true}
 
 // Tested reports whether a stack has suites worth running.
 func Tested(stack string) bool { return tested[stack] }
@@ -220,6 +220,12 @@ func plan(stack, dir string) (argv []string, outcome Outcome, note string) {
 		// with a real suite that never declared pytest as a dependency would
 		// otherwise silently stop being tested.
 		return []string{"uv", "run", "--with", "pytest", "pytest", "-q", "-p", "no:cacheprovider"}, "", ""
+
+	case "rust":
+		if !exists(filepath.Join(dir, "Cargo.toml")) {
+			return nil, NoSuite, "no Cargo.toml"
+		}
+		return []string{"cargo", "test"}, "", ""
 
 	case "vue", "node":
 		script, ok := testScript(filepath.Join(dir, "package.json"))
