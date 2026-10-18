@@ -1,23 +1,22 @@
 # forge-managed
 #
-# Files forge generates. Prettier must not rewrite them.
+# Generated files. Prettier must not rewrite them.
 #
-# The vue block runs `cd {{dir}} && npx prettier --write .` with
+# The vue hook runs `cd {{dir}} && npx prettier --write .` with
 # pass_filenames: false, so `files:` decides whether the hook runs, not what it
 # touches — prettier formats the whole of {{dir}}. Where a repo keeps its Vue
 # app in a subdirectory that is harmless. Where the component sits at the repo
-# root, prettier reaches the generated files: it reindented every `# generated:`
-# marker in .pre-commit-config.yaml and requoted node-version in the CI
-# workflow, and forge rewrote them back on the next sync. Two writers on one
-# file have no fixed point, and the repo drifts on every run of either tool.
+# root, prettier reaches the generated files: it reindents every `# generated:`
+# marker in .pre-commit-config.yaml and requotes node-version in the CI
+# workflow, and the generator rewrites them back on its next run. Two writers on
+# one file have no fixed point, and the repo drifts on every run of either tool.
 #
 # Ownership decides, not formatting preference: these files are generated, and
 # the generator is the only thing entitled to their shape.
 #
-# The entries name the spellings on disk across the portfolio. A release that
-# changes them changes this file's settings, and a deployed copy whose settings
-# do not match the template is one forge declines to adopt — so an entry swap
-# lands only once every copy carries the marker above.
+# The generator adopts a deployed copy only while its entries match the
+# template, so an entry swap lands only once every copy carries the marker
+# above.
 .pre-commit-config.yaml
 .github/workflows/validate.yml
 .markdownlint.json
