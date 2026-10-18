@@ -76,14 +76,17 @@ func TestPytestCollectingNothingIsNoSuiteNotAFailure(t *testing.T) {
 
 func TestAMissingRunnerIsUnknownNotAFailure(t *testing.T) {
 	// It is a statement about the machine, not about the code. Reporting it as a
-	// failure sends someone to debug a suite that was never run.
+	// failure sends someone to debug a suite that was never run. Run for real,
+	// with nothing on PATH: os/exec reports an absent binary as an error and
+	// writes nothing to the captured output.
 	r := repo(t, config.Component{Stack: "go", Dir: "."})
 	write(t, r.Path, "go.mod", "module demo\n")
+	t.Setenv("PATH", t.TempDir())
 
-	got := only(t, RunWith(r, answering(127, "")))
+	got := only(t, Run(r))
 
 	if got.Outcome != Unknown {
-		t.Errorf("exit 127 means the runner is absent; got %q", got.Outcome)
+		t.Errorf("a runner absent from PATH never ran; got %q: %s", got.Outcome, got.Output)
 	}
 	if got.Note == "" {
 		t.Error("an unknown outcome must say why, or it is indistinguishable from a bug here")

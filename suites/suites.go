@@ -349,14 +349,20 @@ func execute(dir string, argv []string) (int, string) {
 	cmd.Env = append(cmd.Environ(), "NO_COLOR=1", "CI=1")
 	output, err := cmd.CombinedOutput()
 
-	code := 0
-	if ctx.Err() != nil {
-		code = 124
-	} else if err != nil {
-		code = cmd.ProcessState.ExitCode()
+	switch {
+	case ctx.Err() != nil:
+		return 124, string(output)
+	case err != nil && cmd.ProcessState == nil:
+		// The runner never started, because it is not on PATH or cannot be
+		// executed. That error is not in the captured output, so it is returned
+		// as the output, with the 127 a shell reports for a missing command.
+		return 127, err.Error()
+	case err != nil:
+		code := cmd.ProcessState.ExitCode()
 		if code < 0 {
 			code = 1
 		}
+		return code, string(output)
 	}
-	return code, string(output)
+	return 0, string(output)
 }
