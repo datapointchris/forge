@@ -13,10 +13,12 @@ import (
 
 	"github.com/datapointchris/forge/dies"
 	"github.com/datapointchris/forge/reconcile"
+	"github.com/datapointchris/forge/timewindow"
 )
 
 var (
 	diesStatsSince string
+	diesStatsUntil string
 	diesStatsJSON  bool
 )
 
@@ -69,7 +71,10 @@ var diesStatsCmd = &cobra.Command{
 }
 
 func init() {
-	diesStatsCmd.Flags().StringVar(&diesStatsSince, "since", "", "only runs at or after this point: \"2 weeks\", \"30 days\", 72h, or 2026-07-01")
+	diesStatsCmd.Flags().StringVar(&diesStatsSince, "since", "",
+		"only runs at or after then: a span back from now (30m, 12h, 7d, 2w), a day (2026-10-01) or an RFC 3339 instant")
+	diesStatsCmd.Flags().StringVar(&diesStatsUntil, "until", "",
+		"only runs before then, in the same forms; a day includes all of it")
 	diesStatsCmd.Flags().BoolVar(&diesStatsJSON, "json", false, "output as JSON to stdout")
 
 	diesCmd.AddCommand(diesListCmd, diesShowCmd, diesSearchCmd, diesStatsCmd)
@@ -194,15 +199,12 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	window := ""
-	if diesStatsSince != "" {
-		cutoff, err := dies.ParseSince(diesStatsSince, time.Now())
-		if err != nil {
-			return err
-		}
-		records = dies.Since(records, cutoff)
-		window = fmt.Sprintf(" since %s", cutoff.Format("2006-01-02"))
+	bounds, err := timewindow.Parse(diesStatsSince, diesStatsUntil, time.Now())
+	if err != nil {
+		return goclikit.UsageError(err)
 	}
+	records = dies.Within(records, bounds)
+	window := windowPhrase(bounds)
 
 	if len(args) == 1 {
 		records = dies.StatsForDie(records, args[0])
@@ -237,6 +239,21 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 	}
 	printDieStatsSummary(window, aggregated)
 	return nil
+}
+
+// windowPhrase is the clause a heading takes after the die it names: which
+// stretch the runs came from, in this box's zone, and nothing for every run.
+func windowPhrase(w timewindow.Window) string {
+	at := func(t time.Time) string { return t.Local().Format("2006-01-02 15:04") }
+	switch {
+	case w.Since.IsZero() && w.Until.IsZero():
+		return ""
+	case w.Until.IsZero():
+		return " since " + at(w.Since)
+	case w.Since.IsZero():
+		return " before " + at(w.Until)
+	}
+	return " between " + at(w.Since) + " and " + at(w.Until)
 }
 
 // emitDiesStatsJSON keeps one schema per view: the per-die argument returns the

@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/datapointchris/forge/config"
+	"github.com/datapointchris/forge/timewindow"
 )
 
 // StatsPath is the run log under forge's data directory, which `dies stats`
@@ -100,83 +98,11 @@ func StatsForDie(records []RunRecord, name string) []RunRecord {
 	return filtered
 }
 
-// sinceUnits maps a normalized unit to the instant that many of them before t.
-// Months and years go through AddDate rather than a fixed multiple of hours,
-// so "3 months" lands on the calendar date a reader would name.
-var sinceUnits = map[string]func(t time.Time, n int) time.Time{
-	"minute": func(t time.Time, n int) time.Time { return t.Add(-time.Duration(n) * time.Minute) },
-	"hour":   func(t time.Time, n int) time.Time { return t.Add(-time.Duration(n) * time.Hour) },
-	"day":    func(t time.Time, n int) time.Time { return t.AddDate(0, 0, -n) },
-	"week":   func(t time.Time, n int) time.Time { return t.AddDate(0, 0, -7*n) },
-	"month":  func(t time.Time, n int) time.Time { return t.AddDate(0, -n, 0) },
-	"year":   func(t time.Time, n int) time.Time { return t.AddDate(-n, 0, 0) },
-}
-
-var sinceAliases = map[string]string{
-	"min": "minute",
-	"h":   "hour", "hr": "hour",
-	"d": "day", "w": "week", "mo": "month", "y": "year",
-}
-
-var sinceCountUnit = regexp.MustCompile(`^([0-9]+)\s*([a-z]+)$`)
-
-// ParseSince resolves a window spec to the instant it starts at. It accepts an
-// ISO date (2026-07-01), a Go duration (72h), and git log's own spelling
-// ("2 weeks", "30 days ago", "2.weeks.ago") — the last because this flag gets
-// typed in the same breath as the git command it was learned from.
-//
-// "m" is deliberately not an alias: git reads it as minutes and half the world
-// reads it as months, and a window silently 43000x wrong is worse than an error.
-func ParseSince(spec string, now time.Time) (time.Time, error) {
-	trimmed := strings.ToLower(strings.TrimSpace(spec))
-	if trimmed == "" {
-		return time.Time{}, fmt.Errorf("empty --since value")
-	}
-
-	if date, err := time.ParseInLocation("2006-01-02", trimmed, now.Location()); err == nil {
-		return date, nil
-	}
-
-	// Go durations are parsed before the dot is treated as a git-style separator,
-	// or 1.5h would normalize to "1 5h" and come back as fifteen hours.
-	if d, err := time.ParseDuration(trimmed); err == nil {
-		if d < 0 {
-			return time.Time{}, fmt.Errorf("--since must name a window in the past: %q", spec)
-		}
-		return now.Add(-d), nil
-	}
-
-	normalized := strings.ReplaceAll(trimmed, ".", " ")
-	normalized = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(normalized), "ago"))
-	normalized = strings.Join(strings.Fields(normalized), " ")
-
-	match := sinceCountUnit.FindStringSubmatch(normalized)
-	if match == nil {
-		return time.Time{}, fmt.Errorf("unrecognized --since value %q: try \"2 weeks\", \"30 days\", \"72h\", or 2026-07-01", spec)
-	}
-
-	count, err := strconv.Atoi(match[1])
-	if err != nil {
-		return time.Time{}, fmt.Errorf("unrecognized --since count in %q", spec)
-	}
-
-	unit := strings.TrimSuffix(match[2], "s")
-	if alias, ok := sinceAliases[unit]; ok {
-		unit = alias
-	}
-	shift, ok := sinceUnits[unit]
-	if !ok {
-		return time.Time{}, fmt.Errorf("unrecognized --since unit %q: use hours, days, weeks, months, or years", match[2])
-	}
-
-	return shift(now, count), nil
-}
-
-// Since returns the records at or after cutoff, preserving order.
-func Since(records []RunRecord, cutoff time.Time) []RunRecord {
+// Within returns the records inside the window, preserving order.
+func Within(records []RunRecord, window timewindow.Window) []RunRecord {
 	var kept []RunRecord
 	for _, r := range records {
-		if !r.Timestamp.Before(cutoff) {
+		if window.Contains(r.Timestamp) {
 			kept = append(kept, r)
 		}
 	}
