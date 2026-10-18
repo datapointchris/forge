@@ -49,8 +49,9 @@ func (Release) Tags() []string {
 // The group keys on the ref rather than the workflow, so a release on a branch
 // queues against that branch and not against main.
 var concurrencyBlock = []string{
-	"# Two pushes to main inside one run's window would otherwise race, and the later",
-	"# run fails pushing its version bump onto a ref that has already moved.",
+	"# Two pushes to main inside one run's window would otherwise race. Both runs",
+	"# resolve the same version, and the later one fails pushing its tag or its",
+	"# version commit.",
 	"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
 	"concurrency:",
 	"  group: release-${{ github.ref }}",
@@ -143,7 +144,7 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 		change := reconcile.Change{
 			Item:    "concurrency",
 			Verdict: reconcile.Missing,
-			Detail:  "two pushes to main inside one run's window race, and the later run fails on a non-fast-forward",
+			Detail:  "two pushes to main inside one run's window race, and the later run fails pushing the version the first one cut",
 		}
 		if state.jobsIndex < 0 {
 			// Nowhere to put it that is certainly top level. Appending would land
