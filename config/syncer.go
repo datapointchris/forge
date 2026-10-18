@@ -10,21 +10,31 @@ import (
 	"strings"
 )
 
-// DefaultReposPath is forge's own XDG data directory: where the registry lives
-// on a machine that says nothing about it.
+// DataDir is forge's own XDG data directory: $XDG_DATA_HOME/forge, or
+// ~/.local/share/forge where that is unset.
+func DataDir() (string, error) {
+	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
+		return filepath.Join(dir, "forge"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	return filepath.Join(home, ".local", "share", "forge"), nil
+}
+
+// DefaultReposPath is where the registry lives on a machine that says nothing
+// about it, in forge's own data directory.
 //
 // A generic tool must not carry a fleet-specific path, which is why this one
 // resolves its own. Where the registry is actually maintained is the machine's
 // to state, in the config's repos_registry — see ReposPath.
 func DefaultReposPath() string {
-	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
-		return filepath.Join(dir, "forge", "repos.json")
-	}
-	home, err := os.UserHomeDir()
+	dir, err := DataDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".local", "share", "forge", "repos.json")
+	return filepath.Join(dir, "repos.json")
 }
 
 // Repo is one target: a name, where it lives, and what forge needs to know to

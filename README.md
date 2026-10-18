@@ -411,5 +411,5 @@ Beyond the repos and directories it acts on, forge keeps three things on the mac
 - `$XDG_CACHE_HOME/forge/` holds what a run rebuilds: the throwaway clones `lint` makes, and the
   bare index for each maintained directory.
 - `$XDG_DATA_HOME/forge/cli-surface/` holds each `cli snapshot`, numbered. Nothing is pruned.
-- `~/.local/share/forge/stats.jsonl` gets one line per die each time `check`, `plan` or `apply`
+- `$XDG_DATA_HOME/forge/stats.jsonl` gets one line per die each time `check`, `plan` or `apply`
   runs, under either noun. `forge dies stats` reads it.

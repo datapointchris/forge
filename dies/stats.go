@@ -11,9 +11,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/datapointchris/forge/config"
 )
 
-const DefaultStatsPath = "~/.local/share/forge/stats.jsonl"
+// StatsPath is the run log under forge's data directory, which `dies stats`
+// reads and every check, plan and apply appends to.
+func StatsPath() (string, error) {
+	dir, err := config.DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "stats.jsonl"), nil
+}
 
 type RunRecord struct {
 	Die       string            `json:"die"`

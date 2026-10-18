@@ -11,7 +11,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/dies"
 	"github.com/datapointchris/forge/reconcile"
 )
@@ -145,7 +144,7 @@ func row(w io.Writer, format string, a ...any) {
 }
 
 func dieSummaries() map[string]dies.DieSummary {
-	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
+	statsPath, err := dies.StatsPath()
 	if err != nil {
 		return nil
 	}
@@ -163,7 +162,7 @@ func dieSummaries() map[string]dies.DieSummary {
 // Converged, Drift and Issue. Renaming them orphans every record already in the
 // JSONL log, which has no migration step.
 func recordRun(dieName string, results []reconcile.Result) {
-	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
+	statsPath, err := dies.StatsPath()
 	if err != nil {
 		return
 	}
@@ -185,9 +184,9 @@ func recordRun(dieName string, results []reconcile.Result) {
 }
 
 func runDiesStats(cmd *cobra.Command, args []string) error {
-	statsPath, err := config.ExpandTilde(dies.DefaultStatsPath)
+	statsPath, err := dies.StatsPath()
 	if err != nil {
-		return fmt.Errorf("expanding stats path: %w", err)
+		return fmt.Errorf("resolve stats path: %w", err)
 	}
 
 	records, err := dies.LoadStats(statsPath)
