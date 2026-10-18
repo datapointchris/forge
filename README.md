@@ -388,7 +388,7 @@ top-level `owner`, and `sync_base`, where the `synced-dirs` die keeps each repo'
 ```json
 {
   "owner": "datapointchris",
-  "sync_base": "~/dev/repos",
+  "sync_base": "~/dev/repo-status-and-notes",
   "repos": [
     {
       "name": "forge",
