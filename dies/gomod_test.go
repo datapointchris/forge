@@ -212,7 +212,7 @@ func TestVersionsCompareNumericallyRatherThanAsText(t *testing.T) {
 }
 
 // declared builds a target whose manifest carries a full language declaration,
-// which is what LoadFile produces and what the embedded YAML cannot.
+// which is what LoadFile produces and what the YAML test fixture cannot.
 func declared(t *testing.T, floor, pin string, mods map[string]string) reconcile.Target {
 	t.Helper()
 	target := goTarget(t, "", mods)

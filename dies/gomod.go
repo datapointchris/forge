@@ -11,8 +11,9 @@ import (
 	"github.com/datapointchris/forge/reconcile"
 )
 
-// GoMod pins the Go toolchain each module builds with, without touching the
-// `go` directive that says which Go can consume it.
+// GoMod writes both Go directives in each module's go.mod from the
+// declaration's languages.go. The `go` line takes the declared floor, and a
+// `toolchain` line takes the declared pin wherever that floor sits below it.
 //
 // The two look like one setting and are not. The `go` directive is a floor a
 // consumer has to clear; the `toolchain` directive is what this build switches
@@ -30,9 +31,10 @@ import (
 // `go list` still reported the module at 1.26.5, `GOTOOLCHAIN=local go build`
 // still worked, and the release installed on that same machine.
 //
-// So this die never writes the `go` line. Raising a floor is a compatibility
-// decision about who may consume the module, and it belongs to whoever owns
-// the module rather than to a fleet-wide sweep.
+// So a fixed standard library arrives through the toolchain line, and the
+// floor moves only when the declaration's does. This die sets every module's
+// `go` line to that floor, in either direction. Raising it is a compatibility
+// decision about who may consume a module, made once in the declaration.
 //
 // Each `FROM golang:` line in a Dockerfile beside a go.mod takes the release
 // CI tests. The official image sets GOTOOLCHAIN=local and ignores go.mod's
@@ -43,7 +45,7 @@ type GoMod struct{}
 func (GoMod) Name() string { return "gomod" }
 
 func (GoMod) Description() string {
-	return "Pin the Go toolchain each module builds with, from the manifest's runtime version, in its go.mod and in the golang image its Dockerfiles build from. Never touches the `go` directive, which is a consumer's floor rather than this build's toolchain."
+	return "Set each Go module's `go` directive to the declared floor, add a `toolchain` directive at the declared pin wherever that floor sits below it, and pin the golang image its Dockerfiles build from to the Go its CI tests."
 }
 
 func (GoMod) Tags() []string {

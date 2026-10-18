@@ -133,9 +133,9 @@ type Toolchain struct {
 	// fail with nothing in the repo changed.
 	HostedRunner string `yaml:"hosted_runner"`
 	// Languages holds each language's floor and, where the language separates
-	// them, the toolchain its builds use. Populated only by LoadFile — the
-	// embedded YAML predates the declaration and carries runtimes alone, so a
-	// consumer must treat an absent entry as "not declared" rather than as zero.
+	// them, the toolchain its builds use. Populated only by LoadFile. The YAML
+	// test fixture Load reads carries runtimes alone, so a consumer must treat an
+	// absent entry as "not declared" rather than as zero.
 	Languages map[string]Language `yaml:"-"`
 }
 

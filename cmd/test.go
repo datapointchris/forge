@@ -19,8 +19,8 @@ var testCmd = &cobra.Command{
 
 The command per stack is the one ci/blocks/ generates into that repo's own
 workflow, so a local run and CI cannot disagree about what "the tests" means.
-Vue is the exception — its CI block builds without testing — so there
-the component's own package.json says what to run.
+A vue or node component runs its package.json's test:unit script where it
+has one and test otherwise, as its CI job does.
 
 Four outcomes, not two. ` + "`no_suite`" + ` is a repo with no tests yet, which is not a
 failing repo, and pytest's exit 5 lands here. ` + "`unknown`" + ` is a component that

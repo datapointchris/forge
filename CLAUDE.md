@@ -376,8 +376,8 @@ Measured against a system Go one patch below the pin. A module floored above it 
 standard-library advisories was skipped: `go install @latest` returned 0 in a quarter of a second
 and left the old binary in place. A module taking a toolchain directive against the same advisories
 worked — govulncheck clean, `go list` still reporting the lower version, `GOTOOLCHAIN=local go
-build` still working, and the release installing on that machine. So raising a floor stays a compatibility decision belonging to whoever
-owns the module, never to a fleet-wide sweep.
+build` still working, and the release installing on that machine. So a fixed standard library
+arrives through the toolchain line, and a floor rises only when the declaration's does.
 
 Both numbers come from the declaration's `languages.go`. Bump the toolchain on a standard-library
 advisory; `govulncheck` in generated CI is what reports one.

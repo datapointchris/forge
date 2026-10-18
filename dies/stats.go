@@ -90,10 +90,10 @@ func LoadStats(statsPath string) ([]RunRecord, error) {
 	return records, nil
 }
 
-func StatsForDie(records []RunRecord, diePath string) []RunRecord {
+func StatsForDie(records []RunRecord, name string) []RunRecord {
 	var filtered []RunRecord
 	for _, r := range records {
-		if r.Die == diePath {
+		if r.Die == name {
 			filtered = append(filtered, r)
 		}
 	}

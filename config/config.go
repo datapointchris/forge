@@ -74,16 +74,16 @@ type Config struct {
 
 	// VersionsFile points at the declaration of every pinned version forge
 	// rolls out — language floors and toolchains, pre-commit revs, action
-	// versions, CLI and binary pins. Empty means the manifest embedded in this
-	// binary, so forge works with no config at all.
+	// versions, CLI and binary pins. $FORGE_VERSIONS_FILE outranks it. forge
+	// ships no pins of its own, so with both empty a command that needs the
+	// pins refuses to run.
 	//
 	// Declared for the same reason ReposRegistry is, and it is the same kind of
 	// fact: where this machine keeps a file several tools share. What would make
 	// forge fleet-specific is a path compiled into it, never one it is told.
 	//
-	// The embedded copy cannot drift and cannot be changed without a release,
-	// which is the tradeoff. Naming a file makes a version bump one line and a
-	// sweep rather than a forge release. That is the point of the key.
+	// A version bump is one edit to the named file and a sweep, never a forge
+	// release.
 	VersionsFile string `yaml:"versions_file,omitempty"`
 }
 

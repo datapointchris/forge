@@ -3,8 +3,8 @@
 //
 // The commands are the ones ci/blocks/ already generates into every repo's
 // workflow, so a local run and CI cannot disagree about what "the tests" means.
-// Where a stack's CI block runs no tests — vue builds and stops — the
-// command is the one the component's own package.json declares.
+// A vue or node component runs its package.json's test:unit script where it has
+// one and test otherwise, as its CI job does.
 //
 // Nothing here installs anything. A component whose runner is absent reports
 // Unknown rather than Failed: that is a statement about the machine, not about

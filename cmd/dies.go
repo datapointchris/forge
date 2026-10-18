@@ -280,10 +280,10 @@ func printDieStatsSummary(window string, aggregated []dies.DieStats) {
 			red.Sprintf("%5d", s.Fail))
 	}
 
-	dim.Printf("\nPer-run history: forge dies stats <die-path>\n\n")
+	dim.Printf("\nPer-run history: forge dies stats <die>\n\n")
 }
 
-func printDieRunHistory(diePath, window string, records []dies.RunRecord) {
+func printDieRunHistory(name, window string, records []dies.RunRecord) {
 	bold := color.New(color.Bold)
 	cyan := color.New(color.FgHiCyan)
 	dim := color.New(color.Faint)
@@ -291,7 +291,7 @@ func printDieRunHistory(diePath, window string, records []dies.RunRecord) {
 	yellow := color.New(color.FgHiYellow)
 	red := color.New(color.FgHiRed)
 
-	cyan.Printf("\n%s%s\n", diePath, window)
+	cyan.Printf("\n%s%s\n", name, window)
 	bold.Printf("%-16s %5s %5s %5s\n", "Run", "OK", "Skip", "Fail")
 	dim.Printf("%s\n", strings.Repeat("─", 34))
 
