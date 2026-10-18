@@ -104,8 +104,9 @@ func Execute() {
 		if errors.As(err, &verdict) {
 			os.Exit(int(verdict.Code))
 		}
-		// The update command writes its own ✗ line; printing here too would
-		// report the same failure twice.
+		// A reported error is already on screen, so printing it here would say
+		// it twice. The update command writes its own ✗ line, and a command
+		// given none of the arguments it requires prints its help.
 		if !errors.Is(err, goclikit.ErrReported) {
 			fmt.Fprintln(os.Stderr, err)
 		}
