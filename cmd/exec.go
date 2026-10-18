@@ -18,12 +18,16 @@ var (
 	scriptFile      string
 )
 
-// execCmd is the escape hatch, and what makes dies affordable as Go only: a
+// newExecCmd is the escape hatch, and what makes dies affordable as Go only: a
 // one-off sweep is one command here, with nothing to register.
-var execCmd = &cobra.Command{
-	Use:   "exec [-- command...]",
-	Short: "Run an arbitrary command in each repo",
-	Long: `Run a command in each selected repo.
+//
+// Built fresh for each repos subtree, because AddCommand reparents a command
+// and a shared one belongs to whichever subtree was built last.
+func newExecCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "exec [-- command...]",
+		Short: "Run an arbitrary command in each repo",
+		Long: `Run a command in each selected repo.
 
 Inline:
   forge repos exec -- git status --short
@@ -37,13 +41,12 @@ go to stderr, so stdout is the commands' output alone:
   forge repos exec -- git log --oneline --since=14.days | cut -f1 | sort | uniq -c
 
 For anything reusable, write a die instead — it gets plan, check and apply.`,
-	RunE: runExec,
-}
-
-func init() {
-	execCmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
-	execCmd.Flags().BoolVarP(&execDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
-	execCmd.Flags().StringVarP(&scriptFile, "file", "f", "", "path to script file to execute in each repo")
+		RunE: runExec,
+	}
+	cmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
+	cmd.Flags().BoolVarP(&execDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
+	cmd.Flags().StringVarP(&scriptFile, "file", "f", "", "path to script file to execute in each repo")
+	return cmd
 }
 
 func runExec(cmd *cobra.Command, args []string) error {
