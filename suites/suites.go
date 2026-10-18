@@ -74,9 +74,6 @@ const Timeout = 5 * time.Minute
 // a test result would produce a row that is `no_suite` forever and says nothing.
 var tested = map[string]bool{"go": true, "python": true, "rust": true, "vue": true, "node": true}
 
-// Tested reports whether a stack has suites worth running.
-func Tested(stack string) bool { return tested[stack] }
-
 // Run executes every testable component of one repo, in declaration order.
 func Run(repo config.Repo) []Result {
 	return RunWith(repo, execute)
