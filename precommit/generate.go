@@ -57,8 +57,9 @@ const wholeScope = "after:all"
 //
 // Four categories are gated by something other than a component, and Generate
 // seeds each one itself: sql by a declared dialect, git by the target being
-// versioned, python-scripts by the scan finding a file identify cannot tag, and
-// go-release by a Go component whose releases go-semantic-release cuts.
+// versioned, python-scripts by the scan finding a file identify cannot tag in a
+// repo declaring Python, and go-release by a Go component whose releases
+// go-semantic-release cuts.
 //
 // git is gated that way because its block hooks commit-msg, which only fires on
 // a commit. A target git does not version would carry a hook that can never run,
@@ -464,9 +465,11 @@ func Generate(
 	}
 	// Seeded from the scan for the same reason: an app identify cannot tag is
 	// not a build surface with a directory of its own, and no declaration can
-	// name it without going stale the next time one is added.
+	// name it without going stale the next time one is added. The scan decides
+	// which files, and a declared Python component decides whether, for the
+	// reason PythonDeclared gives.
 	scriptsPattern := ScriptsPattern(observed.Scripts)
-	if scriptsPattern != "" {
+	if scriptsPattern != "" && PythonDeclared(declared) {
 		dirs[ScriptCategory] = []string{"."}
 	}
 	blocks, err := loadBlocks(blocksFS, dirs)
