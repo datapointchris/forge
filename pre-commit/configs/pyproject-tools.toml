@@ -10,6 +10,12 @@
 
 [tool.ruff]
 line-length = 140
+# `ruff format` collects Markdown and formats each Python fence in it as source.
+# A Python fence in Markdown is often a figure, with aligned comments and
+# right-aligned paths, which that reflow destroys. The exclude sits here rather
+# than on the hook so a bare `ruff format .` honors it as well: the pre-commit
+# hook passes `--force-exclude`, so it reads the same list.
+extend-exclude = ["*.md"]
 
 [tool.ruff.format]
 quote-style = "single"
