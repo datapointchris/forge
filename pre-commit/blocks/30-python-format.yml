@@ -5,7 +5,13 @@
       - id: uv-lock
 
   # Python: formatting
+  #
+  # types_or leaves out markdown, which ruff-pre-commit's ruff-format selects.
+  # ruff formats a Python fence in Markdown as source, and a fence here is often
+  # a figure: aligned comments and right-aligned paths, which the reflow
+  # destroys.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "{{pin}}"
     hooks:
       - id: ruff-format
+        types_or: [python, pyi, jupyter]
