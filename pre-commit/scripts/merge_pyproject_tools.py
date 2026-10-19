@@ -281,6 +281,22 @@ def pin_dependencies(document, pins):
             groups['dev'].append(f'{name}=={version}')
 
 
+def workspace_testpaths(document):
+    """`<member>/tests` for each uv workspace member as `members` spells it, or None outside a workspace.
+
+    A workspace keeps its tests under each member, where the template's `tests` finds none. pytest
+    globs each entry, so a member with no tests is skipped and a pattern member expands. A `*/tests`
+    glob in the template would also collect the nested suites a flat repo keeps out of its root run.
+    """
+    tool = document.get('tool')
+    uv = tool.get('uv') if isinstance(tool, dict) else None
+    workspace = uv.get('workspace') if isinstance(uv, dict) else None
+    members = workspace.get('members') if isinstance(workspace, dict) else None
+    if not members:
+        return None
+    return [f'{str(member).rstrip("/")}/tests' for member in members]
+
+
 def parse_pin(text):
     """`NAME==VERSION` as a (name, version) pair, or a refusal naming it."""
     name, separator, version = text.partition('==')
@@ -415,6 +431,11 @@ def main(argv):
 
     if 'tool' not in target:
         target['tool'] = tomlkit.table()
+
+    ini_options = standard['tool'].get('pytest', {}).get('ini_options', {})
+    testpaths = workspace_testpaths(target)
+    if 'testpaths' in ini_options and testpaths is not None:
+        ini_options['testpaths'] = testpaths
 
     retracted, conflicts = apply_standard(standard['tool'], target['tool'], list(pins))
     pin_dependencies(target, pins)

@@ -298,6 +298,18 @@ def test_the_report_names_a_retraction_and_carries_the_patch():
         assert '-gone = 1' in report['patch']
 
 
+def test_a_uv_workspace_tests_under_each_member():
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+        target_path.write_text('[tool.uv.workspace]\nmembers = ["library", "packages/*"]\n')
+
+        assert main([str(standard_path), str(target_path)]) == 0
+
+        assert tomlkit.parse(target_path.read_text())['tool']['pytest']['ini_options']['testpaths'] == ['library/tests', 'packages/*/tests']
+
+
 def test_a_table_value_is_one_inline_conflict():
     """A table the project set where the standard wants a scalar reads as one value."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -482,6 +494,7 @@ if __name__ == '__main__':
     test_check_reports_without_writing()
     test_a_conflict_alone_is_reported_under_current()
     test_the_report_names_a_retraction_and_carries_the_patch()
+    test_a_uv_workspace_tests_under_each_member()
     test_a_table_value_is_one_inline_conflict()
     test_every_value_shape_is_written_on_one_line()
     test_a_key_is_spelled_as_toml_spells_it()
