@@ -72,6 +72,32 @@ func TestPreCommitConfigReachesTheScannedScripts(t *testing.T) {
 	}
 }
 
+// Without a Python component the block's hooks have no project to take their
+// settings from, so the config leaves it out and check names the declaration
+// that is missing instead.
+func TestPreCommitReportsScriptsInARepoDeclaringNoPython(t *testing.T) {
+	target := fixture(t, stacks(), map[string]string{
+		"apps/worktree": "#!/usr/bin/env -S uv run --script\nimport os\n",
+	})
+	trackAll(t, target)
+
+	measured := reconcile.Assess(target, PreCommit{})
+	found := false
+	for _, change := range measured.Changes {
+		if change.Item == "python-scripts block" && change.Repair == reconcile.ByHand {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no ByHand finding for the scripts; changes: %+v", measured.Changes)
+	}
+
+	reconcile.Apply(measured)
+	if generated := readFile(t, target.Path(".pre-commit-config.yaml")); strings.Contains(generated, "mypy-scripts") {
+		t.Errorf("a repo declaring no Python got the script block:\n%s", generated)
+	}
+}
+
 // A repo with no such file is every repo but one. The block appearing there
 // would be three hooks that can never fire, and pre-commit reports a hook that
 // matched nothing as passing.

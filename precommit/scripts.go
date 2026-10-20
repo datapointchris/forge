@@ -4,12 +4,27 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/datapointchris/forge/config"
 )
 
 // ScriptCategory is the block category the shebang-selected Python hooks sit
 // under. Like sql and git it is gated by something other than a component, so
 // Generate seeds it rather than dirsByCategory.
 const ScriptCategory = "python-scripts"
+
+// PythonDeclared reports whether the declaration names a Python component, which
+// the script block needs beside it.
+//
+// The block's hooks take their settings from the project. Ruff reads the
+// pyproject.toml a Python component carries, and mypy-scripts runs only where
+// mypy is a project dependency. Without one, ruff formats and lints at its own
+// defaults and mypy-scripts passes having checked nothing. That is a block which
+// reports coverage it does not give, so a repo of uv scripts declares Python like
+// any other Python repo and the precommit die says so where it does not.
+func PythonDeclared(declared *config.Toolchain) bool {
+	return declared != nil && len(dirsByCategory(declared.Components)["python"]) > 0
+}
 
 // UntaggedPythonScript reports whether a file runs Python that pre-commit's
 // tagging cannot see.

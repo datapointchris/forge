@@ -193,9 +193,8 @@ func (m maintenance) reason() string {
 // An undeclared repo is generated as if it declared no components, which is the
 // existing spelling a declaration of no components already has. That is not the
 // same as "the generic blocks only": Generate seeds the git block from
-// versioned and the python-scripts block from the shebang scan, neither of
-// which is gated on a component. A stack the registry stopped naming is not
-// guessed at from what happens to be on disk.
+// versioned, which is gated on no component. A stack the registry stopped naming
+// is not guessed at from what happens to be on disk.
 //
 // First deployment is untouched. Without a stamp there is no file, so a repo
 // forge has never written to stays untouched however it is reached — which is
@@ -478,6 +477,17 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 				"a custom section defines "+id+", which replaces the standard hook of that id whole, so the declared rev and args never reach it — "+
 					"remove it from the section to take the standard one"))
 		}
+	}
+
+	// Generate leaves the script block out of a repo declaring no Python, for
+	// the reason precommit.PythonDeclared gives. The apps are still unread by
+	// every Python hook, so that gap is named here rather than left silent. Its
+	// own item, so the config still regenerates without the block.
+	if scripts := owed.observed.Scripts; len(scripts) > 0 && !precommit.PythonDeclared(declared) {
+		state.blockers = append(state.blockers, blocker(precommit.ScriptCategory+" block",
+			fmt.Sprintf("%s here run Python through uv (%s), and the registry declares no python component, so no hook reads them"+
+				" — add a python component to this repo's toolchain.components and a pyproject.toml with ruff and mypy in its dev group",
+				plural(len(scripts), "app", "apps"), strings.Join(scripts, ", "))))
 	}
 
 	categories := declaredCategories(declared)
