@@ -2,7 +2,7 @@
 
 ## What is Forge
 
-Forge **acts on repos**: it runs an operation against a selection of them, one at a time. Command
+Forge **acts on repos**: it runs an operation against each repo in a selection. Command
 execution, reusable maintenance scripts ("dies"), and the composable pre-commit and CI
 standardization systems.
 
@@ -93,7 +93,14 @@ own git — check-json5 builds with poetry — and trips on the inherited variab
 
 **Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' "$(repos-registry)" | sort | uniq -c`). None of it takes another release, so a maintenance die run across it is churn: a config every repo "should" have is worth nothing in one that will never run the tool. **Status is required, and forge supplies no meaning for an absent one.** The registry's own suite refuses an entry without it at commit time, so `ActiveRepos` and `cliaudit.Discover` match `active` plainly and an entry with no status is swept by nothing. The loader does not refuse one, because it also reads `exemplar-repos.json`, whose entries have no lifecycle and declare none.
 
-**Data flow for a reconcile verb:** load the registry → `SelectRepos` (retired, dormant and reference clones dropped unless named) → build one `Assets` (embedded trees + manifest) shared by the walk → `AssessAll` (Observe then Diff per repo per die, refusals isolated) → fold through the verb's lens → render rows, or `apply` and render outcomes → record the run → exit 0/1/3.
+**Data flow for a reconcile verb:** load the registry → `SelectRepos` (retired, dormant and reference clones dropped unless named) → build one `Assets` (embedded trees + manifest) shared by the walk → `AssessAll` (Observe then Diff per repo per die, refusals isolated) → fold each repo through the verb's lens and render its rows → for `apply`, perform and render outcomes → record the run → exit 0/1/3.
+
+**`AssessAll` measures one repo per CPU at once, and rows print in registry order as they land.** The
+dies spend most of a walk waiting on `gh`, pre-commit and uv, so a serial walk leaves the machine
+idle. A repo's own dies still run in turn. A repo's rows
+print once it and every repo above it are measured. Where stderr is a terminal, a status line under
+the rows counts the measured repos and names the ones still running. `apply` performs serially,
+after the whole plan has printed.
 
 `repos exec` requires a `.git/` and skips anything without one. The reconcile verbs do not:
 `Target.Versioned()` reads the filesystem, and the dies needing a remote report themselves not-applicable.

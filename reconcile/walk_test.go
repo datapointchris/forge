@@ -2,8 +2,10 @@ package reconcile
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/datapointchris/forge/config"
 )
@@ -104,7 +106,7 @@ func TestPanicBecomesARefusalRatherThanEndingTheWalk(t *testing.T) {
 	dies := []Die{&fakeDie{name: "boom", observePanic: true}, &fakeDie{name: "fine"}}
 	targets := []Target{{Repo: repoNamed("forge")}, {Repo: repoNamed("beta")}}
 
-	measurements := AssessAll(targets, dies)
+	measurements := AssessAll(targets, dies, 2, Watch{})
 
 	if len(measurements) != 4 {
 		t.Fatalf("measurements = %d, want 4 (2 repos × 2 dies)", len(measurements))
@@ -122,6 +124,65 @@ func TestPanicBecomesARefusalRatherThanEndingTheWalk(t *testing.T) {
 	}
 	if refused != 2 {
 		t.Errorf("refused = %d, want 2 (the panicking die on each repo)", refused)
+	}
+}
+
+// gatedDie holds every target but open until release closes, so a test decides
+// which target finishes first.
+type gatedDie struct {
+	open    string
+	release chan struct{}
+}
+
+func (*gatedDie) Name() string        { return "gated" }
+func (*gatedDie) Description() string { return "a fake" }
+func (*gatedDie) Tags() []string      { return nil }
+
+func (d *gatedDie) Observe(t Target) (Observation, error) {
+	if t.Repo.Name == d.open {
+		return fakeObservation{}, nil
+	}
+	select {
+	case <-d.release:
+		return fakeObservation{}, nil
+	case <-time.After(5 * time.Second):
+		return nil, errors.New("never released: the walk measured one target at a time")
+	}
+}
+
+func (*gatedDie) Diff(Target, Observation) ([]Change, error) { return nil, nil }
+
+func (*gatedDie) Perform(_ Target, c Change) (Outcome, error) {
+	return Outcome{Change: c, Status: Done}, nil
+}
+
+// Rows print in registry order although several repos are measured at once.
+// alpha cannot finish until beta has, so a serial walk fails here too.
+func TestMeasuredArrivesInTargetOrderWhenALaterTargetFinishesFirst(t *testing.T) {
+	gate := &gatedDie{open: "beta", release: make(chan struct{})}
+	targets := []Target{{Repo: repoNamed("alpha")}, {Repo: repoNamed("beta")}}
+
+	var finished, measured []string
+	AssessAll(targets, []Die{gate}, 2, Watch{
+		Finished: func(t Target) {
+			finished = append(finished, t.Repo.Name)
+			if t.Repo.Name == "beta" {
+				close(gate.release)
+			}
+		},
+		Measured: func(ms []Measurement) {
+			measured = append(measured, ms[0].Target.Repo.Name)
+			if ms[0].Refusal != "" {
+				t.Error(ms[0].Refusal)
+			}
+		},
+	})
+
+	if !slices.Equal(finished, []string{"beta", "alpha"}) {
+		t.Errorf("finished %v, want beta before alpha", finished)
+	}
+	if !slices.Equal(measured, []string{"alpha", "beta"}) {
+		t.Errorf("measured %v, want registry order", measured)
 	}
 }
 

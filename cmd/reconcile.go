@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -205,12 +206,7 @@ func (n *reconcileNoun) runReconcile(cmd *cobra.Command, args []string, lens rec
 		return err
 	}
 
-	measurements := reconcile.AssessAll(walked, chosen)
-
-	results := make([]reconcile.Result, 0, len(measurements))
-	for _, m := range measurements {
-		results = append(results, m.Fold(lens))
-	}
+	_, results := n.walk(cmd, walked, chosen, lens)
 
 	if n.asJSON {
 		if err := reconcile.EmitJSON(cmd.OutOrStdout(), results); err != nil {
@@ -220,7 +216,6 @@ func (n *reconcileNoun) runReconcile(cmd *cobra.Command, args []string, lens rec
 		return reconcile.ExitFor(results)
 	}
 
-	render(cmd, results)
 	reconcile.RenderSummary(cmd.OutOrStdout(), results, n.coverage(results))
 	recordReconcileRun(chosen, results)
 	return reconcile.ExitFor(results)
@@ -236,19 +231,11 @@ func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	measurements := reconcile.AssessAll(walked, chosen)
-
 	// The plan is printed in full before anything is written, and what is acted
 	// on is what was printed — Perform re-verifies live rather than the walk
 	// taking a second look that may have found something different.
-	planned := make([]reconcile.Result, 0, len(measurements))
-	for _, m := range measurements {
-		planned = append(planned, m.Fold(reconcile.LensPlan))
-	}
-	width := reconcile.LabelWidth(planned)
-	if !n.asJSON {
-		render(cmd, planned)
-	}
+	measurements, planned := n.walk(cmd, walked, chosen, reconcile.LensPlan)
+	width := reconcile.LabelWidth(walked, chosen)
 
 	if err := n.confirmApply(cmd, args, planned); err != nil {
 		return err
@@ -396,17 +383,39 @@ func selectedDies(args []string) ([]reconcile.Die, error) {
 	return []reconcile.Die{die}, nil
 }
 
-// render writes the rows: a target's summary to stdout, the items it is a
+// walk measures every target with the chosen dies, one target per CPU at once,
+// and folds each measurement through lens. A target's rows print as soon as it
+// and every target above it are measured, so a walk over the registry reports
+// as it goes rather than all at once at the end.
+func (n *reconcileNoun) walk(cmd *cobra.Command, targets []reconcile.Target, chosen []reconcile.Die,
+	lens reconcile.Lens,
+) ([]reconcile.Measurement, []reconcile.Result) {
+	width := reconcile.LabelWidth(targets, chosen)
+	results := make([]reconcile.Result, 0, len(targets)*len(chosen))
+	status := newStatusLine(cmd.ErrOrStderr(), len(targets), n.many)
+
+	measurements := reconcile.AssessAll(targets, chosen, runtime.NumCPU(),
+		status.watch(func(measured []reconcile.Measurement) {
+			for _, m := range measured {
+				result := m.Fold(lens)
+				results = append(results, result)
+				if !n.asJSON {
+					render(cmd, result, width)
+				}
+			}
+		}))
+	status.clear()
+	return measurements, results
+}
+
+// render writes one row: a target's summary to stdout, the items it is a
 // summary of to stderr. Below a composite verb the items are the evidence for
 // the row that follows, not the answer a caller parses — which is --json.
-func render(cmd *cobra.Command, results []reconcile.Result) {
-	width := reconcile.LabelWidth(results)
-	for _, result := range results {
-		for _, change := range result.Changes {
-			reconcile.RenderChange(cmd.ErrOrStderr(), change)
-		}
-		reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+func render(cmd *cobra.Command, result reconcile.Result, width int) {
+	for _, change := range result.Changes {
+		reconcile.RenderChange(cmd.ErrOrStderr(), change)
 	}
+	reconcile.RenderResult(cmd.OutOrStdout(), result, width)
 }
 
 // recordReconcileRun files one record per die, so `forge dies stats` keeps

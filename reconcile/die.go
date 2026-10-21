@@ -25,10 +25,10 @@ type Assets struct {
 // Target is one repo a die acts on, with what it needs to act.
 //
 // A die resolves every path through Path and never calls os.Chdir, which
-// TestNoDieChangesTheProcessWorkingDirectory is what pins. AssessAll is serial
-// today and is free to stop being — every die shares one process, so a chdir is
-// global state a parallel walk would race on. The working directory is a value
-// here rather than an ambient fact, which is what keeps that option open.
+// TestNoDieChangesTheProcessWorkingDirectory is what pins. AssessAll measures
+// several targets at once in one process, so a chdir is global state the
+// walk would race on. The working directory is a value here rather than an
+// ambient fact for that reason.
 type Target struct {
 	Repo   config.Repo
 	Assets Assets

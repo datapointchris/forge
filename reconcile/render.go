@@ -83,20 +83,24 @@ func renderPatch(w io.Writer, patch string) {
 // at it, which is also what a reader retypes to narrow to that one row.
 func (r Result) Label() string { return r.Repo + "/" + r.Die }
 
-// LabelWidth is the column the labels fit in.
+// LabelWidth is the column the labels of a walk over these targets and dies fit
+// in.
 //
-// Measured rather than fixed, from the rows actually being rendered. Registry
+// Measured rather than fixed, from the rows the walk will render. Registry
 // names vary by more than an order of magnitude in length, so any constant wide
 // enough for the longest is mostly padding, and any narrower one breaks the
-// alignment exactly on the rows that are hardest to read.
-func LabelWidth(results []Result) int {
-	width := 0
-	for _, r := range results {
-		if n := len(r.Label()); n > width {
-			width = n
-		}
+// alignment exactly on the rows that are hardest to read. Taken from the names
+// rather than the results, so the first row can print before the last is
+// measured.
+func LabelWidth(targets []Target, dies []Die) int {
+	repo, die := 0, 0
+	for _, t := range targets {
+		repo = max(repo, len(t.Repo.Name))
 	}
-	return width
+	for _, d := range dies {
+		die = max(die, len(d.Name()))
+	}
+	return repo + len("/") + die
 }
 
 // RenderResult writes one repo's row for one die.
