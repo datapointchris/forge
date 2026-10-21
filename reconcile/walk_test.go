@@ -227,7 +227,4 @@ func TestPerformFailureIsAFailedOutcomeNotAPanic(t *testing.T) {
 	if outcomes[0].Status != Failed {
 		t.Errorf("status = %q, want failed", outcomes[0].Status)
 	}
-	if outcomes[0].OK() {
-		t.Error("a failed outcome reported OK")
-	}
 }

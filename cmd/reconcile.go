@@ -61,6 +61,8 @@ type reconcileNoun struct {
 	filterNames []string
 	asJSON      bool
 	yes         bool
+	// all prints converged rows, which check and plan otherwise leave out.
+	all bool
 }
 
 // command builds the noun's whole subtree.
@@ -82,9 +84,14 @@ func (n *reconcileNoun) command() *cobra.Command {
 pipeline, an unmarked custom hook, a missing CLAUDE.md. Each needs a person,
 so check exits 3 when it finds one and never 1.
 
+Only rows with a finding print, each with its items beneath it, and --all
+prints the converged rows too. -F narrows to the named ` + n.many + `, and a die
+name to that one die.
+
 Drift apply would repair is plan's answer, not this one.`,
 		Example: "  " + verb + "check\n" +
 			"  " + verb + "check precommit -F " + n.member + "\n" +
+			"  " + verb + "check --all -F " + n.member + "\n" +
 			"  " + verb + "check --json",
 		Args:              atMostOneDie,
 		ValidArgsFunction: completeDieNames,
@@ -98,6 +105,9 @@ Drift apply would repair is plan's answer, not this one.`,
 		Short: "Report what apply would change, writing nothing",
 		Long: `Report every change apply would make, and write nothing. plan is apply's
 walk stopped before its last step, so what it prints is what apply acts on.
+
+Only rows with a pending change print, each with its changes beneath it, and
+--all prints the converged rows too.
 
 Exits 1 when a change is pending, which is plan's answer rather than a failure.`,
 		Example: "  " + verb + "plan\n" +
@@ -149,6 +159,9 @@ would change", which is ` + "`plan`" + `.`,
 		root.AddCommand(cmd)
 	}
 	apply.Flags().BoolVar(&n.yes, "yes", false, "apply without confirming, for the unaliased form")
+	for _, cmd := range []*cobra.Command{check, plan} {
+		cmd.Flags().BoolVarP(&n.all, "all", "a", false, "print converged rows too")
+	}
 
 	if n.only != nil {
 		for _, cmd := range n.only(n) {
@@ -217,8 +230,53 @@ func (n *reconcileNoun) runReconcile(cmd *cobra.Command, args []string, lens rec
 	}
 
 	reconcile.RenderSummary(cmd.OutOrStdout(), results, n.coverage(results))
+	n.renderLeftOut(cmd, args, lens, results)
 	recordReconcileRun(chosen, results)
 	return reconcile.ExitFor(results)
+}
+
+// renderLeftOut names on stderr what the rows did not show, each beside the
+// command that shows it: the converged rows, and what the other verb reports.
+func (n *reconcileNoun) renderLeftOut(cmd *cobra.Command, args []string, lens reconcile.Lens,
+	results []reconcile.Result,
+) {
+	var converged, elsewhere int
+	for _, r := range results {
+		if r.Status == reconcile.Converged {
+			converged++
+		}
+		if (lens == reconcile.LensCheck && r.Pending > 0) || (lens == reconcile.LensPlan && r.Attention > 0) {
+			elsewhere++
+		}
+	}
+
+	w := cmd.ErrOrStderr()
+	switch {
+	case elsewhere == 0:
+	case lens == reconcile.LensCheck:
+		row(w, "  %s changes apply would make: %s\n",
+			plural(elsewhere, "row has", "rows have"), n.retype(args, "plan"))
+	default:
+		row(w, "  %s findings apply cannot fix: %s\n",
+			plural(elsewhere, "row has", "rows have"), n.retype(args, "check"))
+	}
+	if converged > 0 && !n.all {
+		row(w, "  %s hidden: %s --all\n",
+			plural(converged, "converged row", "converged rows"), n.retype(args, cmd.Name()))
+	}
+}
+
+// retype is the command line a hint names: this run's registry and selection
+// under verb.
+func (n *reconcileNoun) retype(args []string, verb string) string {
+	parts := append([]string{"forge", n.name, verb}, args...)
+	if cfgPath != "" {
+		parts = append(parts, "-c", cfgPath)
+	}
+	if len(n.filterNames) > 0 {
+		parts = append(parts, "-F", strings.Join(n.filterNames, ","))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
@@ -245,15 +303,12 @@ func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
 	for i, m := range measurements {
 		result := planned[i]
 		outcomes := reconcile.Apply(m)
-		for _, outcome := range outcomes {
-			reconcile.RenderOutcome(cmd.ErrOrStderr(), outcome)
-			if !outcome.OK() {
-				result.Status = reconcile.Issue
-				result.Detail = outcome.Message
-			}
-		}
 		if len(outcomes) > 0 {
-			reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+			result = reconcile.Applied(result, outcomes)
+			if !n.asJSON {
+				reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+			}
+			reconcile.RenderOutcomes(cmd.ErrOrStderr(), outcomes, width)
 		}
 		results = append(results, result)
 	}
@@ -399,7 +454,7 @@ func (n *reconcileNoun) walk(cmd *cobra.Command, targets []reconcile.Target, cho
 			for _, m := range measured {
 				result := m.Fold(lens)
 				results = append(results, result)
-				if !n.asJSON {
+				if !n.asJSON && (n.all || result.Status != reconcile.Converged) {
 					render(cmd, result, width)
 				}
 			}
@@ -408,14 +463,12 @@ func (n *reconcileNoun) walk(cmd *cobra.Command, targets []reconcile.Target, cho
 	return measurements, results
 }
 
-// render writes one row: a target's summary to stdout, the items it is a
-// summary of to stderr. Below a composite verb the items are the evidence for
-// the row that follows, not the answer a caller parses — which is --json.
+// render writes one row: a target's summary to stdout, then the items it is a
+// summary of to stderr beneath it. The items are the evidence for the row, not
+// the answer a caller parses — which is --json.
 func render(cmd *cobra.Command, result reconcile.Result, width int) {
-	for _, change := range result.Changes {
-		reconcile.RenderChange(cmd.ErrOrStderr(), change)
-	}
 	reconcile.RenderResult(cmd.OutOrStdout(), result, width)
+	reconcile.RenderChanges(cmd.ErrOrStderr(), result.Changes, width)
 }
 
 // recordReconcileRun files one record per die, so `forge dies stats` keeps

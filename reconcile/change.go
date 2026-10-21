@@ -112,6 +112,3 @@ type Outcome struct {
 	Status  OutcomeStatus `json:"status"`
 	Message string        `json:"message,omitempty"`
 }
-
-// OK reports whether the outcome should count against the run.
-func (o Outcome) OK() bool { return o.Status != Failed }

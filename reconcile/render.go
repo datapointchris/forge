@@ -39,25 +39,51 @@ func writeLine(w io.Writer, format string, a ...any) {
 	_, _ = fmt.Fprintf(w, format, a...)
 }
 
-// RenderChange writes one item's row.
+// statusWidth is the column a row's status is padded to. Item lines indent by
+// one more, so they start under the row's label.
+const statusWidth = 9
+
+// verdictWidth fits the longest verdict and outcome, "undeclared".
+const verdictWidth = 10
+
+var itemIndent = strings.Repeat(" ", statusWidth+1)
+
+// itemWidth pads items so their detail starts in the row's detail column, given
+// the label width the rows use. An item too long for that pushes its own lines.
+func itemWidth(labelWidth int, items []string) int {
+	width := labelWidth - verdictWidth - 1
+	for _, item := range items {
+		width = max(width, len(item))
+	}
+	return width
+}
+
+// RenderChanges writes one row's items beneath it, at the row's label width.
 //
-// These go to stderr: below a repo's summary they are the evidence for the row
-// that follows, not the answer a caller parses — which is --json.
-func RenderChange(w io.Writer, c Change) {
-	paint := verdictColors[c.Verdict]
-	if paint == nil {
-		paint = color.New(color.FgWhite)
+// These go to stderr: under a repo's row they are the evidence for it, not the
+// answer a caller parses — which is --json.
+func RenderChanges(w io.Writer, changes []Change, labelWidth int) {
+	items := make([]string, 0, len(changes))
+	for _, c := range changes {
+		items = append(items, c.Item)
 	}
+	width := itemWidth(labelWidth, items)
+	for _, c := range changes {
+		paint := verdictColors[c.Verdict]
+		if paint == nil {
+			paint = color.New(color.FgWhite)
+		}
 
-	observed := ""
-	if c.Observed != "" {
-		observed = fmt.Sprintf(" (is %q)", c.Observed)
-	}
+		observed := ""
+		if c.Observed != "" {
+			observed = fmt.Sprintf(" (is %q)", c.Observed)
+		}
 
-	writeLine(w, "  %s %-32s %s%s\n", paint.Sprintf("%-11s", c.Verdict), c.Item, c.Detail, observed)
+		writeLine(w, "%s%s %-*s %s%s\n", itemIndent, paint.Sprintf("%-*s", verdictWidth, c.Verdict), width, c.Item, c.Detail, observed)
 
-	if c.Patch != "" {
-		renderPatch(w, c.Patch)
+		if c.Patch != "" {
+			renderPatch(w, c.Patch)
+		}
 	}
 }
 
@@ -67,14 +93,15 @@ func RenderChange(w io.Writer, c Change) {
 // out to every Python repo at once, and reading that change across the
 // portfolio before applying it is what the plan verb is for.
 func renderPatch(w io.Writer, patch string) {
+	indent := itemIndent + "  "
 	for _, line := range strings.Split(strings.TrimRight(patch, "\n"), "\n") {
 		switch {
 		case strings.HasPrefix(line, "+"):
-			writeLine(w, "      %s\n", added.Sprint(line))
+			writeLine(w, "%s%s\n", indent, added.Sprint(line))
 		case strings.HasPrefix(line, "-"):
-			writeLine(w, "      %s\n", removed.Sprint(line))
+			writeLine(w, "%s%s\n", indent, removed.Sprint(line))
 		default:
-			writeLine(w, "      %s\n", line)
+			writeLine(w, "%s%s\n", indent, line)
 		}
 	}
 }
@@ -110,25 +137,33 @@ func RenderResult(w io.Writer, r Result, width int) {
 		paint = color.New(color.FgWhite)
 	}
 	writeLine(w, "%s %s %s\n",
-		paint.Sprintf("%-9s", r.Status), bold.Sprintf("%-*s", width, r.Label()), r.Detail)
+		paint.Sprintf("%-*s", statusWidth, r.Status), bold.Sprintf("%-*s", width, r.Label()), r.Detail)
 }
 
-// RenderOutcome writes what apply did with one change.
-func RenderOutcome(w io.Writer, o Outcome) {
-	paint := color.New(color.FgHiGreen)
-	switch o.Status {
-	case Failed:
-		paint = color.New(color.FgHiRed)
-	case Refused, Skipped:
-		paint = color.New(color.FgHiYellow)
-	case Done:
+// RenderOutcomes writes what apply did with one row's changes, beneath it, at
+// the row's label width.
+func RenderOutcomes(w io.Writer, outcomes []Outcome, labelWidth int) {
+	items := make([]string, 0, len(outcomes))
+	for _, o := range outcomes {
+		items = append(items, o.Change.Item)
 	}
+	width := itemWidth(labelWidth, items)
+	for _, o := range outcomes {
+		paint := color.New(color.FgHiGreen)
+		switch o.Status {
+		case Failed:
+			paint = color.New(color.FgHiRed)
+		case Refused, Skipped:
+			paint = color.New(color.FgHiYellow)
+		case Done:
+		}
 
-	message := o.Message
-	if message == "" {
-		message = o.Change.Detail
+		message := o.Message
+		if message == "" {
+			message = o.Change.Detail
+		}
+		writeLine(w, "%s%s %-*s %s\n", itemIndent, paint.Sprintf("%-*s", verdictWidth, o.Status), width, o.Change.Item, message)
 	}
-	writeLine(w, "  %s %-32s %s\n", paint.Sprintf("%-11s", o.Status), o.Change.Item, message)
 }
 
 // RenderSummary writes the count of each status across every result, after the

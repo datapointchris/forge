@@ -107,7 +107,7 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 	// it would call a pending repair current.
 	case len(kept) == 0 && len(pending) > 0:
 		result.Status = Converged
-		result.Detail = fmt.Sprintf("%d item(s) differ from the standard, and apply repairs them%s", len(pending), gap)
+		result.Detail = fmt.Sprintf("nothing for check to report; %d item(s) differ from the standard — see plan%s", len(pending), gap)
 	// Under plan the summary would call current a file a by-hand finding holds
 	// back from its write.
 	case len(kept) == 0 && len(attention) > 0:
@@ -125,6 +125,32 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 	}
 
 	return result
+}
+
+// Applied is the row apply prints once it has acted on r's changes. A failed
+// write is an Issue. A refused change was never written, so the row stays
+// drift. Otherwise every change was written or already true, and it converged.
+func Applied(r Result, outcomes []Outcome) Result {
+	var applied, refused int
+	for _, o := range outcomes {
+		switch o.Status {
+		case Failed:
+			r.Status, r.Detail = Issue, o.Message
+			return r
+		case Refused:
+			refused++
+		case Done, Skipped:
+			applied++
+		}
+	}
+	if refused > 0 {
+		r.Status = Drift
+		r.Detail = fmt.Sprintf("%d item(s) applied, %d refused", applied, refused)
+		return r
+	}
+	r.Status = Converged
+	r.Detail = fmt.Sprintf("%d item(s) applied", applied)
+	return r
 }
 
 // Refuse is the Result for a die that could not examine a repo.

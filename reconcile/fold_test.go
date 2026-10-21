@@ -90,7 +90,7 @@ func TestCheckNeverPrintsTheSummaryOverAPendingRepair(t *testing.T) {
 	if result.Status != Converged {
 		t.Fatalf("status = %q, want converged: apply can fix it, so check has nothing to report", result.Status)
 	}
-	if result.Detail != "1 item(s) differ from the standard, and apply repairs them" {
+	if result.Detail != "nothing for check to report; 1 item(s) differ from the standard — see plan" {
 		t.Errorf("detail = %q, want the pending repair named rather than the die's converged sentence", result.Detail)
 	}
 }
@@ -107,6 +107,26 @@ func TestPlanNeverPrintsTheSummaryOverAHeldBackWrite(t *testing.T) {
 	}
 	if result.Detail != "nothing for apply to change; 1 item(s) need attention — see check" {
 		t.Errorf("detail = %q, want the held-back finding named rather than the die's converged sentence", result.Detail)
+	}
+}
+
+// Once apply has written, its row reports the write rather than the drift the
+// plan found, or apply's output reads the same as plan's.
+func TestAppliedReportsTheWriteRatherThanThePlan(t *testing.T) {
+	planned := Result{Repo: "scratch", Die: "gitignore", Status: Drift, Detail: "2 item(s) differ from the standard"}
+	cases := []struct {
+		name     string
+		outcomes []Outcome
+		want     Status
+	}{
+		{"written or already true", []Outcome{{Status: Done}, {Status: Skipped}}, Converged},
+		{"one refused", []Outcome{{Status: Done}, {Status: Refused}}, Drift},
+		{"one failed", []Outcome{{Status: Failed, Message: "permission denied"}, {Status: Done}}, Issue},
+	}
+	for _, c := range cases {
+		if got := Applied(planned, c.outcomes); got.Status != c.want {
+			t.Errorf("%s: status = %q, want %q", c.name, got.Status, c.want)
+		}
 	}
 }
 
