@@ -433,7 +433,7 @@ func selectedDies(args []string) ([]reconcile.Die, error) {
 	}
 	die, err := dies.Named(args[0])
 	if err != nil {
-		return nil, err
+		return nil, goclikit.UsageError(err)
 	}
 	return []reconcile.Die{die}, nil
 }

@@ -106,6 +106,13 @@ func TestTooManyDieNamesNamesBothWaysOut(t *testing.T) {
 	}
 }
 
+func TestUnknownDieNameIsAUsageError(t *testing.T) {
+	_, err := selectedDies([]string{"nosuchdie"})
+	if !errors.Is(err, goclikit.ErrUsage) {
+		t.Errorf("not a usage error, so it exits 1 rather than 2: %v", err)
+	}
+}
+
 // One die name is the ordinary case and stays legal.
 func TestOneDieNameIsAccepted(t *testing.T) {
 	cmd := findSub(t, repos.command(), "plan")

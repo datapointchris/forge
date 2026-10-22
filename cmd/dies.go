@@ -108,7 +108,7 @@ func runDiesList(cmd *cobra.Command, _ []string) error {
 func runDiesShow(cmd *cobra.Command, args []string) error {
 	die, err := dies.Named(args[0])
 	if err != nil {
-		return err
+		return goclikit.UsageError(err)
 	}
 
 	out := cmd.OutOrStdout()
