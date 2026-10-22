@@ -9,31 +9,28 @@ import (
 	"github.com/datapointchris/forge/reconcile"
 )
 
-// Layout reports a repo whose declared components fit neither layout a repo may
-// take.
+// Layout reports a single-purpose Go tool whose packages are not flat at the
+// root.
 //
-// A single-purpose repo keeps its code at the root. A multi-subsystem repo
-// keeps each subsystem in a directory of its own, and its root holds only
-// orchestration. Read from the declared components rather than probed, because
-// a layout is which directory holds which module, and the declaration already
-// says that.
+// A repo whose only module is Go at the root is a single-purpose tool, and the
+// declared components say so. Where a multi-component repo puts its components
+// is not checked, because its root may hold any of them.
 //
-// Every finding is ByHand. Moving a module is a migration, which is why this
+// Every finding is ByHand. Moving a package is a migration, which is why this
 // reports and never repairs.
 type Layout struct{}
 
 func (Layout) Name() string { return "layout" }
 
 func (Layout) Description() string {
-	return "Report a repo keeping a module at its root beside subsystems in directories of their own, or a single-purpose Go tool with internal/, pkg/ or a cmd/<binary>/main.go. Never writes: moving a module is a migration."
+	return "Report a single-purpose Go tool with internal/, pkg/ or a cmd/<binary>/main.go. Never writes: moving a package is a migration."
 }
 
 func (Layout) Tags() []string { return []string{"structure", "scorecard"} }
 
-// orchestrationStacks are the stacks an orchestration-only root may hold:
-// compose files and Dockerfiles, deploy infrastructure, workflows and scripts.
-// Every other stack is a module, and a module at the root beside subsystems is
-// the shape neither layout allows.
+// orchestrationStacks are the stacks that are no module of their own: compose
+// files and Dockerfiles, deploy infrastructure, workflows and scripts. A Go
+// tool declaring one below its root is still single-purpose.
 var orchestrationStacks = map[string]bool{"docker": true, "terraform": true, "actions": true, "shell": true}
 
 // nestedGoPackages are the paths a single-purpose Go tool never holds. Its
@@ -54,10 +51,12 @@ func (s layoutState) Summary() string {
 	switch {
 	case !s.declared:
 		return "declares no components, so there is no layout to read"
-	case len(s.subsystems) > 0 && len(s.rootModules) == 0:
-		return "subsystems under an orchestration-only root: " + strings.Join(s.subsystems, ", ")
 	case len(s.subsystems) > 0:
-		return "a module at the root beside subsystems"
+		placed := make([]string, 0, len(s.rootModules)+len(s.subsystems))
+		for _, stack := range s.rootModules {
+			placed = append(placed, stack+" at the root")
+		}
+		return strings.Join(append(placed, s.subsystems...), ", ")
 	}
 	return "single-purpose, flat at the root"
 }
@@ -112,14 +111,6 @@ func (Layout) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconc
 	}
 
 	var changes []reconcile.Change
-	if len(state.rootModules) > 0 && len(state.subsystems) > 0 {
-		changes = append(changes, reconcile.Change{
-			Item: "repo root", Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-			Detail: strings.Join(state.rootModules, " and ") + " sits at the root beside " +
-				strings.Join(state.subsystems, ", ") + ", so the root is not orchestration only — " +
-				"move it into a directory of its own beside the others",
-		})
-	}
 	for _, rel := range state.nestedGo {
 		changes = append(changes, reconcile.Change{
 			Item: rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
@@ -130,11 +121,11 @@ func (Layout) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconc
 }
 
 // Perform is unreachable: nothing this die reports is Actionable. It refuses
-// rather than moving a module nobody designed the move for.
+// rather than moving a package nobody designed the move for.
 func (Layout) Perform(_ reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	return reconcile.Outcome{
 		Change:  change,
 		Status:  reconcile.Refused,
-		Message: "moving a module is a migration, which only a person can plan",
+		Message: "moving a package is a migration, which only a person can plan",
 	}, nil
 }

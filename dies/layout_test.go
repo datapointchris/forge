@@ -16,30 +16,12 @@ func components(pairs ...string) *config.Toolchain {
 	return declared
 }
 
-// A module at the root beside subsystems is a migration forge cannot perform,
-// so check names it and plan has nothing to offer.
-func TestLayoutReportsAModuleAtTheRootBesideSubsystems(t *testing.T) {
-	target := fixture(t, components("python", ".", "go", "cli", "vue", "frontend", "docker", "."), nil)
-
-	measured := reconcile.Assess(target, Layout{})
-
-	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.ByHand {
-		t.Fatalf("changes = %v, want one by_hand finding", measured.Changes)
-	}
-	if check := measured.Fold(reconcile.LensCheck); check.Status != reconcile.Issue {
-		t.Errorf("check status = %q, want issue", check.Status)
-	}
-	if plan := measured.Fold(reconcile.LensPlan); plan.Status != reconcile.Converged {
-		t.Errorf("plan status = %q, want converged", plan.Status)
-	}
-}
-
-// Orchestration at the root of a multi-subsystem repo, and infrastructure below
-// the root of a flat one, are both what the two layouts allow.
-func TestLayoutAcceptsBothLayouts(t *testing.T) {
+// A multi-component root may hold any of its components, or none.
+func TestLayoutAcceptsComponentsWhereverTheySit(t *testing.T) {
 	cases := map[string]*config.Toolchain{
-		"subsystems": components("go", "api", "go", "cli", "vue", "web", "docker", ".", "actions", "."),
-		"flat":       components("python", ".", "terraform", "infra", "shell", "."),
+		"none at the root": components("go", "api", "go", "cli", "vue", "web", "docker", ".", "actions", "."),
+		"one at the root":  components("python", ".", "go", "cli", "vue", "frontend", "docker", "."),
+		"flat":             components("python", ".", "terraform", "infra", "shell", "."),
 	}
 	for name, declared := range cases {
 		t.Run(name, func(t *testing.T) {
