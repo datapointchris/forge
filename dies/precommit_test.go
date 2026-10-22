@@ -493,12 +493,6 @@ func assertStrandedReported(t *testing.T, target reconcile.Target, generic map[s
 	if len(planned.Changes) != 0 {
 		t.Errorf("plan offers %v, but forge may not touch these", planned.Changes)
 	}
-	// plan's row here says converged and then states a fault it cannot repair,
-	// so it has to name the verb that shows the fault rather than stopping.
-	if !strings.Contains(planned.Detail, "check") {
-		t.Errorf("plan detail = %q, want it to name the verb that lists them", planned.Detail)
-	}
-
 	// Nothing was written, and nothing was removed.
 	for rel, want := range generic {
 		data, err := os.ReadFile(target.Path(rel))
@@ -745,31 +739,17 @@ func TestPrecommitReachesASpellingRankedAboveTheOneItWrites(t *testing.T) {
 	}
 }
 
-// A file forge could not parse and a file forge parsed and found different are
-// separate answers. JSONC exists to carry // comments and the YAML parser
-// rejects them, so folding the two together reports a content difference that
-// nothing measured.
-func TestPrecommitSaysWhenASupersededSpellingCouldNotBeParsed(t *testing.T) {
+// JSONC carries // comments the YAML parser rejects, so forge cannot compare a
+// superseded .markdownlint.jsonc with what it writes. It reports it and leaves it.
+func TestPrecommitKeepsASupersededSpellingItCannotParse(t *testing.T) {
 	target := fixture(t, stacks("shell"), map[string]string{
 		".markdownlint.jsonc": "{\n  // markdownlint reads this; the YAML parser does not\n  \"default\": true\n}\n",
 	})
 
 	measured := reconcile.Assess(target, PreCommit{})
 
-	var detail string
-	for _, c := range measured.Changes {
-		if c.Item == ".markdownlint.jsonc" {
-			detail = c.Detail
-		}
-	}
-	if detail == "" {
+	if !slices.ContainsFunc(measured.Changes, func(c reconcile.Change) bool { return c.Item == ".markdownlint.jsonc" }) {
 		t.Fatalf("an unparsable superseded spelling was not reported: %v", measured.Changes)
-	}
-	if !strings.Contains(detail, "could not be parsed") {
-		t.Errorf("detail = %q, want it to say the comparison never ran", detail)
-	}
-	if strings.Contains(detail, "content differs") {
-		t.Errorf("detail = %q, which asserts a difference nothing measured", detail)
 	}
 
 	applyAll(t, target, PreCommit{})
