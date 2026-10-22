@@ -58,6 +58,9 @@ func (s ciState) Summary() string {
 	if !s.applicable {
 		return s.reason
 	}
+	if anyUnmeasured(s.blockers) {
+		return "validate.yml not checked"
+	}
 	if s.selfHosted {
 		return "validate.yml current, on the self-hosted runner"
 	}
@@ -123,8 +126,11 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if !handWritten(root, file.rel) {
 			continue
 		}
-		detail := fmt.Sprintf("%s has no %s stamp; expected the file forge generates, so rename it and run apply", file.rel, stampMark)
-		if !file.wanted() {
+		detail := fmt.Sprintf("%s has no %s stamp; expected the file forge generates", file.rel, stampMark)
+		switch {
+		case file.rel == ci.WorkflowPath:
+			detail += ", so move its jobs into custom sections, then delete it and run apply"
+		case !file.wanted():
 			detail = fmt.Sprintf("%s has no %s stamp and is not part of the standard; expected it absent", file.rel, stampMark)
 		}
 		state.blockers = append(state.blockers, blocker(file.rel, detail))
@@ -146,7 +152,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// can duplicate jobs.
 	if handWritten(root, ".github/workflows/ci.yml") {
 		state.blockers = append(state.blockers, blocker(".github/workflows/ci.yml",
-			".github/workflows/ci.yml is hand-written and runs beside "+ci.WorkflowPath+"; expected one pipeline, so move its jobs into custom sections"))
+			".github/workflows/ci.yml is hand-written and runs beside "+ci.WorkflowPath+"; expected no job in it that "+ci.WorkflowPath+" also runs"))
 	}
 
 	// The vue setup reads its Node version from this file, and setup-node fails
@@ -173,7 +179,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	if runner == ci.SelfHosted {
 		if foreign := ci.ForeignRunners(wanted, runner); len(foreign) > 0 {
 			state.blockers = append(state.blockers, blocker(ci.WorkflowPath, fmt.Sprintf(
-				"a custom section in %s runs on %s, which refuses this repo's jobs; expected the self-hosted runner",
+				"a custom section in %s puts %s; expected every job on the self-hosted runner",
 				ci.WorkflowPath, strings.Join(foreign, ", "))))
 		}
 	}
@@ -183,7 +189,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			"the workflow forge would write has an unfilled {{ placeholder; expected every placeholder filled, so this is a forge bug"))
 	}
 	if finding := lintWorkflow(wanted, lintConfig); finding != "" {
-		state.blockers = append(state.blockers, actionlintFinding("generated workflow", finding, t.Assets.Manifest))
+		state.blockers = append(state.blockers, actionlintFinding("actionlint", "generated workflow", finding, t.Assets.Manifest))
 	}
 
 	// A hand-written lint config is the one the repo's own actionlint hook
@@ -192,17 +198,15 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// repo's config accepts it. forge owns all of validate.yml, so any finding
 	// holds it back. It owns only the pins of a hand-written workflow, so that
 	// one is held back only when the repin is what the config refuses.
-	if own, ok := ownLintConfig(root); ok {
+	if ownPath, own, ok := ownLintConfig(root); ok {
 		if finding := lintWorkflow(wanted, own); finding != "" {
-			state.blockers = append(state.blockers, actionlintFinding(ci.WorkflowPath,
-				"the repo's own actionlint config refuses the generated workflow: "+finding, t.Assets.Manifest))
+			state.blockers = append(state.blockers, actionlintFinding(ownPath, ci.WorkflowPath, finding, t.Assets.Manifest))
 		}
 		var kept []generatedFile
 		for _, file := range state.repinned {
 			if !file.matches() && lintWorkflowAt(file.rel, file.have, own) == "" {
 				if finding := lintWorkflowAt(file.rel, file.want, own); finding != "" {
-					state.blockers = append(state.blockers, actionlintFinding(file.rel,
-						"the repo's own actionlint config refuses the repinned workflow: "+finding, t.Assets.Manifest))
+					state.blockers = append(state.blockers, actionlintFinding(ownPath, file.rel, finding, t.Assets.Manifest))
 					continue
 				}
 			}
@@ -216,16 +220,16 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 
 // ownLintConfig is the hand-written actionlint config a repo carries, at the
 // spelling actionlint prefers when both are present.
-func ownLintConfig(root string) (string, bool) {
+func ownLintConfig(root string) (rel, content string, ok bool) {
 	for _, rel := range []string{ci.ActionlintConfigPath, ci.ActionlintConfigAltPath} {
 		if !handWritten(root, rel) {
 			continue
 		}
 		if data, err := os.ReadFile(filepath.Join(root, rel)); err == nil {
-			return string(data), true
+			return rel, string(data), true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // declaresCategory is whether a component lints with the category's blocks,
@@ -369,7 +373,9 @@ func lintWorkflowAt(rel, workflow, config string) string {
 // different question — so the honest verdict is that forge could not tell.
 // Unknown never moves the exit code, which is what keeps an unpinned local
 // install from failing `forge repos check` across the portfolio.
-func actionlintFinding(item, finding string, manifest *toolchain.Toolchain) reconcile.Change {
+// rejecter names what refused the item: actionlint itself, or the repo's own
+// lint config it read.
+func actionlintFinding(rejecter, item, finding string, manifest *toolchain.Toolchain) reconcile.Change {
 	pinned := strings.TrimPrefix(pinnedActionlint(manifest), "v")
 	installed := installedActionlint()
 	if pinned != "" && installed != "" && installed != pinned {
@@ -377,10 +383,10 @@ func actionlintFinding(item, finding string, manifest *toolchain.Toolchain) reco
 			Item:    item,
 			Verdict: reconcile.Unknown,
 			Repair:  reconcile.NoRepair,
-			Detail:  "actionlint " + installed + " is installed; expected the pinned " + pinned,
+			Detail:  "actionlint " + installed + ", not the pinned " + pinned + ", rejects " + item + ": " + finding,
 		}
 	}
-	return blocker(item, "actionlint rejects "+item+": "+finding)
+	return blocker(item, rejecter+" rejects "+item+": "+finding)
 }
 
 func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {

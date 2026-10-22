@@ -2,6 +2,7 @@ package dies
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -661,8 +662,12 @@ func unresolvedNpmScripts(root, generated string) []string {
 
 		hook := fmt.Sprintf("a hook runs `npm run %s` in %s", script, dir)
 		data, err := os.ReadFile(filepath.Join(root, dir, "package.json"))
-		if err != nil {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
 			missing = append(missing, hook+", which has no package.json; expected one declaring that script")
+			continue
+		case err != nil:
+			missing = append(missing, hook+", whose package.json could not be read: "+err.Error())
 			continue
 		}
 		var manifest struct {

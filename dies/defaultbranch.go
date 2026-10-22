@@ -42,7 +42,10 @@ type defaultBranchState struct {
 	remoteHasMaster bool
 	repo            ghRepo
 	unreachable     string
-	unversioned     bool
+	// unmeasured is why the remote or GitHub could not be read: a gap a login
+	// or a network closes, after which apply renames.
+	unmeasured  string
+	unversioned bool
 }
 
 func (s defaultBranchState) Summary() string {
@@ -54,6 +57,9 @@ func (s defaultBranchState) Summary() string {
 	}
 	if !s.hasMaster {
 		return "no master branch to rename"
+	}
+	if s.unmeasured != "" {
+		return "branch is master; the rename was not checked"
 	}
 	return "master renamed"
 }
@@ -89,7 +95,7 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 
 	refs, err := runIn(t.Repo.Path, "git", "ls-remote", "--heads", "origin")
 	if err != nil {
-		state.unreachable = "could not read the remote"
+		state.unmeasured = "could not read the remote: " + err.Error()
 		return state, nil
 	}
 	state.remoteHasMain = strings.Contains(refs, "refs/heads/main")
@@ -99,10 +105,13 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	if err != nil {
 		return nil, err
 	}
-	if unknown != nil || summary != "" {
-		// Renaming locally is still worth doing where GitHub cannot be reached,
-		// so this records the gap rather than refusing the whole measurement.
-		state.unreachable = "gh cannot set the GitHub default branch from here, so rename it by hand"
+	switch {
+	case unknown != nil:
+		state.unmeasured = unknown[0].Detail
+	case summary != "":
+		// Renaming locally is still worth doing where the remote is not on
+		// GitHub, so this records the gap rather than refusing the measurement.
+		state.unreachable = "the remote is not on GitHub, so rename it by hand"
 	}
 	state.repo = repo
 
@@ -136,6 +145,10 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	case state.hasMain:
 		change.Repair = reconcile.ByHand
 		change.Detail = "branches master and main both exist; expected only main"
+	case state.unmeasured != "":
+		change.Verdict = reconcile.Unknown
+		change.Repair = reconcile.NoRepair
+		change.Detail = state.unmeasured
 	case state.unreachable != "":
 		change.Repair = reconcile.ByHand
 		change.Detail = "branch is master, expected main; " + state.unreachable

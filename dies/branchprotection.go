@@ -57,6 +57,9 @@ func (s branchProtectionState) Summary() string {
 	if s.summary != "" {
 		return s.summary
 	}
+	if anyUnmeasured(s.changes) {
+		return "branch protection not checked"
+	}
 	return "branch protection current on " + s.repo.defaultBranch
 }
 

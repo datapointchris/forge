@@ -50,7 +50,8 @@ func (Gitignore) Tags() []string {
 
 // retiredIgnores are lines this die removes wherever it finds them.
 var retiredIgnores = []string{
-	// No repo holds a .planning, because a repo's status is kept in the sync base.
+	// Retired, because a repo's status lives in the sync base rather than in a
+	// .planning directory.
 	".planning",
 }
 

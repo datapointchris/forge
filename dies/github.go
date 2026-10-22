@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/datapointchris/forge/reconcile"
@@ -35,6 +36,11 @@ func unknownChange(item, reason string) reconcile.Change {
 		Repair:  reconcile.NoRepair,
 		Detail:  reason,
 	}
+}
+
+// anyUnmeasured is whether a die's summary would claim what it never read.
+func anyUnmeasured(changes []reconcile.Change) bool {
+	return slices.ContainsFunc(changes, func(c reconcile.Change) bool { return c.Verdict == reconcile.Unknown })
 }
 
 // ghRepo identifies a repo to the GitHub API.

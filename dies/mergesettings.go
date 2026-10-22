@@ -60,6 +60,9 @@ func (s mergeSettingsState) Summary() string {
 	if s.summary != "" {
 		return s.summary
 	}
+	if anyUnmeasured(s.changes) {
+		return "merge settings not checked"
+	}
 	return "merge settings current"
 }
 
