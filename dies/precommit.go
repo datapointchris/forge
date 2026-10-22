@@ -342,13 +342,15 @@ func supersededSpelling(root, spelling, rel, want string) (generatedFile, *recon
 	// one of them is a claim about the content.
 	same, err := sameConfig(data, []byte(want))
 	if err != nil {
-		finding := blocker(spelling, fmt.Sprintf(
-			"%s overrides %s and could not be parsed; expected only %s, so merge the two by hand", spelling, rel, rel))
+		finding := blockerWithFix(spelling,
+			fmt.Sprintf("%s overrides %s and could not be parsed; expected only %s", spelling, rel, rel),
+			fmt.Sprintf("merge %s into %s by hand, then delete %s", spelling, rel, spelling))
 		return generatedFile{}, &finding
 	}
 	if !same {
-		finding := blocker(spelling, fmt.Sprintf(
-			"%s overrides %s and differs from it; expected only %s, so merge the two by hand", spelling, rel, rel))
+		finding := blockerWithFix(spelling,
+			fmt.Sprintf("%s overrides %s and differs from it; expected only %s", spelling, rel, rel),
+			fmt.Sprintf("merge %s into %s by hand, then delete %s", spelling, rel, spelling))
 		return generatedFile{}, &finding
 	}
 	// want is empty, which is what makes this a retraction rather than a write.
@@ -472,9 +474,9 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			return nil, err
 		}
 		for _, id := range precommit.Shadowed(standard, owed.customSections) {
-			state.blockers = append(state.blockers, blocker("custom hook "+id, fmt.Sprintf(
-				"custom hook %s replaces the standard hook %s; expected the standard one, so remove %s from the custom section",
-				id, id, id)))
+			state.blockers = append(state.blockers, blockerWithFix("custom hook "+id,
+				fmt.Sprintf("custom hook %s replaces the standard hook %s; expected the standard one", id, id),
+				fmt.Sprintf("remove %s from the custom section", id)))
 		}
 	}
 
@@ -514,10 +516,9 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		// apply cannot reach it. Asked per file: one hand-written config is no
 		// reason to stop deploying the others.
 		if unattributable(root, tool.rel, want) {
-			state.blockers = append(state.blockers, blocker(tool.rel, fmt.Sprintf(
-				"%s has no %s marker and differs from forge's template; "+
-					"expected the template, so merge the two by hand, or delete %s and run apply",
-				tool.rel, managedMark, tool.rel)))
+			state.blockers = append(state.blockers, blockerWithFix(tool.rel,
+				fmt.Sprintf("%s has no %s marker and differs from forge's template; expected the template", tool.rel, managedMark),
+				fmt.Sprintf("delete %s and run apply to take the template", tool.rel)))
 			continue
 		}
 		state.configs = append(state.configs, readGenerated(root, tool.rel, want))
@@ -752,7 +753,7 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 		}
 		if state.basis == byStamp {
 			change.Repair = reconcile.ByHand
-			change.Detail += fmt.Sprintf("; run `pre-commit install -t %s`, or declare the repo's toolchain in the registry so apply installs it", stage)
+			change.Advice = fmt.Sprintf("run `pre-commit install -t %s`, or declare the repo's toolchain in the registry so apply installs it", stage)
 		}
 		changes = append(changes, change)
 	}

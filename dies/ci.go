@@ -126,14 +126,14 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if !handWritten(root, file.rel) {
 			continue
 		}
-		detail := fmt.Sprintf("%s has no %s stamp; expected the file forge generates", file.rel, stampMark)
+		finding := blocker(file.rel, fmt.Sprintf("%s has no %s stamp; expected the file forge generates", file.rel, stampMark))
 		switch {
 		case file.rel == ci.WorkflowPath:
-			detail += ", so move its jobs into custom sections, then delete it and run apply"
+			finding.Advice = "move its jobs into custom sections, then delete it and run apply"
 		case !file.wanted():
-			detail = fmt.Sprintf("%s has no %s stamp and is not part of the standard; expected it absent", file.rel, stampMark)
+			finding.Detail = fmt.Sprintf("%s has no %s stamp and is not part of the standard; expected it absent", file.rel, stampMark)
 		}
-		state.blockers = append(state.blockers, blocker(file.rel, detail))
+		state.blockers = append(state.blockers, finding)
 	}
 
 	// actionlint reads both spellings and prefers the one forge writes, so a
@@ -143,7 +143,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// actually there.
 	if handWritten(root, ci.ActionlintConfigAltPath) {
 		state.blockers = append(state.blockers, blocker(ci.ActionlintConfigPath, fmt.Sprintf(
-			"%s is hand-written, and the %s forge writes would override it; expected only %s, so merge the two by hand",
+			"%s is hand-written, and the %s forge writes would override it; expected only %s",
 			ci.ActionlintConfigAltPath, ci.ActionlintConfigPath, ci.ActionlintConfigPath)))
 	}
 
@@ -185,8 +185,9 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	}
 
 	if unexpandedPlaceholder(wanted) {
-		state.blockers = append(state.blockers, blocker("generated workflow",
-			"the workflow forge would write has an unfilled {{ placeholder; expected every placeholder filled, so this is a forge bug"))
+		state.blockers = append(state.blockers, blockerWithFix("generated workflow",
+			"the workflow forge would write has an unfilled {{ placeholder; expected every placeholder filled",
+			"fix the block in forge, because nothing in this repo fills it"))
 	}
 	if finding := lintWorkflow(wanted, lintConfig); finding != "" {
 		state.blockers = append(state.blockers, actionlintFinding("actionlint", "generated workflow", finding, t.Assets.Manifest))

@@ -241,9 +241,10 @@ func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]re
 		case dir.isRealDir && len(dir.conflicts) > 0:
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-				Detail: fmt.Sprintf("%s is a directory, expected a link to %s; %s differ between the two, so merge them by hand",
+				Detail: fmt.Sprintf("%s is a directory, expected a link to %s; %s differ between the two",
 					dir.rel, homeRelative(dir.target), strings.Join(dir.conflicts, ", ")),
 				Observed: fmt.Sprintf("differs: %v", dir.conflicts),
+				Advice:   "make " + strings.Join(dir.conflicts, ", ") + " identical in both places, then run apply",
 			})
 
 		case dir.isRealDir:
@@ -283,8 +284,9 @@ func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]re
 		}
 		changes = append(changes, reconcile.Change{
 			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-			Detail: fmt.Sprintf("%s holds %s; expected no %s, so move them into %s and delete it",
-				retiredLink, plural(retired.entries, "entry", "entries"), retiredLink, home),
+			Detail: fmt.Sprintf("%s holds %s; expected no %s",
+				retiredLink, plural(retired.entries, "entry", "entries"), retiredLink),
+			Advice: fmt.Sprintf("move them into %s and delete %s", home, retiredLink),
 		})
 	}
 	return changes, nil

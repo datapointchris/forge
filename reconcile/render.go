@@ -52,6 +52,7 @@ func itemWidth(labelWidth int, items []string) int {
 
 // RenderChanges writes one row's findings beneath it to out, each starting in
 // the row's text column, unless the row's text is already its one finding.
+// Each finding's fix follows it.
 // Patches go to errw: they are the evidence for a change, and --json is what a
 // caller parses.
 func RenderChanges(out, errw io.Writer, r Result, labelWidth int) {
@@ -60,6 +61,9 @@ func RenderChanges(out, errw io.Writer, r Result, labelWidth int) {
 	for _, c := range r.Changes {
 		if beneath && c.Detail != "" {
 			writeLine(out, "%s%s\n", indent, c.Detail)
+		}
+		if c.Advice != "" {
+			writeLine(out, "%sfix: %s\n", indent, c.Advice)
 		}
 		if c.Patch != "" {
 			renderPatch(errw, c.Patch)

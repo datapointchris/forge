@@ -365,8 +365,9 @@ func imageChange(image dockerfile, want string) (reconcile.Change, bool) {
 		if reason != "" {
 			return reconcile.Change{
 				Item: image.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-				Detail:   fmt.Sprintf("%s has `%s`, which %s; expected Go %s, so set it by hand", image.rel, line, reason, want),
+				Detail:   fmt.Sprintf("%s has `%s`, which %s; expected Go %s", image.rel, line, reason, want),
 				Observed: line,
+				Advice:   fmt.Sprintf("set the image to Go %s by hand", want),
 			}, true
 		}
 		if stale == "" {

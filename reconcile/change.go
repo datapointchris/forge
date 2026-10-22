@@ -70,6 +70,10 @@ type Change struct {
 	// Observed is the found value alone, for a --json reader.
 	Observed string `json:"observed,omitempty"`
 
+	// Advice is the fix for a finding apply cannot make, set only where an
+	// exact one exists. It prints on its own line beneath the finding.
+	Advice string `json:"advice,omitempty"`
+
 	// Patch is the unified diff a file-shaped change would apply, when the die
 	// can produce one. Named Patch rather than Diff so it does not read as the
 	// output of the method next to it.

@@ -177,10 +177,7 @@ func handWritten(root, rel string) bool {
 }
 
 // blocker is a finding that stops a sync landing and that apply cannot clear.
-//
-// The whole of can-generate, which existed only because the generators had no
-// way to run across the portfolio. They do now, so the gate is the read verb:
-// `forge repos check` before a manifest bump is what that die was for.
+// `forge repos check` before a manifest bump is the gate that reads them.
 func blocker(item, detail string) reconcile.Change {
 	return reconcile.Change{
 		Item:    item,
@@ -188,6 +185,13 @@ func blocker(item, detail string) reconcile.Change {
 		Repair:  reconcile.ByHand,
 		Detail:  detail,
 	}
+}
+
+// blockerWithFix is a blocker whose fix is exact enough to print beneath it.
+func blockerWithFix(item, detail, advice string) reconcile.Change {
+	c := blocker(item, detail)
+	c.Advice = advice
+	return c
 }
 
 // unexpandedPlaceholder finds a generator placeholder that survived rendering.

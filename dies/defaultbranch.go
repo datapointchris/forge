@@ -111,7 +111,7 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	case summary != "":
 		// Renaming locally is still worth doing where the remote is not on
 		// GitHub, so this records the gap rather than refusing the measurement.
-		state.unreachable = "the remote is not on GitHub, so rename it by hand"
+		state.unreachable = "the remote is not on GitHub"
 	}
 	state.repo = repo
 
@@ -137,11 +137,13 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	switch {
 	case state.dirty:
 		change.Repair = reconcile.ByHand
-		change.Detail = "branch is master, expected main; uncommitted changes block the rename, so commit or stash them"
+		change.Detail = "branch is master, expected main; uncommitted changes block the rename"
+		change.Advice = "commit or stash them, then run apply"
 	case state.unpushed > 0:
 		change.Repair = reconcile.ByHand
-		change.Detail = fmt.Sprintf("branch is master, expected main; %s block the rename, so push them",
+		change.Detail = fmt.Sprintf("branch is master, expected main; %s block the rename",
 			plural(state.unpushed, "unpushed commit", "unpushed commits"))
+		change.Advice = "push them, then run apply"
 	case state.hasMain:
 		change.Repair = reconcile.ByHand
 		change.Detail = "branches master and main both exist; expected only main"
@@ -152,6 +154,7 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	case state.unreachable != "":
 		change.Repair = reconcile.ByHand
 		change.Detail = "branch is master, expected main; " + state.unreachable
+		change.Advice = "rename master to main locally and on the remote, and set main as the remote's default"
 	default:
 		change.Detail = "branch is master; expected main, locally, on the remote and as the GitHub default"
 	}

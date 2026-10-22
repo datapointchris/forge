@@ -150,7 +150,8 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 			// Nowhere to put it that is certainly top level. Appending would land
 			// the key inside whatever block ends the file.
 			change.Repair = reconcile.ByHand
-			change.Detail += "; apply cannot insert it, because the file has no top-level jobs key, so add it by hand"
+			change.Detail += "; the file has no top-level jobs key to insert it above"
+			change.Advice = "add the concurrency block at the top level of " + releaseWorkflowPath + " by hand"
 			change.Observed = "no top-level jobs key to insert above"
 		} else {
 			change.Repair = reconcile.Automatic
