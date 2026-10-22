@@ -39,23 +39,12 @@ func (CI) Description() string {
 
 func (CI) Tags() []string { return []string{"ci", "actions", "standardization", "golden-path"} }
 
-// ciFile is one file this die owns, with the sentence a plan shows for it.
-//
-// The reasons travel with the file rather than sitting in the branch that emits
-// it, because Diff walks the files in one loop and a switch on the path to
-// recover a sentence is the dispatch the loop exists to remove.
-type ciFile struct {
-	generatedFile
-	// write is what a plan says when the file is missing or stale.
-	write string
-}
-
 type ciState struct {
 	applicable bool
 	reason     string
 	// files are every file this die owns in this repo, in the order they must
 	// be written.
-	files []ciFile
+	files []generatedFile
 	// selfHosted records which runner the workflow names, for the row a
 	// converged repo shows.
 	selfHosted bool
@@ -122,15 +111,9 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	state := ciState{
 		applicable: true,
 		selfHosted: runner == ci.SelfHosted,
-		files: []ciFile{
-			{
-				generatedFile: readGenerated(root, ci.ActionlintConfigPath, lintConfig),
-				write:         "declare to actionlint the runner labels it cannot discover",
-			},
-			{
-				generatedFile: readGenerated(root, ci.WorkflowPath, wanted),
-				write:         "regenerate from the standard CI blocks",
-			},
+		files: []generatedFile{
+			readGenerated(root, ci.ActionlintConfigPath, lintConfig),
+			readGenerated(root, ci.WorkflowPath, wanted),
 		},
 	}
 
@@ -140,11 +123,9 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if !handWritten(root, file.rel) {
 			continue
 		}
-		detail := "exists without the " + stampMark +
-			" stamp, so it was hand-written and will not be overwritten"
+		detail := fmt.Sprintf("%s has no %s stamp; expected the file forge generates, so rename it and run apply", file.rel, stampMark)
 		if !file.wanted() {
-			detail = "exists without the " + stampMark +
-				" stamp, so forge did not write it and will not remove it"
+			detail = fmt.Sprintf("%s has no %s stamp and is not part of the standard; expected it absent", file.rel, stampMark)
 		}
 		state.blockers = append(state.blockers, blocker(file.rel, detail))
 	}
@@ -155,9 +136,9 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// which is what suppresses that write; the detail names the file that is
 	// actually there.
 	if handWritten(root, ci.ActionlintConfigAltPath) {
-		state.blockers = append(state.blockers, blocker(ci.ActionlintConfigPath,
-			"a hand-written "+ci.ActionlintConfigAltPath+" is already there, and actionlint prefers "+
-				ci.ActionlintConfigPath+" — writing it would override that file without reporting it"))
+		state.blockers = append(state.blockers, blocker(ci.ActionlintConfigPath, fmt.Sprintf(
+			"%s is hand-written, and the %s forge writes would override it; expected only %s, so merge the two by hand",
+			ci.ActionlintConfigAltPath, ci.ActionlintConfigPath, ci.ActionlintConfigPath)))
 	}
 
 	// Reported, not a problem: a bespoke pipeline is a repo's own, and the
@@ -165,7 +146,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// can duplicate jobs.
 	if handWritten(root, ".github/workflows/ci.yml") {
 		state.blockers = append(state.blockers, blocker(".github/workflows/ci.yml",
-			"a hand-written pipeline sits beside the generated one — reconcile them before relying on either"))
+			".github/workflows/ci.yml is hand-written and runs beside "+ci.WorkflowPath+"; expected one pipeline, so move its jobs into custom sections"))
 	}
 
 	// The vue setup reads its Node version from this file, and setup-node fails
@@ -173,18 +154,17 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// same setup. A job that can never start reports as a red run, so the
 	// workflow is not written until the file is.
 	if declaresCategory(components, "vue") && !fileExists(filepath.Join(root, ci.NodeVersionFile)) {
-		state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
-			"a vue or node component is declared with no "+ci.NodeVersionFile+" at the repo root, and its "+
-				"setup reads the Node version from there — add one naming the major the Dockerfile builds on"))
+		state.blockers = append(state.blockers, blocker(ci.WorkflowPath, fmt.Sprintf(
+			"missing file: %s, which the vue or node setup reads; expected it at the repo root, naming the Node major the Dockerfile builds on",
+			ci.NodeVersionFile)))
 	}
 
 	// A custom section is the one part of the workflow nothing else can
 	// recreate, so the write waits until each one has a job to sit beside.
 	if orphaned := ci.OrphanedSections(customSections, wanted); len(orphaned) > 0 {
-		state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
-			"a custom section names a job this workflow no longer has, and regenerating would drop it: "+
-				strings.Join(orphaned, ", ")+" — rename the marker to a job that exists, such as before:"+ci.HooksJob+
-				" for setup the hooks need"))
+		state.blockers = append(state.blockers, blocker(ci.WorkflowPath, fmt.Sprintf(
+			"%s has custom sections for jobs it no longer has (%s); expected each marker to name a job that exists, such as before:%s",
+			ci.WorkflowPath, strings.Join(orphaned, ", "), ci.HooksJob)))
 	}
 
 	// Only where the repo takes the self-hosted runner. A public repo's custom
@@ -192,15 +172,15 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// job there runs.
 	if runner == ci.SelfHosted {
 		if foreign := ci.ForeignRunners(wanted, runner); len(foreign) > 0 {
-			state.blockers = append(state.blockers, blocker(ci.WorkflowPath,
-				"a custom section runs on a runner this repo's jobs are refused on, and a refused job "+
-					"reports zero steps rather than a failure: "+strings.Join(foreign, ", ")))
+			state.blockers = append(state.blockers, blocker(ci.WorkflowPath, fmt.Sprintf(
+				"a custom section in %s runs on %s, which refuses this repo's jobs; expected the self-hosted runner",
+				ci.WorkflowPath, strings.Join(foreign, ", "))))
 		}
 	}
 
 	if unexpandedPlaceholder(wanted) {
 		state.blockers = append(state.blockers, blocker("generated workflow",
-			"a generator placeholder survived rendering — forge would write an invalid workflow"))
+			"the workflow forge would write has an unfilled {{ placeholder; expected every placeholder filled, so this is a forge bug"))
 	}
 	if finding := lintWorkflow(wanted, lintConfig); finding != "" {
 		state.blockers = append(state.blockers, actionlintFinding("generated workflow", finding, t.Assets.Manifest))
@@ -397,11 +377,10 @@ func actionlintFinding(item, finding string, manifest *toolchain.Toolchain) reco
 			Item:    item,
 			Verdict: reconcile.Unknown,
 			Repair:  reconcile.NoRepair,
-			Detail: "actionlint " + installed + " is installed and the declaration pins " + pinned +
-				", so this is not what the repo's own hook will say: " + finding,
+			Detail:  "actionlint " + installed + " is installed; expected the pinned " + pinned,
 		}
 	}
-	return blocker(item, "actionlint: "+finding)
+	return blocker(item, "actionlint rejects "+item+": "+finding)
 }
 
 func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
@@ -431,7 +410,7 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 		if hasItem(state.blockers, file.rel) {
 			continue
 		}
-		if change, drifted := file.change(file.write); drifted {
+		if change, drifted := file.change(); drifted {
 			changes = append(changes, change)
 		}
 	}
@@ -439,19 +418,17 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 	// ci.yml draws is about it duplicating jobs, which its pins do not touch.
 	// A repin the repo's own lint config refuses is already out of this list.
 	for _, file := range state.repinned {
-		if change, drifted := file.change(repinReason); drifted {
+		if change, drifted := file.change(); drifted {
+			change.Detail = file.rel + " uses action, tool or runner versions other than the declared ones; expected the declared versions"
 			changes = append(changes, change)
 		}
 	}
 	return changes, nil
 }
 
-// repinReason is what a plan says for a workflow forge did not write.
-const repinReason = "take the declared action and tool versions and runner image; the rest of this workflow is the repo's own"
-
 func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
 	}
 
 	observed, err := c.Observe(t)
@@ -476,7 +453,7 @@ func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outc
 	// The plan names which file this change is for, and Perform re-observes
 	// rather than trusting it. Writing whichever file the die happens to hold
 	// first would put the workflow at the actionlint config's path.
-	var file ciFile
+	var file generatedFile
 	var found bool
 	for _, candidate := range state.files {
 		if candidate.rel == change.Item {
@@ -508,7 +485,7 @@ func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outc
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
 	}
 
-	if err := writeGenerated(t.Repo.Path, file.generatedFile); err != nil {
+	if err := writeGenerated(t.Repo.Path, file); err != nil {
 		return reconcile.Outcome{}, err
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "wrote " + file.rel}, nil

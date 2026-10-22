@@ -93,7 +93,7 @@ func (LargeFiles) Diff(_ reconcile.Target, observed reconcile.Observation) ([]re
 	for _, f := range state.found {
 		changes = append(changes, reconcile.Change{
 			Item: f.path, Verdict: reconcile.Undeclared, Repair: reconcile.ByHand,
-			Detail:   "large enough to have been committed by accident; git keeps it forever",
+			Detail:   fmt.Sprintf("%s is %s; expected every tracked file under %s", f.path, humanBytes(f.bytes), humanBytes(largeEnoughToQuestion)),
 			Observed: humanBytes(f.bytes),
 		})
 	}
@@ -107,7 +107,7 @@ func (LargeFiles) Perform(_ reconcile.Target, change reconcile.Change) (reconcil
 	return reconcile.Outcome{
 		Change:  change,
 		Status:  reconcile.Refused,
-		Message: "whether a large file belongs is the repo's to say",
+		Message: "not an automatic repair",
 	}, nil
 }
 

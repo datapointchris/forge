@@ -137,7 +137,7 @@ func (ConflictMarkers) Diff(_ reconcile.Target, observed reconcile.Observation) 
 	for _, f := range state.found {
 		changes = append(changes, reconcile.Change{
 			Item: f.path, Verdict: reconcile.Undeclared, Repair: reconcile.ByHand,
-			Detail:   "an unresolved merge conflict is committed here",
+			Detail:   fmt.Sprintf("%s has a merge conflict marker at line %d; expected none", f.path, f.line),
 			Observed: fmt.Sprintf("line %d", f.line),
 		})
 	}
@@ -150,6 +150,6 @@ func (ConflictMarkers) Perform(_ reconcile.Target, change reconcile.Change) (rec
 	return reconcile.Outcome{
 		Change:  change,
 		Status:  reconcile.Refused,
-		Message: "which side of the conflict was wanted is the repo's to say",
+		Message: "not an automatic repair",
 	}, nil
 }

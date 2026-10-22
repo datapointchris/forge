@@ -183,7 +183,7 @@ func TestPreCommitReportsAnNpmScriptTheHookWouldCall(t *testing.T) {
 
 	var found bool
 	for _, change := range measured.Changes {
-		if strings.Contains(change.Detail, "would fail on first use") {
+		if strings.Contains(change.Detail, "npm run lint:fix") {
 			found = true
 			if change.Repair != reconcile.ByHand {
 				t.Errorf("repair = %q, want by_hand", change.Repair)

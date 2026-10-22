@@ -97,11 +97,15 @@ func runIn(dir, name string, args ...string) (string, error) {
 
 // settingChange is one repo setting that is not what the standard wants.
 func settingChange(name, observed, want string) reconcile.Change {
+	found := observed
+	if found == "" {
+		found = "unset"
+	}
 	return reconcile.Change{
 		Item:     name,
 		Verdict:  reconcile.Stale,
 		Repair:   reconcile.Automatic,
-		Detail:   "should be " + want,
+		Detail:   fmt.Sprintf("%s is %s; expected %s", name, found, want),
 		Observed: observed,
 	}
 }

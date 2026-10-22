@@ -95,8 +95,8 @@ func (BrokenSymlinks) Diff(_ reconcile.Target, observed reconcile.Observation) (
 	for _, l := range state.found {
 		changes = append(changes, reconcile.Change{
 			Item: l.path, Verdict: reconcile.Undeclared, Repair: reconcile.ByHand,
-			Detail:   "tracked symlink resolves to nothing, so it dangles in every clone",
-			Observed: "→ " + l.target,
+			Detail:   fmt.Sprintf("tracked link %s points at %s, which does not exist", l.path, l.target),
+			Observed: l.target,
 		})
 	}
 	return changes, nil
@@ -109,6 +109,6 @@ func (BrokenSymlinks) Perform(_ reconcile.Target, change reconcile.Change) (reco
 	return reconcile.Outcome{
 		Change:  change,
 		Status:  reconcile.Refused,
-		Message: "a dangling link may be waiting for something not installed here",
+		Message: "not an automatic repair",
 	}, nil
 }

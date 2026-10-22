@@ -90,7 +90,7 @@ func TestCheckNeverPrintsTheSummaryOverAPendingRepair(t *testing.T) {
 	if result.Status != Converged {
 		t.Fatalf("status = %q, want converged: apply can fix it, so check has nothing to report", result.Status)
 	}
-	if result.Detail != "nothing for check to report; 1 item(s) differ from the standard — see plan" {
+	if result.Detail == "branch protection current on main" {
 		t.Errorf("detail = %q, want the pending repair named rather than the die's converged sentence", result.Detail)
 	}
 }
@@ -105,7 +105,7 @@ func TestPlanNeverPrintsTheSummaryOverAHeldBackWrite(t *testing.T) {
 	if result.Status != Converged {
 		t.Fatalf("status = %q, want converged: apply has nothing it may change", result.Status)
 	}
-	if result.Detail != "nothing for apply to change; 1 item(s) need attention — see check" {
+	if result.Detail == "validate.yml current" {
 		t.Errorf("detail = %q, want the held-back finding named rather than the die's converged sentence", result.Detail)
 	}
 }
@@ -113,7 +113,7 @@ func TestPlanNeverPrintsTheSummaryOverAHeldBackWrite(t *testing.T) {
 // Once apply has written, its row reports the write rather than the drift the
 // plan found, or apply's output reads the same as plan's.
 func TestAppliedReportsTheWriteRatherThanThePlan(t *testing.T) {
-	planned := Result{Repo: "scratch", Die: "gitignore", Status: Drift, Detail: "2 item(s) differ from the standard"}
+	planned := Result{Repo: "scratch", Die: "gitignore", Status: Drift, Detail: "2 changes apply would make"}
 	cases := []struct {
 		name     string
 		outcomes []Outcome

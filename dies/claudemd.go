@@ -72,13 +72,14 @@ func (ClaudeMD) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reco
 	case !state.exists:
 		return []reconcile.Change{{
 			Item: "CLAUDE.md", Verdict: reconcile.Missing, Repair: reconcile.ByHand,
-			Detail: "an agent working here has to infer the layout and the conventions",
+			Detail: "missing file: CLAUDE.md",
 		}}, nil
 
 	case state.lines < thinEnoughToBePlaceholder:
 		return []reconcile.Change{{
 			Item: "CLAUDE.md", Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-			Detail: "thin enough to be a placeholder", Observed: plural(state.lines, "line", "lines"),
+			Detail:   fmt.Sprintf("CLAUDE.md has %s; expected at least %d", plural(state.lines, "line", "lines"), thinEnoughToBePlaceholder),
+			Observed: plural(state.lines, "line", "lines"),
 		}}, nil
 	}
 
@@ -92,6 +93,6 @@ func (ClaudeMD) Perform(_ reconcile.Target, change reconcile.Change) (reconcile.
 	return reconcile.Outcome{
 		Change:  change,
 		Status:  reconcile.Refused,
-		Message: "what belongs in a CLAUDE.md is the repo's to say",
+		Message: "not an automatic repair",
 	}, nil
 }

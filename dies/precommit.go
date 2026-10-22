@@ -262,9 +262,10 @@ func strandedToolConfigs(root string, basis maintenance) []reconcile.Change {
 
 	var changes []reconcile.Change
 	for _, rel := range generic {
-		changes = append(changes, blocker(rel, "forge deploys this beside "+precommit.ConfigPath+
-			", and that file is gone, so nothing left here carries the "+stampMark+
-			" stamp that says whether forge wrote it — declare the repo's toolchain to have forge maintain it again, or remove it"))
+		changes = append(changes, blocker(rel, fmt.Sprintf(
+			"%s is a forge tool config with no %s beside it to carry the %s stamp; "+
+				"expected the repo's toolchain declared in the registry, or %s removed",
+			rel, precommit.ConfigPath, stampMark, rel)))
 	}
 	return changes
 }
@@ -333,9 +334,6 @@ func supersededSpelling(root, spelling, rel, want string) (generatedFile, *recon
 		return generatedFile{}, nil
 	}
 
-	ahead := "the tool that reads it resolves this spelling ahead of " + rel +
-		", so forge's config is not the one in force"
-
 	// Parsed and differing are separate answers. A .markdownlint.jsonc carries
 	// // comments by definition and the YAML parser rejects them, so folding
 	// the parse error into the mismatch would report a difference nothing
@@ -343,17 +341,17 @@ func supersededSpelling(root, spelling, rel, want string) (generatedFile, *recon
 	// one of them is a claim about the content.
 	same, err := sameConfig(data, []byte(want))
 	if err != nil {
-		finding := blocker(spelling, ahead+", and it could not be parsed, so forge cannot tell "+
-			"whether it carries the same configuration — reconcile the two by hand")
+		finding := blocker(spelling, fmt.Sprintf(
+			"%s overrides %s and could not be parsed; expected only %s, so merge the two by hand", spelling, rel, rel))
 		return generatedFile{}, &finding
 	}
 	if !same {
-		finding := blocker(spelling, ahead+", and its content differs from what forge writes "+
-			"there — reconcile the two by hand")
+		finding := blocker(spelling, fmt.Sprintf(
+			"%s overrides %s and differs from it; expected only %s, so merge the two by hand", spelling, rel, rel))
 		return generatedFile{}, &finding
 	}
 	// want is empty, which is what makes this a retraction rather than a write.
-	return generatedFile{rel: spelling, have: string(data), exists: true}, nil
+	return generatedFile{rel: spelling, have: string(data), exists: true, supersededBy: rel}, nil
 }
 
 // replacementInPlace reports whether the config that supersedes this spelling is
@@ -460,8 +458,8 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		}
 		if len(unknown) > 0 {
 			state.blockers = append(state.blockers, blocker(precommit.ConfigPath,
-				fmt.Sprintf("%s need a # > custom: marker or a sync would delete them: %s",
-					plural(len(unknown), "hook", "hooks"), strings.Join(unknown, ", "))))
+				fmt.Sprintf("%s has %s outside any # > custom: section (%s); expected each inside a marked custom section",
+					precommit.ConfigPath, plural(len(unknown), "unrecognized hook", "unrecognized hooks"), strings.Join(unknown, ", "))))
 		}
 	}
 
@@ -473,9 +471,9 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			return nil, err
 		}
 		for _, id := range precommit.Shadowed(standard, owed.customSections) {
-			state.blockers = append(state.blockers, blocker("custom hook "+id,
-				"a custom section defines "+id+", which replaces the standard hook of that id whole, so the declared rev and args never reach it — "+
-					"remove it from the section to take the standard one"))
+			state.blockers = append(state.blockers, blocker("custom hook "+id, fmt.Sprintf(
+				"custom hook %s replaces the standard hook %s; expected the standard one, so remove %s from the custom section",
+				id, id, id)))
 		}
 	}
 
@@ -485,8 +483,8 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// own item, so the config still regenerates without the block.
 	if scripts := owed.observed.Scripts; len(scripts) > 0 && !precommit.PythonDeclared(declared) {
 		state.blockers = append(state.blockers, blocker(precommit.ScriptCategory+" block",
-			fmt.Sprintf("%s here run Python through uv (%s), and the registry declares no python component, so no hook reads them"+
-				" — add a python component to this repo's toolchain.components and a pyproject.toml with ruff and mypy in its dev group",
+			fmt.Sprintf("%s run Python through uv (%s), and the registry declares no python component; "+
+				"expected a python component in this repo's toolchain.components and a pyproject.toml with ruff and mypy in its dev group",
 				plural(len(scripts), "app", "apps"), strings.Join(scripts, ", "))))
 	}
 
@@ -515,10 +513,10 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		// apply cannot reach it. Asked per file: one hand-written config is no
 		// reason to stop deploying the others.
 		if unattributable(root, tool.rel, want) {
-			state.blockers = append(state.blockers, blocker(tool.rel,
-				"exists without the "+managedMark+" marker and does not match what forge deploys, so forge "+
-					"cannot tell its own earlier output from a file someone wrote — reconcile it by hand, or "+
-					"delete it and re-apply to take the standard"))
+			state.blockers = append(state.blockers, blocker(tool.rel, fmt.Sprintf(
+				"%s has no %s marker and differs from forge's template; "+
+					"expected the template, so merge the two by hand, or delete %s and run apply",
+				tool.rel, managedMark, tool.rel)))
 			continue
 		}
 		state.configs = append(state.configs, readGenerated(root, tool.rel, want))
@@ -545,10 +543,11 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// A schema-valid config can still fail on the first commit, which is the
 	// check `pre-commit validate-config` cannot make.
 	for _, missing := range unresolvedNpmScripts(root, wanted) {
-		state.blockers = append(state.blockers, blocker(precommit.ConfigPath, "hook would fail on first use: "+missing))
+		state.blockers = append(state.blockers, blocker(precommit.ConfigPath, missing))
 	}
 	if finding := validateConfig(wanted); finding != "" {
-		state.blockers = append(state.blockers, blocker("generated config", "pre-commit validate-config: "+finding))
+		state.blockers = append(state.blockers, blocker("generated config",
+			"pre-commit validate-config rejects the config forge would write: "+finding))
 	}
 
 	return state, nil
@@ -660,20 +659,21 @@ func unresolvedNpmScripts(root, generated string) []string {
 			seen[key] = true
 		}
 
+		hook := fmt.Sprintf("a hook runs `npm run %s` in %s", script, dir)
 		data, err := os.ReadFile(filepath.Join(root, dir, "package.json"))
 		if err != nil {
-			missing = append(missing, dir+" has no package.json")
+			missing = append(missing, hook+", which has no package.json; expected one declaring that script")
 			continue
 		}
 		var manifest struct {
 			Scripts map[string]string `json:"scripts"`
 		}
 		if err := json.Unmarshal(data, &manifest); err != nil {
-			missing = append(missing, dir+"/package.json is unreadable")
+			missing = append(missing, hook+", whose package.json could not be parsed: "+err.Error())
 			continue
 		}
 		if _, ok := manifest.Scripts[script]; !ok {
-			missing = append(missing, fmt.Sprintf("%s declares no %q script", dir, script))
+			missing = append(missing, fmt.Sprintf("%s, whose package.json has no %q script; expected that script", hook, script))
 		}
 	}
 	return missing
@@ -708,7 +708,7 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 	// automatic repair while one is outstanding — the plan would otherwise
 	// promise a write that Perform refuses.
 	if !hasItem(state.blockers, precommit.ConfigPath) {
-		if change, drifted := state.config.change("regenerate from the standard blocks"); drifted {
+		if change, drifted := state.config.change(); drifted {
 			changes = append(changes, change)
 		}
 	}
@@ -721,7 +721,7 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 		if file.retracting() {
 			continue
 		}
-		if change, drifted := file.change("deploy the standard tool config"); drifted {
+		if change, drifted := file.change(); drifted {
 			changes = append(changes, change)
 		}
 	}
@@ -729,7 +729,7 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 		if !file.retracting() {
 			continue
 		}
-		if change, drifted := file.change("the tool reads this spelling in preference, so it comes out"); drifted {
+		if change, drifted := file.change(); drifted {
 			changes = append(changes, change)
 		}
 	}
@@ -743,12 +743,11 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 			Item:    ".git/hooks/" + stage,
 			Verdict: reconcile.Missing,
 			Repair:  reconcile.Automatic,
-			Detail:  "the config uses this stage, so without the hook those checks silently never run",
+			Detail:  fmt.Sprintf("missing git hook: .git/hooks/%s, which the %s hooks in %s need", stage, stage, precommit.ConfigPath),
 		}
 		if state.basis == byStamp {
 			change.Repair = reconcile.ByHand
-			change.Detail = "the config forge maintains here uses this stage and the hook is absent, so those checks silently never run" +
-				" — declare the repo's toolchain to have forge install it, or run `pre-commit install -t " + stage + "` here"
+			change.Detail += fmt.Sprintf("; run `pre-commit install -t %s`, or declare the repo's toolchain in the registry so apply installs it", stage)
 		}
 		changes = append(changes, change)
 	}
@@ -758,7 +757,7 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 
 func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
 	}
 
 	observed, err := p.Observe(t)

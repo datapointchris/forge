@@ -43,19 +43,19 @@ func Assess(t Target, d Die) (m Measurement) {
 	defer func() {
 		if r := recover(); r != nil {
 			m.Changes = nil
-			m.Refusal = fmt.Sprintf("%s panicked on %s: %v", d.Name(), t.Repo.Name, r)
+			m.Refusal = fmt.Sprintf("the die panicked: %v", r)
 		}
 	}()
 
 	observed, err := d.Observe(t)
 	if err != nil {
-		m.Refusal = fmt.Sprintf("%s could not examine %s: %v", d.Name(), t.Repo.Name, err)
+		m.Refusal = fmt.Sprintf("could not measure: %v", err)
 		return m
 	}
 
 	changes, err := d.Diff(t, observed)
 	if err != nil {
-		m.Refusal = fmt.Sprintf("%s could not diff %s: %v", d.Name(), t.Repo.Name, err)
+		m.Refusal = fmt.Sprintf("could not compare with the standard: %v", err)
 		return m
 	}
 

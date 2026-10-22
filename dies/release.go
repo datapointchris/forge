@@ -134,7 +134,7 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 			Item:     releaseWorkflowPath,
 			Verdict:  reconcile.Unknown,
 			Repair:   reconcile.NoRepair,
-			Detail:   "could not be read as YAML, so nothing about it was measured",
+			Detail:   releaseWorkflowPath + " is not valid YAML: " + state.parseErr.Error(),
 			Observed: state.parseErr.Error(),
 		}}, nil
 	}
@@ -144,12 +144,13 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 		change := reconcile.Change{
 			Item:    "concurrency",
 			Verdict: reconcile.Missing,
-			Detail:  "two pushes to main inside one run's window race, and the later run fails pushing the version the first one cut",
+			Detail:  fmt.Sprintf("missing concurrency block in %s; expected one that queues release runs", releaseWorkflowPath),
 		}
 		if state.jobsIndex < 0 {
 			// Nowhere to put it that is certainly top level. Appending would land
 			// the key inside whatever block ends the file.
 			change.Repair = reconcile.ByHand
+			change.Detail += ", added by hand, because the file has no top-level jobs key to insert it above"
 			change.Observed = "no top-level jobs key to insert above"
 		} else {
 			change.Repair = reconcile.Automatic
@@ -169,7 +170,7 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 			Item:     "on.push.tags",
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.ByHand,
-			Detail:   "the release workflow decides the version and pushes the tag, so triggering on one validates nothing that can still be stopped",
+			Detail:   fmt.Sprintf("%s triggers on a pushed tag; expected it to trigger on a push to main and cut the tag itself", releaseWorkflowPath),
 			Observed: "triggers on a pushed tag",
 		})
 	}
@@ -181,7 +182,7 @@ func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile
 		return reconcile.Outcome{
 			Change:  change,
 			Status:  reconcile.Refused,
-			Message: "only a person can settle this one",
+			Message: "not an automatic repair",
 		}, nil
 	}
 

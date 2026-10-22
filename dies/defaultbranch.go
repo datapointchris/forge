@@ -102,7 +102,7 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	if unknown != nil || summary != "" {
 		// Renaming locally is still worth doing where GitHub cannot be reached,
 		// so this records the gap rather than refusing the whole measurement.
-		state.unreachable = "the GitHub default branch cannot be set from here"
+		state.unreachable = "gh cannot set the GitHub default branch from here, so rename it by hand"
 	}
 	state.repo = repo
 
@@ -128,19 +128,19 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	switch {
 	case state.dirty:
 		change.Repair = reconcile.ByHand
-		change.Detail = "would rename to main, but the working tree is dirty — commit or stash first"
+		change.Detail = "branch is master, expected main; uncommitted changes block the rename, so commit or stash them"
 	case state.unpushed > 0:
 		change.Repair = reconcile.ByHand
-		change.Detail = fmt.Sprintf("would rename to main, but %s unpushed — push first, or the rename strands them",
-			plural(state.unpushed, "commit is", "commits are"))
+		change.Detail = fmt.Sprintf("branch is master, expected main; %s block the rename, so push them",
+			plural(state.unpushed, "unpushed commit", "unpushed commits"))
 	case state.hasMain:
 		change.Repair = reconcile.ByHand
-		change.Detail = "both master and main exist — which one is current is a person's call"
+		change.Detail = "branches master and main both exist; expected only main"
 	case state.unreachable != "":
 		change.Repair = reconcile.ByHand
-		change.Detail = state.unreachable
+		change.Detail = "branch is master, expected main; " + state.unreachable
 	default:
-		change.Detail = "rename to main, locally, on the remote, and as the GitHub default"
+		change.Detail = "branch is master; expected main, locally, on the remote and as the GitHub default"
 	}
 
 	return []reconcile.Change{change}, nil
@@ -148,7 +148,7 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 
 func (d DefaultBranch) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
 	}
 
 	// Re-verified live, and this is the die where that matters most: every step

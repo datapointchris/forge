@@ -16,14 +16,6 @@ var (
 		Issue:     color.New(color.FgHiRed),
 	}
 
-	verdictColors = map[Verdict]*color.Color{
-		Matched:    color.New(color.FgHiGreen),
-		Missing:    color.New(color.FgHiYellow),
-		Stale:      color.New(color.FgHiYellow),
-		Undeclared: color.New(color.FgHiBlue),
-		Unknown:    color.New(color.FgHiMagenta),
-	}
-
 	added   = color.New(color.FgHiGreen)
 	removed = color.New(color.FgHiRed)
 	bold    = color.New(color.Bold)
@@ -58,29 +50,18 @@ func itemWidth(labelWidth int, items []string) int {
 	return width
 }
 
-// RenderChanges writes one row's items beneath it, at the row's label width.
+// RenderChanges writes one row's changes beneath it, each line starting in the
+// row's text column. A lone change is already the row's text, so only its patch
+// prints.
 //
 // These go to stderr: under a repo's row they are the evidence for it, not the
 // answer a caller parses — which is --json.
 func RenderChanges(w io.Writer, changes []Change, labelWidth int) {
-	items := make([]string, 0, len(changes))
+	indent := strings.Repeat(" ", statusWidth+1+labelWidth+1)
 	for _, c := range changes {
-		items = append(items, c.Item)
-	}
-	width := itemWidth(labelWidth, items)
-	for _, c := range changes {
-		paint := verdictColors[c.Verdict]
-		if paint == nil {
-			paint = color.New(color.FgWhite)
+		if len(changes) > 1 {
+			writeLine(w, "%s%s\n", indent, c.Detail)
 		}
-
-		observed := ""
-		if c.Observed != "" {
-			observed = fmt.Sprintf(" (is %q)", c.Observed)
-		}
-
-		writeLine(w, "%s%s %-*s %s%s\n", itemIndent, paint.Sprintf("%-*s", verdictWidth, c.Verdict), width, c.Item, c.Detail, observed)
-
 		if c.Patch != "" {
 			renderPatch(w, c.Patch)
 		}

@@ -48,31 +48,26 @@ func (Gitignore) Tags() []string {
 	return []string{"gitignore", "python", "standardization", "golden-path"}
 }
 
-// wanted is one entry the standard asserts, with why it is there.
-//
-// The reason travels into the plan rather than sitting in a comment here: a
-// reader looking at forty repos about to gain a line deserves to know what the
-// line is for without opening the source.
-type wanted struct {
-	line   string
-	reason string
-}
-
-// retiredIgnores are lines this die removes wherever it finds them, each with why.
-var retiredIgnores = []wanted{
-	{".planning", "no repo holds a .planning; a repo's status is kept in the sync base"},
+// retiredIgnores are lines this die removes wherever it finds them.
+var retiredIgnores = []string{
+	// No repo holds a .planning, because a repo's status is kept in the sync base.
+	".planning",
 }
 
 // Deliberately omitted, because the tool that creates them writes a .gitignore
 // containing '*' into the directory itself: .venv (uv), htmlcov (coverage.py),
 // .pytest_cache, .ruff_cache, .mypy_cache. Listing them would be dead weight
 // that reads as necessary.
-var pythonIgnores = []wanted{
-	{"__pycache__/", "bytecode Python writes beside each module it imports, wherever PYTHONPYCACHEPREFIX is unset"},
-	{".coverage", "coverage data file — a bare file, so unlike htmlcov/ it self-ignores nothing"},
-	{"coverage.xml", "coverage report, written by the CI run"},
-	{"dist/", "build output"},
-	{"*.egg-info/", "build output"},
+var pythonIgnores = []string{
+	// Bytecode Python writes beside each module it imports, wherever PYTHONPYCACHEPREFIX is unset.
+	"__pycache__/",
+	// The coverage data file is a bare file, so unlike htmlcov/ it self-ignores nothing.
+	".coverage",
+	// The coverage report the CI run writes.
+	"coverage.xml",
+	// Build output.
+	"dist/",
+	"*.egg-info/",
 }
 
 // rustIgnores is one line per declared Rust directory, for the target/ cargo
@@ -89,8 +84,8 @@ var pythonIgnores = []wanted{
 // the repo's root .gitignore at `cargo new` time and writes nothing inside the
 // directory. So a repo whose .gitignore was created any other way has no entry
 // at all.
-func rustIgnores(components []config.Component) []wanted {
-	var entries []wanted
+func rustIgnores(components []config.Component) []string {
+	var entries []string
 	for _, component := range components {
 		if component.Stack != "rust" {
 			continue
@@ -99,8 +94,8 @@ func rustIgnores(components []config.Component) []wanted {
 		if dir := strings.Trim(component.Dir, "/"); dir != "" && dir != "." {
 			line = "/" + dir + "/target"
 		}
-		if !slices.ContainsFunc(entries, func(entry wanted) bool { return entry.line == line }) {
-			entries = append(entries, wanted{line, "cargo build output"})
+		if !slices.Contains(entries, line) {
+			entries = append(entries, line)
 		}
 	}
 	return entries
@@ -136,7 +131,7 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 		return nil, fmt.Errorf("gitignore: unexpected observation %T", observed)
 	}
 
-	var entries []wanted
+	var entries []string
 	if slices.Contains(t.Repo.Toolchain.Stacks(), "python") {
 		entries = append(entries, pythonIgnores...)
 	}
@@ -146,35 +141,35 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 
 	var changes []reconcile.Change
 	for _, entry := range entries {
-		switch count := state.count(entry.line); {
+		switch count := state.count(entry); {
 		case count == 0:
 			changes = append(changes, reconcile.Change{
-				Item:    entry.line,
+				Item:    entry,
 				Verdict: reconcile.Missing,
 				Repair:  reconcile.Automatic,
-				Detail:  entry.reason,
+				Detail:  "missing .gitignore entry: " + entry,
 			})
 		case count > 1:
 			// Append-only means this cannot be repaired here: removing a line is
 			// exactly the operation that would take a repo's own entries with it
 			// if the matching were ever wrong.
 			changes = append(changes, reconcile.Change{
-				Item:     entry.line,
+				Item:     entry,
 				Verdict:  reconcile.Stale,
 				Repair:   reconcile.ByHand,
-				Detail:   "listed more than once",
+				Detail:   fmt.Sprintf(".gitignore lists %s %d times; expected once", entry, count),
 				Observed: fmt.Sprintf("%d occurrences", count),
 			})
 		}
 	}
 
 	for _, entry := range retiredIgnores {
-		if count := state.count(entry.line); count > 0 {
+		if count := state.count(entry); count > 0 {
 			changes = append(changes, reconcile.Change{
-				Item:     entry.line,
+				Item:     entry,
 				Verdict:  reconcile.Stale,
 				Repair:   reconcile.Automatic,
-				Detail:   "retired: " + entry.reason,
+				Detail:   fmt.Sprintf(".gitignore lists %s, which forge retired; expected no such entry", entry),
 				Observed: plural(count, "occurrence", "occurrences"),
 			})
 		}
@@ -185,7 +180,7 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 			Item:     ".gitignore",
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.ByHand,
-			Detail:   "downloaded from gitignore.io — prune it to what this repo builds",
+			Detail:   fmt.Sprintf(".gitignore is a %d-line gitignore.io download; expected only the entries this repo builds", len(state.lines)),
 			Observed: fmt.Sprintf("%d lines", len(state.lines)),
 		})
 	}
@@ -198,7 +193,7 @@ func (g Gitignore) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{
 			Change:  change,
 			Status:  reconcile.Refused,
-			Message: "only a person can settle this one",
+			Message: "not an automatic repair",
 		}, nil
 	}
 
@@ -210,7 +205,7 @@ func (g Gitignore) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{}, err
 	}
 
-	if slices.ContainsFunc(retiredIgnores, func(entry wanted) bool { return entry.line == change.Item }) {
+	if slices.Contains(retiredIgnores, change.Item) {
 		if observed.(gitignoreState).count(change.Item) == 0 {
 			return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already gone"}, nil
 		}

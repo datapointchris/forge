@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -61,6 +62,9 @@ type generatedFile struct {
 	have string
 	// exists distinguishes an absent file from an empty one.
 	exists bool
+	// supersededBy is the path whose config replaces this one, for a spelling
+	// that comes out because the same settings land there.
+	supersededBy string
 }
 
 func (f generatedFile) matches() bool { return f.exists && f.have == f.want }
@@ -84,8 +88,9 @@ func (f generatedFile) wanted() bool { return f.rel != "" && f.want != "" }
 // stamp is not forge's to delete.
 func (f generatedFile) retracting() bool { return f.rel != "" && f.want == "" && f.exists }
 
-// change renders the file's state as the Change a plan shows.
-func (f generatedFile) change(reason string) (reconcile.Change, bool) {
+// change renders the file's state as the Change a plan shows. The patch beneath
+// it carries the difference, so the line says only which file and in what way.
+func (f generatedFile) change() (reconcile.Change, bool) {
 	if !f.managed() || f.matches() {
 		return reconcile.Change{}, false
 	}
@@ -93,11 +98,15 @@ func (f generatedFile) change(reason string) (reconcile.Change, bool) {
 	// A retraction is Stale rather than Undeclared: forge wrote this file, and
 	// Undeclared is reserved for what it did not put there and may not touch.
 	if f.retracting() {
+		detail := f.rel + " is no longer part of the standard; expected it removed"
+		if f.supersededBy != "" {
+			detail = fmt.Sprintf("%s holds the same settings as %s; expected only %s", f.rel, f.supersededBy, f.supersededBy)
+		}
 		return reconcile.Change{
 			Item:    f.rel,
 			Verdict: reconcile.Stale,
 			Repair:  reconcile.Automatic,
-			Detail:  reason,
+			Detail:  detail,
 			Patch:   unifiedDiff(f.rel, f.have, ""),
 		}, true
 	}
@@ -105,16 +114,16 @@ func (f generatedFile) change(reason string) (reconcile.Change, bool) {
 		return reconcile.Change{}, false
 	}
 
-	verdict := reconcile.Stale
+	verdict, detail := reconcile.Stale, f.rel+" differs from what forge generates"
 	if !f.exists {
-		verdict = reconcile.Missing
+		verdict, detail = reconcile.Missing, "missing file: "+f.rel
 	}
 
 	return reconcile.Change{
 		Item:    f.rel,
 		Verdict: verdict,
 		Repair:  reconcile.Automatic,
-		Detail:  reason,
+		Detail:  detail,
 		Patch:   unifiedDiff(f.rel, f.have, f.want),
 	}, true
 }

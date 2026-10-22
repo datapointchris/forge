@@ -73,18 +73,13 @@ func TestAssessCarriesChangesAndSummary(t *testing.T) {
 	}
 }
 
-func TestObserveFailureBecomesARefusalNamingTheRepo(t *testing.T) {
+func TestObserveFailureBecomesARefusalCarryingTheCause(t *testing.T) {
 	die := &fakeDie{name: "merge-settings", observeErr: errors.New("gh: not logged in")}
 
 	m := Assess(Target{Repo: repoNamed("mimic")}, die)
 
-	if m.Refusal == "" {
-		t.Fatal("an observe failure produced no refusal")
-	}
-	for _, want := range []string{"merge-settings", "mimic", "not logged in"} {
-		if !strings.Contains(m.Refusal, want) {
-			t.Errorf("refusal %q does not name %q", m.Refusal, want)
-		}
+	if !strings.Contains(m.Refusal, "not logged in") {
+		t.Errorf("refusal %q does not carry the observe error", m.Refusal)
 	}
 	if m.Changes != nil {
 		t.Error("a refused measurement carried changes")
