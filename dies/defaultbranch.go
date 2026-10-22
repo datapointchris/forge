@@ -42,7 +42,10 @@ type defaultBranchState struct {
 	remoteHasMaster bool
 	repo            ghRepo
 	unreachable     string
-	unversioned     bool
+	// unmeasured is why the remote or GitHub could not be read: a gap a login
+	// or a network closes, after which apply renames.
+	unmeasured  string
+	unversioned bool
 }
 
 func (s defaultBranchState) Summary() string {
@@ -54,6 +57,9 @@ func (s defaultBranchState) Summary() string {
 	}
 	if !s.hasMaster {
 		return "no master branch to rename"
+	}
+	if s.unmeasured != "" {
+		return "branch is master; the rename was not checked"
 	}
 	return "master renamed"
 }
@@ -89,7 +95,7 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 
 	refs, err := runIn(t.Repo.Path, "git", "ls-remote", "--heads", "origin")
 	if err != nil {
-		state.unreachable = "could not read the remote"
+		state.unmeasured = "could not read the remote: " + err.Error()
 		return state, nil
 	}
 	state.remoteHasMain = strings.Contains(refs, "refs/heads/main")
@@ -99,10 +105,13 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	if err != nil {
 		return nil, err
 	}
-	if unknown != nil || summary != "" {
-		// Renaming locally is still worth doing where GitHub cannot be reached,
-		// so this records the gap rather than refusing the whole measurement.
-		state.unreachable = "the GitHub default branch cannot be set from here"
+	switch {
+	case unknown != nil:
+		state.unmeasured = unknown[0].Detail
+	case summary != "":
+		// Renaming locally is still worth doing where the remote is not on
+		// GitHub, so this records the gap rather than refusing the measurement.
+		state.unreachable = "the remote is not on GitHub"
 	}
 	state.repo = repo
 
@@ -128,29 +137,32 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	switch {
 	case state.dirty:
 		change.Repair = reconcile.ByHand
-		change.Detail = "would rename to main, but the working tree is dirty — commit or stash first"
+		change.Detail = "branch is master, expected main; uncommitted changes block the rename"
+		change.Advice = "commit or stash them, then run apply"
 	case state.unpushed > 0:
 		change.Repair = reconcile.ByHand
-		change.Detail = fmt.Sprintf("would rename to main, but %s unpushed — push first, or the rename strands them",
-			plural(state.unpushed, "commit is", "commits are"))
+		change.Detail = fmt.Sprintf("branch is master, expected main; %s block the rename",
+			plural(state.unpushed, "unpushed commit", "unpushed commits"))
+		change.Advice = "push them, then run apply"
 	case state.hasMain:
 		change.Repair = reconcile.ByHand
-		change.Detail = "both master and main exist — which one is current is a person's call"
+		change.Detail = "branches master and main both exist; expected only main"
+	case state.unmeasured != "":
+		change.Verdict = reconcile.Unknown
+		change.Repair = reconcile.NoRepair
+		change.Detail = state.unmeasured
 	case state.unreachable != "":
 		change.Repair = reconcile.ByHand
-		change.Detail = state.unreachable
+		change.Detail = "branch is master, expected main; " + state.unreachable
+		change.Advice = "rename master to main locally and on the remote, and set main as the remote's default"
 	default:
-		change.Detail = "rename to main, locally, on the remote, and as the GitHub default"
+		change.Detail = "branch is master; expected main, locally, on the remote and as the GitHub default"
 	}
 
 	return []reconcile.Change{change}, nil
 }
 
 func (d DefaultBranch) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
-	}
-
 	// Re-verified live, and this is the die where that matters most: every step
 	// below is hard to reverse, and the plan may have been read for a while.
 	observed, err := d.Observe(t)

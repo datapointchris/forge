@@ -57,6 +57,9 @@ func (s branchProtectionState) Summary() string {
 	if s.summary != "" {
 		return s.summary
 	}
+	if anyUnmeasured(s.changes) {
+		return "branch protection not checked"
+	}
 	return "branch protection current on " + s.repo.defaultBranch
 }
 
@@ -112,7 +115,7 @@ func protectionRefused(repo ghRepo, err error) branchProtectionState {
 			Item:    repo.defaultBranch,
 			Verdict: reconcile.Missing,
 			Repair:  reconcile.Automatic,
-			Detail:  "unprotected — force-push and deletion would be allowed",
+			Detail:  fmt.Sprintf("%s has no branch protection; expected force-push and deletion blocked", repo.defaultBranch),
 		}}}
 	case strings.Contains(message, "(HTTP 403)") && strings.Contains(message, "Upgrade to GitHub Pro"):
 		return branchProtectionState{repo: repo, summary: "private repo on a GitHub plan without branch protection"}
@@ -144,10 +147,6 @@ const protectionRequest = `{
 }`
 
 func (b BranchProtection) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
-	}
-
 	observed, err := b.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err

@@ -202,7 +202,7 @@ func observeSyncedDir(path string, dir syncedDir) (syncedDir, error) {
 	return dir, nil
 }
 
-func (SyncedDirs) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
+func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
 	state, ok := observed.(syncedDirsState)
 	if !ok {
 		return nil, fmt.Errorf("synced-dirs: unexpected observation %T", observed)
@@ -217,14 +217,16 @@ func (SyncedDirs) Diff(_ reconcile.Target, observed reconcile.Observation) ([]re
 		case dir.linked():
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
-				Detail: "linked, but the synced directory it points at does not exist",
+				Detail: fmt.Sprintf("%s links to %s, which does not exist; expected that directory to exist", dir.rel, homeRelative(dir.target)),
 			})
 
 		case dir.link != "" && !dir.linkResolves:
 			// A link to nothing is left over from a move, so relinking it overrules no one.
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
-				Detail: fmt.Sprintf("links to %s, which does not exist; expected a link to %s", dir.link, dir.target),
+				Detail: fmt.Sprintf("%s links to %s, which does not exist; expected a link to %s",
+					dir.rel, homeRelative(dir.link), homeRelative(dir.target)),
+				Observed: dir.link,
 			})
 
 		case dir.link != "":
@@ -232,26 +234,30 @@ func (SyncedDirs) Diff(_ reconcile.Target, observed reconcile.Observation) ([]re
 			// repair, it is overruling a decision forge cannot see the reason for.
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Undeclared, Repair: reconcile.ByHand,
-				Detail: "symlinked somewhere other than the sync base", Observed: dir.link,
+				Detail:   fmt.Sprintf("%s links to %s; expected a link to %s", dir.rel, homeRelative(dir.link), homeRelative(dir.target)),
+				Observed: dir.link,
 			})
 
 		case dir.isRealDir && len(dir.conflicts) > 0:
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-				Detail:   "a real directory whose contents differ from the synced copy — merge by hand, or migrating loses the newer side",
+				Detail: fmt.Sprintf("%s is a directory, expected a link to %s; %s differ between the two",
+					dir.rel, homeRelative(dir.target), strings.Join(dir.conflicts, ", ")),
 				Observed: fmt.Sprintf("differs: %v", dir.conflicts),
+				Advice:   "make " + strings.Join(dir.conflicts, ", ") + " identical in both places, then run apply",
 			})
 
 		case dir.isRealDir:
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
-				Detail: fmt.Sprintf("a real directory — migrate %s to the sync base and link", plural(len(dir.entries), "entry", "entries")),
+				Detail: fmt.Sprintf("%s is a directory of %s; expected a link to %s, with the entries moved there",
+					dir.rel, plural(len(dir.entries), "entry", "entries"), homeRelative(dir.target)),
 			})
 
 		default:
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Missing, Repair: reconcile.Automatic,
-				Detail: "link to " + dir.target,
+				Detail: fmt.Sprintf("missing link: %s; expected it to point to %s", dir.rel, homeRelative(dir.target)),
 			})
 		}
 	}
@@ -261,30 +267,32 @@ func (SyncedDirs) Diff(_ reconcile.Target, observed reconcile.Observation) ([]re
 	case retired.link != "" && within(state.base, retired.link):
 		changes = append(changes, reconcile.Change{
 			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
-			Detail: "a retired link into the sync base — remove it", Observed: retired.link,
+			Detail:   fmt.Sprintf("%s links to %s; expected no %s", retiredLink, homeRelative(retired.link), retiredLink),
+			Observed: retired.link,
 		})
 
 	case retired.isRealDir && retired.entries == 0:
 		changes = append(changes, reconcile.Change{
 			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
-			Detail: "an empty retired directory — remove it",
+			Detail: fmt.Sprintf("%s is an empty directory; expected no %s", retiredLink, retiredLink),
 		})
 
 	case retired.isRealDir:
+		home := "the repo's directory in the sync base"
+		if state.base != "" {
+			home = homeRelative(filepath.Join(state.base, t.Repo.Name))
+		}
 		changes = append(changes, reconcile.Change{
 			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-			Detail: fmt.Sprintf("a retired directory holding %s — move them into the repo's directory in the sync base, then delete it",
-				plural(retired.entries, "entry", "entries")),
+			Detail: fmt.Sprintf("%s holds %s; expected no %s",
+				retiredLink, plural(retired.entries, "entry", "entries"), retiredLink),
+			Advice: fmt.Sprintf("move them into %s and delete %s", home, retiredLink),
 		})
 	}
 	return changes, nil
 }
 
 func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
-	}
-
 	observed, err := s.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err
@@ -302,7 +310,7 @@ func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconc
 		}
 	}
 	if dir.rel == "" {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "no longer a synced directory"}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the registry declares no such synced directory"}, nil
 	}
 	if dir.linked() && dir.targetExists {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already linked"}, nil
@@ -374,6 +382,16 @@ func removeRetired(t reconcile.Target, change reconcile.Change, state syncedDirs
 		return reconcile.Outcome{}, err
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "removed"}, nil
+}
+
+// homeRelative is path as a person types it, with the home directory as ~.
+func homeRelative(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || !within(home, path) {
+		return path
+	}
+	rel, _ := filepath.Rel(home, path)
+	return filepath.Join("~", rel)
 }
 
 // within reports whether path sits inside base. An empty base holds nothing.

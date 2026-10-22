@@ -16,14 +16,6 @@ var (
 		Issue:     color.New(color.FgHiRed),
 	}
 
-	verdictColors = map[Verdict]*color.Color{
-		Matched:    color.New(color.FgHiGreen),
-		Missing:    color.New(color.FgHiYellow),
-		Stale:      color.New(color.FgHiYellow),
-		Undeclared: color.New(color.FgHiBlue),
-		Unknown:    color.New(color.FgHiMagenta),
-	}
-
 	added   = color.New(color.FgHiGreen)
 	removed = color.New(color.FgHiRed)
 	bold    = color.New(color.Bold)
@@ -39,50 +31,42 @@ func writeLine(w io.Writer, format string, a ...any) {
 	_, _ = fmt.Fprintf(w, format, a...)
 }
 
-// statusWidth is the column a row's status is padded to. Item lines indent by
-// one more, so they start under the row's label.
+// statusWidth is the column a row's status is padded to. Outcome and patch
+// lines indent by one more, so they start under the row's label.
 const statusWidth = 9
 
-// verdictWidth fits the longest verdict and outcome, "undeclared".
-const verdictWidth = 10
+// outcomeWidth fits the longest outcome status, "refused".
+const outcomeWidth = 7
 
 var itemIndent = strings.Repeat(" ", statusWidth+1)
 
 // itemWidth pads items so their detail starts in the row's detail column, given
 // the label width the rows use. An item too long for that pushes its own lines.
 func itemWidth(labelWidth int, items []string) int {
-	width := labelWidth - verdictWidth - 1
+	width := labelWidth - outcomeWidth - 1
 	for _, item := range items {
 		width = max(width, len(item))
 	}
 	return width
 }
 
-// RenderChanges writes one row's items beneath it, at the row's label width.
-//
-// These go to stderr: under a repo's row they are the evidence for it, not the
-// answer a caller parses — which is --json.
-func RenderChanges(w io.Writer, changes []Change, labelWidth int) {
-	items := make([]string, 0, len(changes))
-	for _, c := range changes {
-		items = append(items, c.Item)
-	}
-	width := itemWidth(labelWidth, items)
-	for _, c := range changes {
-		paint := verdictColors[c.Verdict]
-		if paint == nil {
-			paint = color.New(color.FgWhite)
+// RenderChanges writes one row's findings beneath it to out, each starting in
+// the row's text column, unless the row's text is already its one finding.
+// Each finding's fix follows it.
+// Patches go to errw: they are the evidence for a change, and --json is what a
+// caller parses.
+func RenderChanges(out, errw io.Writer, r Result, labelWidth int) {
+	indent := strings.Repeat(" ", statusWidth+1+labelWidth+1)
+	beneath := !rowIsItsChange(r.Changes)
+	for _, c := range r.Changes {
+		if beneath && c.Detail != "" {
+			writeLine(out, "%s%s\n", indent, c.Detail)
 		}
-
-		observed := ""
-		if c.Observed != "" {
-			observed = fmt.Sprintf(" (is %q)", c.Observed)
+		if c.Advice != "" {
+			writeLine(out, "%sfix: %s\n", indent, c.Advice)
 		}
-
-		writeLine(w, "%s%s %-*s %s%s\n", itemIndent, paint.Sprintf("%-*s", verdictWidth, c.Verdict), width, c.Item, c.Detail, observed)
-
 		if c.Patch != "" {
-			renderPatch(w, c.Patch)
+			renderPatch(errw, c.Patch)
 		}
 	}
 }
@@ -158,11 +142,12 @@ func RenderOutcomes(w io.Writer, outcomes []Outcome, labelWidth int) {
 		case Done:
 		}
 
-		message := o.Message
+		// A Detail names its own item, so it takes the item's column blank.
+		item, message := o.Change.Item, o.Message
 		if message == "" {
-			message = o.Change.Detail
+			item, message = "", o.Change.Detail
 		}
-		writeLine(w, "%s%s %-*s %s\n", itemIndent, paint.Sprintf("%-*s", verdictWidth, o.Status), width, o.Change.Item, message)
+		writeLine(w, "%s%s %-*s %s\n", itemIndent, paint.Sprintf("%-*s", outcomeWidth, o.Status), width, item, message)
 	}
 }
 

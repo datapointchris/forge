@@ -1,6 +1,10 @@
 package reconcile
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
 
 // Lens is which question is being asked of one measurement.
 //
@@ -99,7 +103,16 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 
 	gap := ""
 	if len(unmeasured) > 0 {
-		gap = fmt.Sprintf(", %d unmeasurable", len(unmeasured))
+		var reasons []string
+		for _, c := range unmeasured {
+			if c.Detail != "" && !slices.Contains(reasons, c.Detail) {
+				reasons = append(reasons, c.Detail)
+			}
+		}
+		gap = fmt.Sprintf("; %d could not be measured", len(unmeasured))
+		if len(reasons) > 0 {
+			gap += ": " + strings.Join(reasons, "; ")
+		}
 	}
 
 	switch {
@@ -107,24 +120,40 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 	// it would call a pending repair current.
 	case len(kept) == 0 && len(pending) > 0:
 		result.Status = Converged
-		result.Detail = fmt.Sprintf("nothing for check to report; %d item(s) differ from the standard — see plan%s", len(pending), gap)
+		result.Detail = "no findings; plan has " + plural(len(pending), "change", "changes") + gap
 	// Under plan the summary would call current a file a by-hand finding holds
 	// back from its write.
 	case len(kept) == 0 && len(attention) > 0:
 		result.Status = Converged
-		result.Detail = fmt.Sprintf("nothing for apply to change; %d item(s) need attention — see check%s", len(attention), gap)
+		result.Detail = "no changes; check has " + plural(len(attention), "finding", "findings") + gap
 	case len(kept) == 0:
 		result.Status = Converged
 		result.Detail = summary + gap
 	case lens == LensPlan:
 		result.Status = Drift
-		result.Detail = fmt.Sprintf("%d item(s) differ from the standard%s", len(kept), gap)
+		result.Detail = plural(len(kept), "change", "changes") + " apply would make" + gap
 	default:
 		result.Status = Issue
-		result.Detail = fmt.Sprintf("%d item(s) need attention that apply cannot give%s", len(kept), gap)
+		result.Detail = plural(len(kept), "finding", "findings") + " to fix by hand" + gap
+	}
+	if rowIsItsChange(kept) {
+		result.Detail = kept[0].Detail + gap
 	}
 
 	return result
+}
+
+// rowIsItsChange is whether a row's text is its one change's own line, because
+// that line says more than a count of one. RenderChanges then prints it nowhere
+// else.
+func rowIsItsChange(kept []Change) bool { return len(kept) == 1 && kept[0].Detail != "" }
+
+// plural is n with whichever noun agrees with it.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // Applied is the row apply prints once it has acted on r's changes. A failed
@@ -145,11 +174,11 @@ func Applied(r Result, outcomes []Outcome) Result {
 	}
 	if refused > 0 {
 		r.Status = Drift
-		r.Detail = fmt.Sprintf("%d item(s) applied, %d refused", applied, refused)
+		r.Detail = fmt.Sprintf("%s applied, %d refused", plural(applied, "change", "changes"), refused)
 		return r
 	}
 	r.Status = Converged
-	r.Detail = fmt.Sprintf("%d item(s) applied", applied)
+	r.Detail = plural(applied, "change", "changes") + " applied"
 	return r
 }
 

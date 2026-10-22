@@ -115,6 +115,7 @@ A die is a Go value implementing `reconcile.Die`: `Observe` reads, `Diff` is pur
 - **`check` keeps `ByHand` findings** — a hand-written pipeline, an unmarked custom hook, a synced directory diverged from its copy in the sync base, a missing CLAUDE.md. Real drift apply cannot fix.
 - **`Unknown` is neither**, and never moves the exit code. `gh` unauthenticated is not fifty drifted repos, and apply is not the fix for a login. *Unverified is not permission.*
 - **`Undeclared` is never actionable.** Forge does not delete what it did not put there.
+- **`Detail` is the whole line a person reads.** It names the item, then what was found and what was expected, in the shape `<item> has <found>; expected <wanted>` or `missing <kind>: <item>`. It never says why the standard holds, and never how to fix it. A fix apply cannot make goes in `Advice`, set only where an exact one exists, and prints beneath the finding as `fix: <advice>`. `--json` carries the found value as `observed` where a die sets one, the fix as `advice`, and no structured expected value. A row with one change prints that line as its own text. A row with several prints a count, with each line beneath it. An `Unknown` item's Detail is its cause, printed on the row beside the count of what could not be measured.
 
 **Exit codes**, following terraform's `-detailed-exitcode`: 0 converged, 1 pending changes, 2 usage, 3 something is wrong. `plan` answers 0/1 and 3 only on a refusal; `check` answers 0/3 and never 1.
 

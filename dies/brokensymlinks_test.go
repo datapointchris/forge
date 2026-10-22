@@ -47,7 +47,7 @@ func TestBrokenSymlinksReportsALinkToNothing(t *testing.T) {
 	if measured.Changes[0].Item != "alias.md" {
 		t.Errorf("item = %q, want alias.md", measured.Changes[0].Item)
 	}
-	if measured.Changes[0].Observed != "→ gone.md" {
+	if measured.Changes[0].Observed != "gone.md" {
 		t.Errorf("observed = %q, want the link target", measured.Changes[0].Observed)
 	}
 	// Never automatic: a link can legitimately be waiting for something this

@@ -17,7 +17,10 @@ import (
 // than a standard something grades against. A model reading a repo to judge it
 // against a guideline is the wrong instrument for "is any file over a
 // megabyte".
-type LargeFiles struct{}
+//
+// Every finding is ByHand. Deleting a file from a repo is never forge's call,
+// and rewriting history to remove one is not a thing any die should do.
+type LargeFiles struct{ reconcile.ReportOnly }
 
 func (LargeFiles) Name() string { return "large-files" }
 
@@ -93,22 +96,11 @@ func (LargeFiles) Diff(_ reconcile.Target, observed reconcile.Observation) ([]re
 	for _, f := range state.found {
 		changes = append(changes, reconcile.Change{
 			Item: f.path, Verdict: reconcile.Undeclared, Repair: reconcile.ByHand,
-			Detail:   "large enough to have been committed by accident; git keeps it forever",
+			Detail:   fmt.Sprintf("%s is %s; expected every tracked file under %s", f.path, humanBytes(f.bytes), humanBytes(largeEnoughToQuestion)),
 			Observed: humanBytes(f.bytes),
 		})
 	}
 	return changes, nil
-}
-
-// Perform is unreachable: nothing this die reports is Actionable. Deleting a
-// file from a repo is never forge's call, and rewriting history to remove one
-// is not a thing any die should do.
-func (LargeFiles) Perform(_ reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	return reconcile.Outcome{
-		Change:  change,
-		Status:  reconcile.Refused,
-		Message: "whether a large file belongs is the repo's to say",
-	}, nil
 }
 
 func humanBytes(n int64) string {

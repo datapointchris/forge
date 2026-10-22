@@ -134,7 +134,7 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 			Item:     releaseWorkflowPath,
 			Verdict:  reconcile.Unknown,
 			Repair:   reconcile.NoRepair,
-			Detail:   "could not be read as YAML, so nothing about it was measured",
+			Detail:   releaseWorkflowPath + " is not valid YAML: " + state.parseErr.Error(),
 			Observed: state.parseErr.Error(),
 		}}, nil
 	}
@@ -144,12 +144,14 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 		change := reconcile.Change{
 			Item:    "concurrency",
 			Verdict: reconcile.Missing,
-			Detail:  "two pushes to main inside one run's window race, and the later run fails pushing the version the first one cut",
+			Detail:  fmt.Sprintf("missing concurrency block in %s; expected one that queues release runs", releaseWorkflowPath),
 		}
 		if state.jobsIndex < 0 {
 			// Nowhere to put it that is certainly top level. Appending would land
 			// the key inside whatever block ends the file.
 			change.Repair = reconcile.ByHand
+			change.Detail += "; the file has no top-level jobs key to insert it above"
+			change.Advice = "add the concurrency block at the top level of " + releaseWorkflowPath + " by hand"
 			change.Observed = "no top-level jobs key to insert above"
 		} else {
 			change.Repair = reconcile.Automatic
@@ -169,7 +171,7 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 			Item:     "on.push.tags",
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.ByHand,
-			Detail:   "the release workflow decides the version and pushes the tag, so triggering on one validates nothing that can still be stopped",
+			Detail:   fmt.Sprintf("%s triggers on a pushed tag; expected it to trigger on a push to main and cut the tag itself", releaseWorkflowPath),
 			Observed: "triggers on a pushed tag",
 		})
 	}
@@ -177,14 +179,6 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 }
 
 func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{
-			Change:  change,
-			Status:  reconcile.Refused,
-			Message: "only a person can settle this one",
-		}, nil
-	}
-
 	// Re-read rather than trust the plan: the plan may have been on screen for a
 	// while, and the line the block goes above moves whenever the file does.
 	observed, err := r.Observe(t)
@@ -196,7 +190,7 @@ func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile
 		return reconcile.Outcome{}, fmt.Errorf("release: unexpected observation %T", observed)
 	}
 	if !state.exists || state.parseErr != nil || state.jobsIndex < 0 {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the workflow no longer reads the way the plan measured it"}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the workflow changed since the plan measured it"}, nil
 	}
 	if state.hasConcurrency {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil

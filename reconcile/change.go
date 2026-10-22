@@ -56,11 +56,23 @@ const (
 // stop, apply renders them and hands each back to Perform. Nothing else crosses
 // the line, which is why a die never needs to know which verb invoked it.
 type Change struct {
-	Item     string  `json:"item"`
-	Verdict  Verdict `json:"verdict"`
-	Repair   Repair  `json:"repair"`
-	Detail   string  `json:"detail,omitempty"`
-	Observed string  `json:"observed,omitempty"`
+	Item    string  `json:"item"`
+	Verdict Verdict `json:"verdict"`
+	Repair  Repair  `json:"repair"`
+
+	// Detail is the whole line a person reads: it names the item, then says what
+	// was found and what was expected, in the shape "<item> has <found>;
+	// expected <wanted>" or "missing <kind>: <item>". It never says why the
+	// standard holds. It is printed alone, so the item and the observed value
+	// are in it rather than beside it.
+	Detail string `json:"detail,omitempty"`
+
+	// Observed is the found value alone, for a --json reader.
+	Observed string `json:"observed,omitempty"`
+
+	// Advice is the fix for a finding apply cannot make, set only where an
+	// exact one exists. It prints on its own line beneath the finding.
+	Advice string `json:"advice,omitempty"`
 
 	// Patch is the unified diff a file-shaped change would apply, when the die
 	// can produce one. Named Patch rather than Diff so it does not read as the

@@ -278,15 +278,11 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 		// strands a release: `go install <tool>@latest` prefers something the
 		// installing machine can build, so a floor nobody asked for is skipped
 		// there without a word.
-		detail := "the declaration floors Go at " + state.floor
-		if meetsFloor(module.goVersion, state.floor) {
-			detail += ", and a floor above it excludes consumers for nothing"
-		}
 		changes = append(changes, reconcile.Change{
 			Item:     item,
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.Automatic,
-			Detail:   detail,
+			Detail:   fmt.Sprintf("%s has go %s; expected go %s", item, module.goVersion, state.floor),
 			Observed: "go " + module.goVersion,
 		})
 	}
@@ -306,7 +302,7 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 				Item:     item,
 				Verdict:  reconcile.Undeclared,
 				Repair:   reconcile.NoRepair,
-				Detail:   fmt.Sprintf("the floor %s already reaches the pinned toolchain", floor),
+				Detail:   fmt.Sprintf("%s has toolchain %s, which its go %s floor already reaches; expected no toolchain line", item, module.toolchain, floor),
 				Observed: "toolchain " + module.toolchain,
 			})
 		}
@@ -315,7 +311,7 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 			Item:     item,
 			Verdict:  reconcile.Missing,
 			Repair:   reconcile.Automatic,
-			Detail:   fmt.Sprintf("builds with the %s standard library; the declaration pins %s", floor, state.pinned),
+			Detail:   fmt.Sprintf("%s has no toolchain line; expected toolchain %s", item, want),
 			Observed: "go " + module.goVersion,
 		})
 	case module.toolchain != want:
@@ -323,7 +319,7 @@ func moduleChanges(state gomodState, module goModule) []reconcile.Change {
 			Item:     item,
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.Automatic,
-			Detail:   "the declaration pins " + state.pinned,
+			Detail:   fmt.Sprintf("%s has toolchain %s; expected toolchain %s", item, module.toolchain, want),
 			Observed: "toolchain " + module.toolchain,
 		})
 	}
@@ -360,16 +356,18 @@ func imageChange(image dockerfile, want string) (reconcile.Change, bool) {
 		var reason string
 		switch {
 		case digest != "":
-			reason = "pinned by a digest whose Go cannot be read offline"
+			reason = "is pinned by a digest"
 		case strings.Contains(tag, "$"):
 			reason = "takes its tag from a build argument"
 		case !published:
-			reason = "names a distro release, which may have no " + next + " tag"
+			reason = "names a distro release that may have no " + next + " tag"
 		}
 		if reason != "" {
 			return reconcile.Change{
 				Item: image.rel, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-				Detail: reason + "; CI tests Go " + want, Observed: line,
+				Detail:   fmt.Sprintf("%s has `%s`, which %s; expected Go %s", image.rel, line, reason, want),
+				Observed: line,
+				Advice:   fmt.Sprintf("set the image to Go %s by hand", want),
 			}, true
 		}
 		if stale == "" {
@@ -383,7 +381,7 @@ func imageChange(image dockerfile, want string) (reconcile.Change, bool) {
 		Item:     image.rel,
 		Verdict:  reconcile.Stale,
 		Repair:   reconcile.Automatic,
-		Detail:   "CI tests Go " + want + ", and the official image ignores go.mod's toolchain line",
+		Detail:   fmt.Sprintf("%s has `%s`; expected Go %s, the release CI tests", image.rel, stale, want),
 		Observed: stale,
 	}, true
 }
@@ -427,10 +425,6 @@ func goImageTag(tag, want string) (string, bool) {
 }
 
 func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
-	}
-
 	observed, err := g.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err

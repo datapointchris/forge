@@ -99,5 +99,14 @@ type Die interface {
 
 	// Perform does one Change, re-checking live that it is still the right
 	// thing to do, and returns Refused rather than forcing when it is not.
+	// Apply passes it only Actionable changes.
 	Perform(Target, Change) (Outcome, error)
+}
+
+// ReportOnly is embedded by a die whose every change is ByHand, so Apply never
+// calls its Perform.
+type ReportOnly struct{}
+
+func (ReportOnly) Perform(_ Target, change Change) (Outcome, error) {
+	return Outcome{Change: change, Status: Refused, Message: "not an automatic repair"}, nil
 }

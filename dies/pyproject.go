@@ -174,7 +174,7 @@ func (Pyproject) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 			Item:    "pyproject.toml",
 			Verdict: reconcile.Stale,
 			Repair:  reconcile.Automatic,
-			Detail:  "the standard [tool.*] sections have drifted",
+			Detail:  "pyproject.toml's [tool.*] sections differ from the standard",
 			// The diff travels with the change so a plan across every Python repo
 			// shows the template edit as it will land, which is the whole reason
 			// this die was split out.
@@ -190,7 +190,7 @@ func (Pyproject) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 			Item:     "pyproject.toml " + c.Key,
 			Verdict:  reconcile.Stale,
 			Repair:   reconcile.ByHand,
-			Detail:   "the project sets this; the standard wants " + c.Standard,
+			Detail:   fmt.Sprintf("pyproject.toml sets %s to %s; expected %s", c.Key, c.Project, c.Standard),
 			Observed: c.Project,
 		})
 	}
@@ -198,10 +198,6 @@ func (Pyproject) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 }
 
 func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
-	}
-
 	out, err := runMergeScript(t)
 	if err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil

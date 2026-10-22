@@ -60,6 +60,9 @@ func (s mergeSettingsState) Summary() string {
 	if s.summary != "" {
 		return s.summary
 	}
+	if anyUnmeasured(s.changes) {
+		return "merge settings not checked"
+	}
 	return "merge settings current"
 }
 
@@ -126,10 +129,6 @@ func (MergeSettings) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 // is what keeps the batching honest, reporting Skipped once the first Change
 // has already carried its siblings.
 func (m MergeSettings) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "only a person can settle this one"}, nil
-	}
-
 	observed, err := m.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err

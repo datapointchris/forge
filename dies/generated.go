@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -61,6 +62,9 @@ type generatedFile struct {
 	have string
 	// exists distinguishes an absent file from an empty one.
 	exists bool
+	// supersededBy is the path whose config replaces this one, for a spelling
+	// that comes out because the same settings land there.
+	supersededBy string
 }
 
 func (f generatedFile) matches() bool { return f.exists && f.have == f.want }
@@ -79,13 +83,14 @@ func (f generatedFile) managed() bool { return f.rel != "" }
 // with every verb reporting converged because nothing looks.
 func (f generatedFile) wanted() bool { return f.rel != "" && f.want != "" }
 
-// retracting reports whether a file the standard no longer wants is still on
+// retracting reports whether a file the standard does not want is still on
 // disk. The caller decides whether forge may remove it — a file without the
 // stamp is not forge's to delete.
 func (f generatedFile) retracting() bool { return f.rel != "" && f.want == "" && f.exists }
 
-// change renders the file's state as the Change a plan shows.
-func (f generatedFile) change(reason string) (reconcile.Change, bool) {
+// change renders the file's state as the Change a plan shows. The patch beneath
+// it carries the difference, so the line says only which file and in what way.
+func (f generatedFile) change() (reconcile.Change, bool) {
 	if !f.managed() || f.matches() {
 		return reconcile.Change{}, false
 	}
@@ -93,11 +98,15 @@ func (f generatedFile) change(reason string) (reconcile.Change, bool) {
 	// A retraction is Stale rather than Undeclared: forge wrote this file, and
 	// Undeclared is reserved for what it did not put there and may not touch.
 	if f.retracting() {
+		detail := f.rel + " is not part of the standard; expected it removed"
+		if f.supersededBy != "" {
+			detail = fmt.Sprintf("%s holds the same settings as %s; expected only %s", f.rel, f.supersededBy, f.supersededBy)
+		}
 		return reconcile.Change{
 			Item:    f.rel,
 			Verdict: reconcile.Stale,
 			Repair:  reconcile.Automatic,
-			Detail:  reason,
+			Detail:  detail,
 			Patch:   unifiedDiff(f.rel, f.have, ""),
 		}, true
 	}
@@ -105,16 +114,16 @@ func (f generatedFile) change(reason string) (reconcile.Change, bool) {
 		return reconcile.Change{}, false
 	}
 
-	verdict := reconcile.Stale
+	verdict, detail := reconcile.Stale, f.rel+" differs from what forge generates"
 	if !f.exists {
-		verdict = reconcile.Missing
+		verdict, detail = reconcile.Missing, "missing file: "+f.rel
 	}
 
 	return reconcile.Change{
 		Item:    f.rel,
 		Verdict: verdict,
 		Repair:  reconcile.Automatic,
-		Detail:  reason,
+		Detail:  detail,
 		Patch:   unifiedDiff(f.rel, f.have, f.want),
 	}, true
 }
@@ -168,10 +177,7 @@ func handWritten(root, rel string) bool {
 }
 
 // blocker is a finding that stops a sync landing and that apply cannot clear.
-//
-// The whole of can-generate, which existed only because the generators had no
-// way to run across the portfolio. They do now, so the gate is the read verb:
-// `forge repos check` before a manifest bump is what that die was for.
+// `forge repos check` before a manifest bump is the gate that reads them.
 func blocker(item, detail string) reconcile.Change {
 	return reconcile.Change{
 		Item:    item,
@@ -179,6 +185,13 @@ func blocker(item, detail string) reconcile.Change {
 		Repair:  reconcile.ByHand,
 		Detail:  detail,
 	}
+}
+
+// blockerWithFix is a blocker whose fix is exact enough to print beneath it.
+func blockerWithFix(item, detail, advice string) reconcile.Change {
+	c := blocker(item, detail)
+	c.Advice = advice
+	return c
 }
 
 // unexpandedPlaceholder finds a generator placeholder that survived rendering.

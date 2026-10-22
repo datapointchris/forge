@@ -18,7 +18,10 @@ import (
 // --no-verify, a merge resolved in an editor that saved the wrong hunk, or a
 // repo that has not had the hook deployed yet — and then it sits there,
 // because nothing looks again.
-type ConflictMarkers struct{}
+//
+// Every finding is ByHand. Which side of a conflict was wanted is exactly the
+// judgment a machine cannot make.
+type ConflictMarkers struct{ reconcile.ReportOnly }
 
 func (ConflictMarkers) Name() string { return "conflict-markers" }
 
@@ -137,19 +140,9 @@ func (ConflictMarkers) Diff(_ reconcile.Target, observed reconcile.Observation) 
 	for _, f := range state.found {
 		changes = append(changes, reconcile.Change{
 			Item: f.path, Verdict: reconcile.Undeclared, Repair: reconcile.ByHand,
-			Detail:   "an unresolved merge conflict is committed here",
+			Detail:   fmt.Sprintf("%s has a merge conflict marker at line %d; expected none", f.path, f.line),
 			Observed: fmt.Sprintf("line %d", f.line),
 		})
 	}
 	return changes, nil
-}
-
-// Perform is unreachable: nothing this die reports is Actionable. Which side of
-// a conflict was wanted is exactly the judgment a machine cannot make.
-func (ConflictMarkers) Perform(_ reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	return reconcile.Outcome{
-		Change:  change,
-		Status:  reconcile.Refused,
-		Message: "which side of the conflict was wanted is the repo's to say",
-	}, nil
 }

@@ -44,17 +44,3 @@ func TestClaudeMDPlaceholderIsReported(t *testing.T) {
 		t.Errorf("repair = %q, want by_hand", measured.Changes[0].Repair)
 	}
 }
-
-// Nothing this die reports is Actionable, so Perform is unreachable from every
-// verb. It refuses rather than writing, in case that ever stops being true.
-func TestClaudeMDNeverWrites(t *testing.T) {
-	target := fixture(t, stacks("go"), nil)
-
-	outcome, err := ClaudeMD{}.Perform(target, reconcile.Change{Item: "CLAUDE.md", Verdict: reconcile.Missing, Repair: reconcile.ByHand})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if outcome.Status != reconcile.Refused {
-		t.Errorf("status = %q, want refused", outcome.Status)
-	}
-}
