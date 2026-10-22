@@ -23,7 +23,6 @@ func Builtin() []reconcile.Die {
 		Gitignore{},
 		SyncedDirs{},
 		ClaudeMD{},
-		Layout{},
 		LargeFiles{},
 		ConflictMarkers{},
 		BrokenSymlinks{},
