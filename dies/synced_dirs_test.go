@@ -133,6 +133,29 @@ func TestSyncedDirsLeavesAForeignSymlinkAlone(t *testing.T) {
 	}
 }
 
+// A sync base that moved leaves its old links pointing at nothing.
+func TestSyncedDirsRelinksALinkToNothing(t *testing.T) {
+	target := declaring(t, nil)
+
+	if err := os.MkdirAll(target.Path("stats"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(sandbox(target), "old-sync-base"), target.Path("stats/data")); err != nil {
+		t.Fatal(err)
+	}
+
+	measured := reconcile.Assess(target, SyncedDirs{})
+	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.Automatic {
+		t.Fatalf("changes = %v, want one automatic repair", measured.Changes)
+	}
+
+	applyAll(t, target, SyncedDirs{})
+
+	if link, _ := os.Readlink(target.Path("stats/data")); link != syncedPath(target, "stats") {
+		t.Errorf("link = %s, want %s", link, syncedPath(target, "stats"))
+	}
+}
+
 func TestSyncedDirsIsIdempotent(t *testing.T) {
 	target := declaring(t, nil)
 

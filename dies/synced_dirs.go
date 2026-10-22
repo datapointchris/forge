@@ -1,7 +1,9 @@
 package dies
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +28,7 @@ type SyncedDirs struct{}
 func (SyncedDirs) Name() string { return "synced-dirs" }
 
 func (SyncedDirs) Description() string {
-	return "Link each declared synced_dirs entry into the sync base, migrating a real directory when it is safe to, and remove the retired .planning link. Refuses to migrate over a diverged copy."
+	return "Link each declared synced_dirs entry into the sync base, migrating a real directory when it is safe to and relinking a link to nothing, and remove the retired .planning link. Refuses to migrate over a diverged copy."
 }
 
 func (SyncedDirs) Tags() []string {
@@ -42,6 +44,7 @@ type syncedDir struct {
 	target string
 
 	link         string
+	linkResolves bool
 	isRealDir    bool
 	entries      []string
 	conflicts    []string
@@ -161,6 +164,10 @@ func observeSyncedDir(path string, dir syncedDir) (syncedDir, error) {
 	}
 
 	if info.Mode()&os.ModeSymlink != 0 {
+		// Only a target that is definitely absent makes the link dead. A loop or
+		// an unreadable target is someone's link that forge cannot judge.
+		_, statErr := os.Stat(path)
+		dir.linkResolves = !errors.Is(statErr, fs.ErrNotExist)
 		dir.link, err = os.Readlink(path)
 		return dir, err
 	}
@@ -211,6 +218,13 @@ func (SyncedDirs) Diff(_ reconcile.Target, observed reconcile.Observation) ([]re
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
 				Detail: "linked, but the synced directory it points at does not exist",
+			})
+
+		case dir.link != "" && !dir.linkResolves:
+			// A link to nothing is left over from a move, so relinking it overrules no one.
+			changes = append(changes, reconcile.Change{
+				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
+				Detail: fmt.Sprintf("links to %s, which does not exist; expected a link to %s", dir.link, dir.target),
 			})
 
 		case dir.link != "":
@@ -298,6 +312,9 @@ func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconc
 	if len(dir.conflicts) > 0 {
 		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the synced copy has diverged since the plan"}, nil
 	}
+	if dir.link != "" && !dir.linked() && dir.linkResolves {
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the link resolves since the plan"}, nil
+	}
 
 	if err := os.MkdirAll(dir.target, 0o755); err != nil {
 		return reconcile.Outcome{}, err
@@ -307,6 +324,12 @@ func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconc
 	switch {
 	case dir.linked():
 		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "created the missing synced directory"}, nil
+
+	// os.Remove on a link removes the link, never what it points at.
+	case dir.link != "":
+		if err := os.Remove(path); err != nil {
+			return reconcile.Outcome{}, err
+		}
 
 	case dir.isRealDir:
 		for _, entry := range dir.entries {
