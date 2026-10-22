@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/reconcile"
 )
 
@@ -74,17 +75,35 @@ var pythonIgnores = []wanted{
 	{"*.egg-info/", "build output"},
 }
 
-// Spelled "/target" rather than "target/" because that is the exact line
-// `cargo new` writes, and matching it is what keeps this die idempotent on a
-// repo that started that way. A different spelling of the same rule is a second
-// line the duplicate check cannot see, since it compares strings.
+// rustIgnores is one line per declared Rust directory, for the target/ cargo
+// builds into beside that directory's Cargo.toml. A workspace in crates/ builds
+// into crates/target, which a root /target does not reach.
+//
+// The root one is spelled "/target" rather than "target/" because that is the
+// exact line `cargo new` writes, and matching it is what keeps this die
+// idempotent on a repo that started that way. A different spelling of the same
+// rule is a second line the duplicate check cannot see, since it compares
+// strings.
 //
 // Unlike Python's .venv, target/ does not self-ignore — cargo puts the entry in
 // the repo's root .gitignore at `cargo new` time and writes nothing inside the
 // directory. So a repo whose .gitignore was created any other way has no entry
 // at all.
-var rustIgnores = []wanted{
-	{"/target", "cargo build output"},
+func rustIgnores(components []config.Component) []wanted {
+	var entries []wanted
+	for _, component := range components {
+		if component.Stack != "rust" {
+			continue
+		}
+		line := "/target"
+		if dir := strings.Trim(component.Dir, "/"); dir != "" && dir != "." {
+			line = "/" + dir + "/target"
+		}
+		if !slices.ContainsFunc(entries, func(entry wanted) bool { return entry.line == line }) {
+			entries = append(entries, wanted{line, "cargo build output"})
+		}
+	}
+	return entries
 }
 
 type gitignoreState struct {
@@ -121,8 +140,8 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 	if slices.Contains(t.Repo.Toolchain.Stacks(), "python") {
 		entries = append(entries, pythonIgnores...)
 	}
-	if slices.Contains(t.Repo.Toolchain.Stacks(), "rust") {
-		entries = append(entries, rustIgnores...)
+	if t.Repo.Toolchain != nil {
+		entries = append(entries, rustIgnores(t.Repo.Toolchain.Components)...)
 	}
 
 	var changes []reconcile.Change

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/reconcile"
 )
 
@@ -27,13 +28,20 @@ func TestGitignorePythonRepoGetsBytecodeCoverageAndBuildArtifacts(t *testing.T) 
 	}
 }
 
+// cargo builds into target/ beside the Cargo.toml it was run against, so each
+// declared Rust directory needs its own line.
 func TestGitignoreRustRepoGetsCargoBuildOutput(t *testing.T) {
-	target := fixture(t, stacks("rust"), map[string]string{".gitignore": "bin/\n"})
+	declared := stacks("rust")
+	declared.Components = append(declared.Components, config.Component{Stack: "rust", Dir: "crates"})
+	target := fixture(t, declared, map[string]string{".gitignore": "bin/\n"})
 
 	applyAll(t, target, Gitignore{})
 
-	if !has(lines(t, target.Path(".gitignore")), "/target") {
-		t.Error("a repo declaring a rust component did not get /target")
+	present := lines(t, target.Path(".gitignore"))
+	for _, entry := range []string{"/target", "/crates/target"} {
+		if !has(present, entry) {
+			t.Errorf("a repo declaring rust at . and crates did not get %s", entry)
+		}
 	}
 }
 
