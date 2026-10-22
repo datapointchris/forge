@@ -83,7 +83,7 @@ func (f generatedFile) managed() bool { return f.rel != "" }
 // with every verb reporting converged because nothing looks.
 func (f generatedFile) wanted() bool { return f.rel != "" && f.want != "" }
 
-// retracting reports whether a file the standard no longer wants is still on
+// retracting reports whether a file the standard does not want is still on
 // disk. The caller decides whether forge may remove it — a file without the
 // stamp is not forge's to delete.
 func (f generatedFile) retracting() bool { return f.rel != "" && f.want == "" && f.exists }
@@ -98,7 +98,7 @@ func (f generatedFile) change() (reconcile.Change, bool) {
 	// A retraction is Stale rather than Undeclared: forge wrote this file, and
 	// Undeclared is reserved for what it did not put there and may not touch.
 	if f.retracting() {
-		detail := f.rel + " is no longer part of the standard; expected it removed"
+		detail := f.rel + " is not part of the standard; expected it removed"
 		if f.supersededBy != "" {
 			detail = fmt.Sprintf("%s holds the same settings as %s; expected only %s", f.rel, f.supersededBy, f.supersededBy)
 		}

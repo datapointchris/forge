@@ -144,10 +144,6 @@ const protectionRequest = `{
 }`
 
 func (b BranchProtection) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	observed, err := b.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err

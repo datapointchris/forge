@@ -291,10 +291,6 @@ func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]re
 }
 
 func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	observed, err := s.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err
@@ -312,7 +308,7 @@ func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconc
 		}
 	}
 	if dir.rel == "" {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "no longer a synced directory"}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the registry declares no such synced directory"}, nil
 	}
 	if dir.linked() && dir.targetExists {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already linked"}, nil

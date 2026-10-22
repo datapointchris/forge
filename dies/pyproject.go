@@ -198,10 +198,6 @@ func (Pyproject) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 }
 
 func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	out, err := runMergeScript(t)
 	if err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil

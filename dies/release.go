@@ -178,14 +178,6 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 }
 
 func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{
-			Change:  change,
-			Status:  reconcile.Refused,
-			Message: "not an automatic repair",
-		}, nil
-	}
-
 	// Re-read rather than trust the plan: the plan may have been on screen for a
 	// while, and the line the block goes above moves whenever the file does.
 	observed, err := r.Observe(t)
@@ -197,7 +189,7 @@ func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile
 		return reconcile.Outcome{}, fmt.Errorf("release: unexpected observation %T", observed)
 	}
 	if !state.exists || state.parseErr != nil || state.jobsIndex < 0 {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the workflow no longer reads the way the plan measured it"}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "the workflow changed since the plan measured it"}, nil
 	}
 	if state.hasConcurrency {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil

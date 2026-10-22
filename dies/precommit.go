@@ -756,10 +756,6 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 }
 
 func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	observed, err := p.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err
@@ -804,7 +800,7 @@ func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		}
 		return writeIfStale(t.Repo.Path, file, change)
 	}
-	return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "no longer part of the standard"}, nil
+	return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not part of the standard"}, nil
 }
 
 func writeIfStale(root string, file generatedFile, change reconcile.Change) (reconcile.Outcome, error) {

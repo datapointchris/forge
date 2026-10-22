@@ -424,10 +424,6 @@ func goImageTag(tag, want string) (string, bool) {
 }
 
 func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	observed, err := g.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err

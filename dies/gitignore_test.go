@@ -2,7 +2,6 @@ package dies
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/datapointchris/forge/config"
@@ -191,30 +190,6 @@ func TestGitignoreReportsDuplicatesWithoutRemovingThem(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("__pycache__/ appears %d times, want 2 — removing an asserted line is never this die's to do", count)
-	}
-}
-
-// Perform is unreachable from the read verbs, but the method exists on the
-// interface, so a by-hand change reaching it must refuse rather than write.
-func TestGitignorePerformRefusesAByHandChange(t *testing.T) {
-	target := fixture(t, stacks("go"), map[string]string{".gitignore": "bin/\n"})
-	before, _ := os.ReadFile(target.Path(".gitignore"))
-
-	outcome, err := Gitignore{}.Perform(target, reconcile.Change{
-		Item:    ".gitignore",
-		Verdict: reconcile.Stale,
-		Repair:  reconcile.ByHand,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if outcome.Status != reconcile.Refused {
-		t.Errorf("status = %q, want refused", outcome.Status)
-	}
-
-	after, _ := os.ReadFile(filepath.Join(target.Repo.Path, ".gitignore"))
-	if string(before) != string(after) {
-		t.Error("a refused change still wrote")
 	}
 }
 

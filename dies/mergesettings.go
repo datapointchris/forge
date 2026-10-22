@@ -126,10 +126,6 @@ func (MergeSettings) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 // is what keeps the batching honest, reporting Skipped once the first Change
 // has already carried its siblings.
 func (m MergeSettings) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	observed, err := m.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err

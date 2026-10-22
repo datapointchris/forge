@@ -147,10 +147,6 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 }
 
 func (d DefaultBranch) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	// Re-verified live, and this is the die where that matters most: every step
 	// below is hard to reverse, and the plan may have been read for a while.
 	observed, err := d.Observe(t)

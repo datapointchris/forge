@@ -163,7 +163,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// recreate, so the write waits until each one has a job to sit beside.
 	if orphaned := ci.OrphanedSections(customSections, wanted); len(orphaned) > 0 {
 		state.blockers = append(state.blockers, blocker(ci.WorkflowPath, fmt.Sprintf(
-			"%s has custom sections for jobs it no longer has (%s); expected each marker to name a job that exists, such as before:%s",
+			"%s has custom sections for jobs it does not have (%s); expected each marker to name a job that exists, such as before:%s",
 			ci.WorkflowPath, strings.Join(orphaned, ", "), ci.HooksJob)))
 	}
 
@@ -427,10 +427,6 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 }
 
 func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{Change: change, Status: reconcile.Refused, Message: "not an automatic repair"}, nil
-	}
-
 	observed, err := c.Observe(t)
 	if err != nil {
 		return reconcile.Outcome{}, err

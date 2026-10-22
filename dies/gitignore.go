@@ -189,14 +189,6 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 }
 
 func (g Gitignore) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	if !change.Actionable() {
-		return reconcile.Outcome{
-			Change:  change,
-			Status:  reconcile.Refused,
-			Message: "not an automatic repair",
-		}, nil
-	}
-
 	// Re-read rather than trust the plan: Observe ran before the plan was
 	// printed, an earlier change in this same batch may have created the file,
 	// and the operator may have read the plan for a while before applying it.

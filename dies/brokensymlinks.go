@@ -16,7 +16,10 @@ import (
 // here, a path that exists on the other laptop — and reporting those would
 // bury the finding that matters. A symlink git carries is in every clone, so
 // if it dangles here it dangles for everyone.
-type BrokenSymlinks struct{}
+//
+// Every finding is ByHand. A dangling link can be waiting for something not
+// installed yet, and deleting one that was correct is the failure to avoid.
+type BrokenSymlinks struct{ reconcile.ReportOnly }
 
 func (BrokenSymlinks) Name() string { return "broken-symlinks" }
 
@@ -95,20 +98,9 @@ func (BrokenSymlinks) Diff(_ reconcile.Target, observed reconcile.Observation) (
 	for _, l := range state.found {
 		changes = append(changes, reconcile.Change{
 			Item: l.path, Verdict: reconcile.Undeclared, Repair: reconcile.ByHand,
-			Detail:   fmt.Sprintf("tracked link %s points at %s, which does not exist", l.path, l.target),
+			Detail:   fmt.Sprintf("tracked link %s points at %s, which does not exist; expected a link that resolves", l.path, l.target),
 			Observed: l.target,
 		})
 	}
 	return changes, nil
-}
-
-// Perform is unreachable: nothing this die reports is Actionable. A dangling
-// link can be waiting for something not installed yet, and deleting one that
-// was correct is the failure this refusal prevents.
-func (BrokenSymlinks) Perform(_ reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	return reconcile.Outcome{
-		Change:  change,
-		Status:  reconcile.Refused,
-		Message: "not an automatic repair",
-	}, nil
 }

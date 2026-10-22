@@ -14,13 +14,10 @@ import (
 // A reconciler whose every finding is ByHand, which is not a degenerate case
 // but the point: forge cannot author a repo's CLAUDE.md, and Repair is what
 // lets it say so without either pretending it can or dropping the standard.
-// Perform exists on the interface and is unreachable from any verb, because
-// nothing this die reports is ever Actionable.
 //
-// This is has-claude-md, which exited 1 — a failure — for a repo that simply
-// had not been given one yet. It is an Issue now, which is the same severity
-// said honestly: something a person has to do, not something that broke.
-type ClaudeMD struct{}
+// A missing CLAUDE.md is an Issue rather than a failure: something a person has
+// to do, not something that broke.
+type ClaudeMD struct{ reconcile.ReportOnly }
 
 func (ClaudeMD) Name() string { return "claude-md" }
 
@@ -84,15 +81,4 @@ func (ClaudeMD) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reco
 	}
 
 	return nil, nil
-}
-
-// Perform is unreachable: nothing this die reports is Actionable. It refuses
-// rather than panicking, so a future change that made a finding automatic
-// fails loudly here instead of writing something nobody designed.
-func (ClaudeMD) Perform(_ reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	return reconcile.Outcome{
-		Change:  change,
-		Status:  reconcile.Refused,
-		Message: "not an automatic repair",
-	}, nil
 }
