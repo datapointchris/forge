@@ -61,9 +61,10 @@ type Change struct {
 	Repair  Repair  `json:"repair"`
 
 	// Detail is the whole line a person reads: it names the item, then says what
-	// was found and what was expected, such as "missing file: CLAUDE.md". It
-	// never says why the standard holds. It is printed alone, so the item and
-	// the observed value are in it rather than beside it.
+	// was found and what was expected, in the shape "<item> has <found>;
+	// expected <wanted>" or "missing <kind>: <item>". It never says why the
+	// standard holds. It is printed alone, so the item and the observed value
+	// are in it rather than beside it.
 	Detail string `json:"detail,omitempty"`
 
 	// Observed is the found value alone, for a --json reader.

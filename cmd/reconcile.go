@@ -463,12 +463,11 @@ func (n *reconcileNoun) walk(cmd *cobra.Command, targets []reconcile.Target, cho
 	return measurements, results
 }
 
-// render writes one row to stdout, then to stderr each change's line where the
-// row holds several, and any patch. The lines beneath are the evidence for the
-// row, not the answer a caller parses — which is --json.
+// render writes one row and the findings beneath it to stdout, and any patch to
+// stderr.
 func render(cmd *cobra.Command, result reconcile.Result, width int) {
 	reconcile.RenderResult(cmd.OutOrStdout(), result, width)
-	reconcile.RenderChanges(cmd.ErrOrStderr(), result.Changes, width)
+	reconcile.RenderChanges(cmd.OutOrStdout(), cmd.ErrOrStderr(), result, width)
 }
 
 // recordReconcileRun files one record per die, so `forge dies stats` keeps

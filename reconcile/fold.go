@@ -111,7 +111,7 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 		}
 		gap = fmt.Sprintf("; %d could not be measured", len(unmeasured))
 		if len(reasons) > 0 {
-			gap += " (" + strings.Join(reasons, "; ") + ")"
+			gap += ": " + strings.Join(reasons, "; ")
 		}
 	}
 
@@ -120,12 +120,12 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 	// it would call a pending repair current.
 	case len(kept) == 0 && len(pending) > 0:
 		result.Status = Converged
-		result.Detail = "no problems; plan has " + plural(len(pending), "change", "changes") + gap
+		result.Detail = "no findings; plan has " + plural(len(pending), "change", "changes") + gap
 	// Under plan the summary would call current a file a by-hand finding holds
 	// back from its write.
 	case len(kept) == 0 && len(attention) > 0:
 		result.Status = Converged
-		result.Detail = "no changes; check has " + plural(len(attention), "problem", "problems") + gap
+		result.Detail = "no changes; check has " + plural(len(attention), "finding", "findings") + gap
 	case len(kept) == 0:
 		result.Status = Converged
 		result.Detail = summary + gap
@@ -134,15 +134,19 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 		result.Detail = plural(len(kept), "change", "changes") + " apply would make" + gap
 	default:
 		result.Status = Issue
-		result.Detail = plural(len(kept), "problem", "problems") + " to fix by hand" + gap
+		result.Detail = plural(len(kept), "finding", "findings") + " to fix by hand" + gap
 	}
-	// A lone change is the row, because its own line says more than a count of one.
-	if len(kept) == 1 && kept[0].Detail != "" {
+	if rowIsItsChange(kept) {
 		result.Detail = kept[0].Detail + gap
 	}
 
 	return result
 }
+
+// rowIsItsChange is whether a row's text is its one change's own line, because
+// that line says more than a count of one. RenderChanges then prints it nowhere
+// else.
+func rowIsItsChange(kept []Change) bool { return len(kept) == 1 && kept[0].Detail != "" }
 
 // plural is n with whichever noun agrees with it.
 func plural(n int, one, many string) string {

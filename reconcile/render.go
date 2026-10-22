@@ -31,8 +31,8 @@ func writeLine(w io.Writer, format string, a ...any) {
 	_, _ = fmt.Fprintf(w, format, a...)
 }
 
-// statusWidth is the column a row's status is padded to. Item lines indent by
-// one more, so they start under the row's label.
+// statusWidth is the column a row's status is padded to. Outcome and patch
+// lines indent by one more, so they start under the row's label.
 const statusWidth = 9
 
 // outcomeWidth fits the longest outcome status, "refused".
@@ -50,20 +50,19 @@ func itemWidth(labelWidth int, items []string) int {
 	return width
 }
 
-// RenderChanges writes one row's changes beneath it, each line starting in the
-// row's text column. A lone change is already the row's text, so only its patch
-// prints.
-//
-// These go to stderr: under a repo's row they are the evidence for it, not the
-// answer a caller parses — which is --json.
-func RenderChanges(w io.Writer, changes []Change, labelWidth int) {
+// RenderChanges writes one row's findings beneath it to out, each starting in
+// the row's text column, unless the row's text is already its one finding.
+// Patches go to errw: they are the evidence for a change, and --json is what a
+// caller parses.
+func RenderChanges(out, errw io.Writer, r Result, labelWidth int) {
 	indent := strings.Repeat(" ", statusWidth+1+labelWidth+1)
-	for _, c := range changes {
-		if len(changes) > 1 {
-			writeLine(w, "%s%s\n", indent, c.Detail)
+	beneath := !rowIsItsChange(r.Changes)
+	for _, c := range r.Changes {
+		if beneath && c.Detail != "" {
+			writeLine(out, "%s%s\n", indent, c.Detail)
 		}
 		if c.Patch != "" {
-			renderPatch(w, c.Patch)
+			renderPatch(errw, c.Patch)
 		}
 	}
 }
@@ -139,11 +138,12 @@ func RenderOutcomes(w io.Writer, outcomes []Outcome, labelWidth int) {
 		case Done:
 		}
 
-		message := o.Message
+		// A Detail names its own item, so it takes the item's column blank.
+		item, message := o.Change.Item, o.Message
 		if message == "" {
-			message = o.Change.Detail
+			item, message = "", o.Change.Detail
 		}
-		writeLine(w, "%s%s %-*s %s\n", itemIndent, paint.Sprintf("%-*s", outcomeWidth, o.Status), width, o.Change.Item, message)
+		writeLine(w, "%s%s %-*s %s\n", itemIndent, paint.Sprintf("%-*s", outcomeWidth, o.Status), width, item, message)
 	}
 }
 
