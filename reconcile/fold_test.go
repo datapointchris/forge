@@ -1,6 +1,9 @@
 package reconcile
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSiftClassifiesEachKind(t *testing.T) {
 	changes := []Change{
@@ -82,31 +85,34 @@ func TestConvergedRowUsesTheObservationSummary(t *testing.T) {
 	}
 }
 
-func TestCheckNeverPrintsTheSummaryOverAPendingRepair(t *testing.T) {
-	changes := []Change{{Item: "main", Verdict: Missing, Repair: Automatic, Detail: "unprotected"}}
+// The die's summary describes a repo with nothing to change, so a row holding
+// a change, under either lens, must never print it.
+func TestARowNamesWhatItHoldsRatherThanTheSummary(t *testing.T) {
+	const summary = "branch protection current on main"
+	automatic := Change{Item: "main", Verdict: Missing, Repair: Automatic, Detail: "main has no branch protection"}
+	byHand := Change{Item: "validate.yml", Verdict: Stale, Repair: ByHand, Detail: "validate.yml has an orphaned custom section"}
 
-	result := Fold("font", "branch-protection", changes, "branch protection current on main", LensCheck)
-
-	if result.Status != Converged {
-		t.Fatalf("status = %q, want converged: apply can fix it, so check has nothing to report", result.Status)
-	}
-	if result.Detail == "branch protection current on main" {
-		t.Errorf("detail = %q, want the pending repair named rather than the die's converged sentence", result.Detail)
-	}
-}
-
-// A custom section whose job is gone holds the workflow at its old stamp, and
-// the ci die's summary would call that file current.
-func TestPlanNeverPrintsTheSummaryOverAHeldBackWrite(t *testing.T) {
-	changes := []Change{{Item: ".github/workflows/validate.yml", Verdict: Stale, Repair: ByHand, Detail: "a custom section names a job this workflow no longer has"}}
-
-	result := Fold("infra", "ci", changes, "validate.yml current", LensPlan)
-
-	if result.Status != Converged {
-		t.Fatalf("status = %q, want converged: apply has nothing it may change", result.Status)
-	}
-	if result.Detail == "validate.yml current" {
-		t.Errorf("detail = %q, want the held-back finding named rather than the die's converged sentence", result.Detail)
+	for _, tc := range []struct {
+		name   string
+		change Change
+		lens   Lens
+		status Status
+		want   string
+	}{
+		{"check over a pending repair points at plan", automatic, LensCheck, Converged, "plan"},
+		{"plan over a by-hand finding points at check", byHand, LensPlan, Converged, "check"},
+		{"one pending repair is the row's own text", automatic, LensPlan, Drift, automatic.Detail},
+		{"one by-hand finding is the row's own text", byHand, LensCheck, Issue, byHand.Detail},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := Fold("font", "branch-protection", []Change{tc.change}, summary, tc.lens)
+			if result.Status != tc.status {
+				t.Errorf("status = %q, want %q", result.Status, tc.status)
+			}
+			if !strings.Contains(result.Detail, tc.want) || strings.Contains(result.Detail, summary) {
+				t.Errorf("detail = %q, want it to carry %q and not the summary", result.Detail, tc.want)
+			}
+		})
 	}
 }
 

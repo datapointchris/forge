@@ -35,15 +35,15 @@ func writeLine(w io.Writer, format string, a ...any) {
 // one more, so they start under the row's label.
 const statusWidth = 9
 
-// verdictWidth fits the longest verdict and outcome, "undeclared".
-const verdictWidth = 10
+// outcomeWidth fits the longest outcome status, "refused".
+const outcomeWidth = 7
 
 var itemIndent = strings.Repeat(" ", statusWidth+1)
 
 // itemWidth pads items so their detail starts in the row's detail column, given
 // the label width the rows use. An item too long for that pushes its own lines.
 func itemWidth(labelWidth int, items []string) int {
-	width := labelWidth - verdictWidth - 1
+	width := labelWidth - outcomeWidth - 1
 	for _, item := range items {
 		width = max(width, len(item))
 	}
@@ -143,7 +143,7 @@ func RenderOutcomes(w io.Writer, outcomes []Outcome, labelWidth int) {
 		if message == "" {
 			message = o.Change.Detail
 		}
-		writeLine(w, "%s%s %-*s %s\n", itemIndent, paint.Sprintf("%-*s", verdictWidth, o.Status), width, o.Change.Item, message)
+		writeLine(w, "%s%s %-*s %s\n", itemIndent, paint.Sprintf("%-*s", outcomeWidth, o.Status), width, o.Change.Item, message)
 	}
 }
 

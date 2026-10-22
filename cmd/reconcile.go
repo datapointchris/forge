@@ -84,9 +84,9 @@ func (n *reconcileNoun) command() *cobra.Command {
 pipeline, an unmarked custom hook, a missing CLAUDE.md. Each needs a person,
 so check exits 3 when it finds one and never 1.
 
-Only rows with a finding print, each with its items beneath it, and --all
-prints the converged rows too. -F narrows to the named ` + n.many + `, and a die
-name to that one die.
+Only rows with a finding print. A row with several findings lists each
+beneath it, and --all prints the converged rows too. -F narrows to the named
+` + n.many + `, and a die name to that one die.
 
 Drift apply would repair is plan's answer, not this one.`,
 		Example: "  " + verb + "check\n" +
@@ -106,8 +106,8 @@ Drift apply would repair is plan's answer, not this one.`,
 		Long: `Report every change apply would make, and write nothing. plan is apply's
 walk stopped before its last step, so what it prints is what apply acts on.
 
-Only rows with a pending change print, each with its changes beneath it, and
---all prints the converged rows too.
+Only rows with a pending change print. A row with several changes lists each
+beneath it, and --all prints the converged rows too.
 
 Exits 1 when a change is pending, which is plan's answer rather than a failure.`,
 		Example: "  " + verb + "plan\n" +
@@ -463,9 +463,9 @@ func (n *reconcileNoun) walk(cmd *cobra.Command, targets []reconcile.Target, cho
 	return measurements, results
 }
 
-// render writes one row: a target's summary to stdout, then the items it is a
-// summary of to stderr beneath it. The items are the evidence for the row, not
-// the answer a caller parses — which is --json.
+// render writes one row to stdout, then to stderr each change's line where the
+// row holds several, and any patch. The lines beneath are the evidence for the
+// row, not the answer a caller parses — which is --json.
 func render(cmd *cobra.Command, result reconcile.Result, width int) {
 	reconcile.RenderResult(cmd.OutOrStdout(), result, width)
 	reconcile.RenderChanges(cmd.ErrOrStderr(), result.Changes, width)
