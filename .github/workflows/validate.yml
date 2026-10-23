@@ -1,4 +1,4 @@
-# forge-toolchain: 49
+# forge-toolchain: 52
 name: CI
 
 on:
@@ -16,15 +16,15 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      # > custom:before:go - actionlint, which the ci die's own assertions need
+      # > custom:before:go - jactionlint, which the ci die's own assertions need
       # Without it TestTheDiesOwnLintRejectsThePoolLabelWithoutTheConfigAndAcceptsItWithOne
       # skips here and runs only when someone happens to run it locally. It is
       # installed for this repo alone rather than in the go block, because no
       # other repo's suite lints a workflow. FORGE_REQUIRE_ACTIONLINT turns a
       # later disappearance into a failure rather than another silent skip.
-      - name: Install actionlint
+      - name: Install jactionlint
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          go install github.com/jdx/jactionlint/cmd/jactionlint@v1.8.2
           echo "FORGE_REQUIRE_ACTIONLINT=1" >> "$GITHUB_ENV"
 
       # uv, which runs the pyproject die's merge script. Without it every test
@@ -263,7 +263,7 @@ jobs:
             go-build-repo-mod
             go-mod-tidy-repo
             go-test-repo-mod
-            actionlint
+            jactionlint
           )
           # Every hook runs whatever the one before it found, so one push
           # reports every failing hook rather than the first.
