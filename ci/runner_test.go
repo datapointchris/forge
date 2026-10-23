@@ -96,14 +96,14 @@ func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 	}
 }
 
-// The lint config has to be a document actionlint reads, not merely a file
+// The lint config has to be a document jactionlint reads, not merely a file
 // containing the label.
 //
 // Both the workflow and the config render the label, so comparing the two
 // strings compares a value with itself — changing the label leaves that
 // comparison passing. What can actually diverge is the structure around the
 // label: rename the self-hosted-runner key or reshape the nesting and the file
-// still contains the right word while declaring nothing to actionlint, which is
+// still contains the right word while declaring nothing to jactionlint, which is
 // silent until it fails the repo's hook on the next commit.
 func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 	manifest := testManifest(t)
@@ -147,7 +147,7 @@ func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 // exists, because the caller that breaks this has not been written yet.
 //
 // Test files are exempt on purpose: the die's own lint test passes SelfHosted
-// directly, to measure what actionlint does with a workflow naming the pool.
+// directly, to measure what jactionlint does with a workflow naming the pool.
 // Comparing against SelfHosted is fine and the die does it twice; what no
 // caller may do is hand Generate a runner it chose itself. So the check reads
 // the argument rather than the token, which a grep cannot tell apart.

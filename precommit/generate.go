@@ -135,6 +135,8 @@ var knownAliases = map[string]bool{
 	"terraform_docs":   true,
 	// Same tool, different id, in the lua block.
 	"stylua-github": true,
+	// jactionlint forks it, in the github-actions block.
+	"actionlint": true,
 }
 
 // BlockName extracts the block name from a numbered filename.

@@ -1,6 +1,6 @@
   # GitHub Actions
-  - repo: https://github.com/rhysd/actionlint
+  - repo: https://github.com/jdx/jactionlint
     rev: "{{pin}}"
     hooks:
-      - id: actionlint
+      - id: jactionlint
         args: ["-color", "-shellcheck="]

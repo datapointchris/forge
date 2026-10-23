@@ -51,12 +51,31 @@ func TestReleaseAddsTheConcurrencyGroupAboveJobs(t *testing.T) {
 	applyAll(t, target, Release{})
 
 	written := readFile(t, target.Path(releaseWorkflowPath))
-	if !strings.Contains(written, "concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false") {
+	if !strings.Contains(written, "concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\n  queue: max") {
 		t.Errorf("the block did not land intact:\n%s", written)
 	}
 	body := splitLines(written)
 	if indexOf(body, "concurrency:") > indexOf(body, "jobs:") {
 		t.Error("the group landed below jobs, where it is a job key rather than a workflow one")
+	}
+}
+
+// A group without queue: max holds one waiting run, so a newer push cancels the
+// run already waiting. GitHub refuses queue: max beside cancel-in-progress: true.
+func TestReleaseAddsQueueToAGroupThatLacksIt(t *testing.T) {
+	grouped := "name: Release\non:\n  push:\n    branches: [main]\nconcurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\njobs:\n  release:\n    runs-on: ubuntu-latest\n"
+	target := releaseFixture(t, grouped)
+
+	applyAll(t, target, Release{})
+
+	if written := readFile(t, target.Path(releaseWorkflowPath)); !strings.Contains(written, "  cancel-in-progress: false\n  queue: max\njobs:") {
+		t.Errorf("queue: max did not land at the end of the group:\n%s", written)
+	}
+	canceling := strings.Replace(grouped, "cancel-in-progress: false", "cancel-in-progress: true", 1)
+	for _, change := range assess(t, releaseFixture(t, canceling)) {
+		if change.Item == "concurrency.queue" && change.Repair != reconcile.ByHand {
+			t.Errorf("queue beside cancel-in-progress: true was marked %s, so apply would write a workflow GitHub refuses", change.Repair)
+		}
 	}
 }
 

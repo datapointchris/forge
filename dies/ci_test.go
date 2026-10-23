@@ -84,11 +84,11 @@ func TestAPublicRepoDeclaresItsImageToActionlintAndNeverThePool(t *testing.T) {
 }
 
 // lintWorkflow builds a throwaway repo, and nothing a real repo carries on disk
-// reaches it. So a workflow naming a label actionlint cannot discover needs
-// its declaration written beside it there, or actionlint reports an unknown
+// reaches it. So a workflow naming a label jactionlint cannot discover needs
+// its declaration written beside it there, or jactionlint reports an unknown
 // label and the finding refuses `forge repos plan ci` for every repo at once.
-// The pool is never on actionlint's list, and an image newer than the pinned
-// actionlint is not on it either.
+// The pool is never on jactionlint's list, and an image newer than the pinned
+// jactionlint is not on it either.
 func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWithOne(t *testing.T) {
 	requireActionlint(t)
 
@@ -105,7 +105,7 @@ func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWit
 
 		bare := lintWorkflow(workflow, "")
 		if !strings.Contains(bare, label) {
-			t.Fatalf("actionlint accepted an undeclared %s, so this test measures nothing: %q", label, bare)
+			t.Fatalf("jactionlint accepted an undeclared %s, so this test measures nothing: %q", label, bare)
 		}
 
 		if finding := lintWorkflow(workflow, ci.ActionlintConfig(assets.Manifest, runner)); finding != "" {
@@ -114,21 +114,21 @@ func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWit
 	}
 }
 
-// requireActionlint skips only where actionlint genuinely cannot be run, and
+// requireActionlint skips only where jactionlint genuinely cannot be run, and
 // fails where it is expected.
 //
 // The plain skip made this file green on every CI run, because nothing installs
-// actionlint into the generated go job. FORGE_REQUIRE_ACTIONLINT is set there,
+// jactionlint into the generated go job. FORGE_REQUIRE_ACTIONLINT is set there,
 // so an absent binary is a broken gate rather than a machine without a tool.
 func requireActionlint(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("actionlint"); err == nil {
+	if _, err := exec.LookPath("jactionlint"); err == nil {
 		return
 	}
 	if os.Getenv("FORGE_REQUIRE_ACTIONLINT") != "" {
-		t.Fatal("actionlint is absent where the gate declares it present — this assertion would pass vacuously")
+		t.Fatal("jactionlint is absent where the gate declares it present — this assertion would pass vacuously")
 	}
-	t.Skip("actionlint is not installed, so runValidator returns no finding either way")
+	t.Skip("jactionlint is not installed, so runValidator returns no finding either way")
 }
 
 // Several repos hand-wrote a workflow before generation existed. Overwriting
@@ -311,7 +311,7 @@ func TestAHandWrittenLintConfigIsLeftAloneInAPublicRepo(t *testing.T) {
 	}
 }
 
-// actionlint reads both spellings and prefers the one forge writes, so writing
+// jactionlint reads both spellings and prefers the one forge writes, so writing
 // it beside a hand-written .yml overrides that file rather than being refused
 // by it. The refusal is this die's central promise.
 func TestAHandWrittenLintConfigAtTheOtherSpellingIsRefused(t *testing.T) {
@@ -334,7 +334,7 @@ func TestAHandWrittenLintConfigAtTheOtherSpellingIsRefused(t *testing.T) {
 
 // A run interrupted between the two writes has to leave a repo that still
 // builds. A declaration for a label nothing uses is inert; a workflow naming a
-// label nothing declares fails that repo's actionlint hook on every commit.
+// label nothing declares fails that repo's jactionlint hook on every commit.
 func TestTheLintDeclarationIsWrittenBeforeTheWorkflowThatNamesIt(t *testing.T) {
 	target := privateFixture(t, stacks("go"), nil)
 

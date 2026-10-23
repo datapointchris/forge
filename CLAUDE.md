@@ -336,9 +336,9 @@ right after `:` or `/`, which is an image tag, and a list naming two distinct Ub
 tests several releases on purpose.
 
 **The die also writes `.github/actionlint.yaml` into every repo it generates CI for**, declaring the
-labels actionlint cannot discover. actionlint compiles in the hosted images that existed at its
-release, so a pin newer than the pinned actionlint is an unknown label without it. The self-hosted
-pool is declared only where the workflow names it. Its absence in a public repo makes actionlint
+labels jactionlint cannot discover. jactionlint compiles in the hosted images that existed at its
+release, so a pin newer than the pinned jactionlint is an unknown label without it. The self-hosted
+pool is declared only where the workflow names it. Its absence in a public repo makes jactionlint
 reject a hand-written workflow reaching the pool. A repo that turns public has the pool taken out; a
 hand-written config at `.yaml` or `.yml` is reported and left alone. The die lints against that
 config too, and holds back `validate.yml` or a repin it refuses.
@@ -347,7 +347,7 @@ config too, and holds back `validate.yml` or a repin it refuses.
 by default, and generating over one would destroy work nothing could recover. The die refuses any `validate.yml`
 lacking the `# forge-toolchain:` header for the same reason.
 
-**`forge repos check` is the pre-rollout gate.** The `precommit` and `ci` dies run actionlint and
+**`forge repos check` is the pre-rollout gate.** The `precommit` and `ci` dies run jactionlint and
 `pre-commit validate-config`, and report what would block a real sync as `ByHand`. One trap no schema
 catches: `defaults.run.working-directory` does not apply to action inputs, so a path in one needs
 `{{dir}}`.

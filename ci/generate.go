@@ -43,20 +43,21 @@ const workflowsDir = ".github/workflows"
 // The ci die refuses to write the workflow where it is missing.
 const NodeVersionFile = ".nvmrc"
 
-// ActionlintConfigPath is where actionlint reads its own configuration, and the
-// only spelling forge writes.
+// ActionlintConfigPath is where jactionlint reads the configuration file it
+// keeps from actionlint, the project it forks, and the only spelling forge
+// writes.
 const ActionlintConfigPath = ".github/actionlint.yaml"
 
-// ActionlintConfigAltPath is the other spelling actionlint accepts. It is read,
-// never written: actionlint prefers ActionlintConfigPath when both are present,
-// so a file forge wrote would silently override one a person did.
+// ActionlintConfigAltPath is the other spelling jactionlint accepts. It is
+// read, never written: jactionlint prefers ActionlintConfigPath when both are
+// present, so a file forge wrote would silently override one a person did.
 const ActionlintConfigAltPath = ".github/actionlint.yml"
 
-// ActionlintHookRepo is the pre-commit repo pinning actionlint. The die that
-// predicts what a repo's own actionlint hook will say resolves the pinned
+// ActionlintHookRepo is the pre-commit repo pinning jactionlint. The die that
+// predicts what a repo's own jactionlint hook will say resolves the pinned
 // version through this, so the prediction and the hook cannot be two different
 // binaries without it being reported.
-const ActionlintHookRepo = "https://github.com/rhysd/actionlint"
+const ActionlintHookRepo = "https://github.com/jdx/jactionlint"
 
 // RunnerLabel is the pool every self-hosted runner is registered with. It names
 // the pool rather than the box, so a second runner joining the pool needs no
@@ -98,12 +99,13 @@ func RunnerFor(private bool, manifest *toolchain.Toolchain) Runner {
 	return Hosted(manifest)
 }
 
-// ActionlintConfig declares to actionlint the runner labels it cannot discover.
+// ActionlintConfig declares to jactionlint the runner labels it cannot
+// discover.
 //
-// actionlint knows the hosted images that existed at its release, so a pinned
-// image newer than the pinned actionlint is reported as an unknown label. The
-// self-hosted pool is on no list at all. Either one fails the repo's actionlint
-// hook on the next commit.
+// jactionlint knows the hosted images that existed at its release, so a pinned
+// image newer than the pinned jactionlint is reported as an unknown label. The
+// self-hosted pool is on no list at all. Either one fails the repo's
+// jactionlint hook on the next commit.
 //
 // The pool is declared only where the repo takes the self-hosted runner.
 // Declaring it in a public repo would retire the one check that catches a
@@ -114,10 +116,10 @@ func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner) string {
 		labels += "    - " + RunnerLabel + "\n"
 	}
 	return fmt.Sprintf(`%s
-# Labels actionlint cannot discover. Its list of GitHub's hosted images is the
+# Labels jactionlint cannot discover. Its list of GitHub's hosted images is the
 # one its release shipped with, and a self-hosted runner's labels are on no
 # list. Without this every runs-on naming one is reported as a typo and the
-# actionlint hook fails.
+# jactionlint hook fails.
 self-hosted-runner:
   labels:
 %s`, toolchain.StampFor(manifest.Version), labels)

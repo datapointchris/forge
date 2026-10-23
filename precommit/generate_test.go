@@ -916,15 +916,15 @@ func TestIntegration_CustomBetweenBlocks(t *testing.T) {
 	if !contains(hooks, "go-test-repo-mod") {
 		t.Fatal("go hook not found")
 	}
-	if !contains(hooks, "actionlint") {
-		t.Fatal("actionlint hook not found")
+	if !contains(hooks, "jactionlint") {
+		t.Fatal("jactionlint hook not found")
 	}
 
 	if indexOf(hooks, "go-test-repo-mod") >= indexOf(hooks, "my-test-runner") {
 		t.Error("my-test-runner should be after go hooks")
 	}
-	if indexOf(hooks, "my-test-runner") >= indexOf(hooks, "actionlint") {
-		t.Error("my-test-runner should be before actionlint")
+	if indexOf(hooks, "my-test-runner") >= indexOf(hooks, "jactionlint") {
+		t.Error("my-test-runner should be before jactionlint")
 	}
 
 	// Roundtrip

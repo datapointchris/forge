@@ -136,7 +136,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		state.blockers = append(state.blockers, finding)
 	}
 
-	// actionlint reads both spellings and prefers the one forge writes, so a
+	// jactionlint reads both spellings and prefers the one forge writes, so a
 	// generated .yaml silently overrides a hand-written .yml rather than being
 	// refused by it. The blocker is filed against the path forge would write,
 	// which is what suppresses that write; the detail names the file that is
@@ -190,10 +190,10 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			"fix the block in forge, because nothing in this repo fills it"))
 	}
 	if finding := lintWorkflow(wanted, lintConfig); finding != "" {
-		state.blockers = append(state.blockers, actionlintFinding("actionlint", "generated workflow", finding, t.Assets.Manifest))
+		state.blockers = append(state.blockers, actionlintFinding("jactionlint", "generated workflow", finding, t.Assets.Manifest))
 	}
 
-	// A hand-written lint config is the one the repo's own actionlint hook
+	// A hand-written lint config is the one the repo's own jactionlint hook
 	// reads, and forge never edits it, so it may not declare the hosted image.
 	// A workflow it refuses fails every commit, so that write waits until the
 	// repo's config accepts it. forge owns all of validate.yml, so any finding
@@ -219,8 +219,8 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	return state, nil
 }
 
-// ownLintConfig is the hand-written actionlint config a repo carries, at the
-// spelling actionlint prefers when both are present.
+// ownLintConfig is the hand-written jactionlint config a repo carries, at the
+// spelling jactionlint prefers when both are present.
 func ownLintConfig(root string) (rel, content string, ok bool) {
 	for _, rel := range []string{ci.ActionlintConfigPath, ci.ActionlintConfigAltPath} {
 		if !handWritten(root, rel) {
@@ -291,7 +291,7 @@ func repinnedWorkflows(root string, manifest *toolchain.Toolchain) []generatedFi
 	return files
 }
 
-// pinnedActionlint is the version the declaration pins the actionlint hook to,
+// pinnedActionlint is the version the declaration pins the jactionlint hook to,
 // or "" when the manifest does not name it.
 func pinnedActionlint(manifest *toolchain.Toolchain) string {
 	if manifest == nil {
@@ -307,10 +307,11 @@ func pinnedActionlint(manifest *toolchain.Toolchain) string {
 
 // installedActionlint is the version on PATH, or "" when it cannot be read.
 //
-// actionlint prints `1.7.7` where the hook pins `v1.7.7`, so the leading v is
-// trimmed from both sides before they are compared.
+// The hook pins `v1.8.2`, and a release may print its version with the v or
+// without it, so the leading v is trimmed from both sides before they are
+// compared.
 func installedActionlint() string {
-	out, err := runIn(os.TempDir(), "actionlint", "--version")
+	out, err := runIn(os.TempDir(), "jactionlint", "--version")
 	if err != nil {
 		return ""
 	}
@@ -318,11 +319,11 @@ func installedActionlint() string {
 	return strings.TrimPrefix(strings.TrimSpace(line), "v")
 }
 
-// lintWorkflow runs actionlint against the generated content in a throwaway
+// lintWorkflow runs jactionlint against the generated content in a throwaway
 // repo. A schema-valid workflow can still be rejected at runtime, and this is
 // the check `pre-commit validate-config`'s equivalent cannot make.
 //
-// config is an actionlint configuration, written into the throwaway repo
+// config is a jactionlint configuration, written into the throwaway repo
 // alongside the workflow. Nothing a repo carries on disk reaches this
 // directory, so without it a workflow naming the self-hosted pool or the
 // pinned image is rejected here as an unknown label — before plan can show the
@@ -332,7 +333,7 @@ func installedActionlint() string {
 // would be written rather than a guess, or the repo's own hand-written one.
 //
 // The finding is returned raw. Whether forge can stand behind it depends on
-// which actionlint answered, and that is the caller's decision rather than a
+// which jactionlint answered, and that is the caller's decision rather than a
 // property of the lint itself.
 func lintWorkflow(workflow, config string) string {
 	return lintWorkflowAt(ci.WorkflowPath, workflow, config)
@@ -359,22 +360,22 @@ func lintWorkflowAt(rel, workflow, config string) string {
 			return ""
 		}
 	}
-	// actionlint wants a repo; without one it reports the absence rather than
+	// jactionlint wants a repo; without one it reports the absence rather than
 	// the workflow.
 	_, _ = runIn(dir, "git", "init", "-q")
 
-	return runValidator(dir, "actionlint", rel)
+	return runValidator(dir, "jactionlint", rel)
 }
 
 // actionlintFinding renders a lint finding as the Change a plan shows.
 //
-// A finding from an actionlint that is not the pinned one is Unknown rather
+// A finding from a jactionlint that is not the pinned one is Unknown rather
 // than a blocker. This gate's whole job is to predict what a repo's own
-// actionlint hook will say about one label, and a different binary answers a
+// jactionlint hook will say about one label, and a different binary answers a
 // different question — so the honest verdict is that forge could not tell.
 // Unknown never moves the exit code, which is what keeps an unpinned local
 // install from failing `forge repos check` across the portfolio.
-// rejecter names what refused the item: actionlint itself, or the repo's own
+// rejecter names what refused the item: jactionlint itself, or the repo's own
 // lint config it read.
 func actionlintFinding(rejecter, item, finding string, manifest *toolchain.Toolchain) reconcile.Change {
 	pinned := strings.TrimPrefix(pinnedActionlint(manifest), "v")
@@ -384,7 +385,7 @@ func actionlintFinding(rejecter, item, finding string, manifest *toolchain.Toolc
 			Item:    item,
 			Verdict: reconcile.Unknown,
 			Repair:  reconcile.NoRepair,
-			Detail:  "actionlint " + installed + ", not the pinned " + pinned + ", rejects " + item + ": " + finding,
+			Detail:  "jactionlint " + installed + ", not the pinned " + pinned + ", rejects " + item + ": " + finding,
 		}
 	}
 	return blocker(item, rejecter+" rejects "+item+": "+finding)
@@ -405,7 +406,7 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 	// reconcile.Apply performs changes in this order, so a run interrupted
 	// between two of them has to leave a repo that still builds. A declaration
 	// for a label nothing uses is inert; a workflow naming a label nothing
-	// declares fails that repo's actionlint hook on every commit until the
+	// declares fails that repo's jactionlint hook on every commit until the
 	// declaration lands.
 	//
 	// A hand-written file is not drift to repair — it is a file forge refuses
@@ -455,7 +456,7 @@ func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outc
 
 	// The plan names which file this change is for, and Perform re-observes
 	// rather than trusting it. Writing whichever file the die happens to hold
-	// first would put the workflow at the actionlint config's path.
+	// first would put the workflow at the jactionlint config's path.
 	var file generatedFile
 	var found bool
 	for _, candidate := range state.files {

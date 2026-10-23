@@ -210,11 +210,11 @@ func unexpandedPlaceholder(text string) bool {
 // runValidator runs a tool inside a directory and returns its first line of
 // complaint, or "" when the tool is absent or content.
 //
-// Absent means no finding rather than a failure: actionlint and pre-commit are
+// Absent means no finding rather than a failure: jactionlint and pre-commit are
 // not required to be installed to reconcile a repo, and reporting a missing
 // linter as a problem with the repo would be a lie.
 //
-// The working directory is set rather than passed as a flag. actionlint has no
+// The working directory is set rather than passed as a flag. jactionlint has no
 // -chdir, which the first real run found: every repo reported "flag provided
 // but not defined" as a problem with its own workflow.
 func runValidator(dir, tool string, args ...string) string {

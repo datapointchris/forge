@@ -413,7 +413,7 @@ func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 // The # generated: marker sits inside the job, below the checkout, so a section
 // reaching for the next marker alone would take the following job's key and
 // steps as its own content. Regeneration writes both back and the workflow
-// carries the key twice — which actionlint catches, but only in what
+// carries the key twice — which jactionlint catches, but only in what
 // regeneration produces, so the file on disk stays green and the fault lands on
 // whoever syncs next.
 func TestAnAfterSectionStopsAtTheNextJob(t *testing.T) {

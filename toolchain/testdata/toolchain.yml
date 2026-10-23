@@ -42,7 +42,7 @@ hooks:
     rev: fixture-stylua
   - repo: https://github.com/hadolint/hadolint
     rev: fixture-hadolint
-  - repo: https://github.com/rhysd/actionlint
+  - repo: https://github.com/jdx/jactionlint
     rev: fixture-actionlint
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: fixture-pre-commit-terraform

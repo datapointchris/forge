@@ -128,9 +128,9 @@ func TestApplyDependencyVersionsPinsADeclaredModuleOnly(t *testing.T) {
 // whole point, so verify it actually rewrites rather than passing through.
 func TestApplyRevsOverridesBlockRev(t *testing.T) {
 	manifest := &Toolchain{Version: 9}
-	manifest.Hooks = append(manifest.Hooks, Hook{Repo: "https://github.com/rhysd/actionlint", Rev: "v9.9.9"})
+	manifest.Hooks = append(manifest.Hooks, Hook{Repo: "https://github.com/jdx/jactionlint", Rev: "v9.9.9"})
 
-	block := "  - repo: https://github.com/rhysd/actionlint\n    rev: v1.0.0\n    hooks:\n      - id: actionlint\n"
+	block := "  - repo: https://github.com/jdx/jactionlint\n    rev: v1.0.0\n    hooks:\n      - id: jactionlint\n"
 	got := manifest.ApplyRevs(block)
 
 	if !strings.Contains(got, "rev: v9.9.9") {
