@@ -7,7 +7,11 @@
   # worse than either erroring. identify already tags these files zsh,
   # so this is the native exclusion rather than a path regex that would have to
   # enumerate .zshrc, .zprofile, .zlogin and the rest.
-  - repo: https://github.com/koalaman/shellcheck-precommit
+  #
+  # shellcheck-py installs shellcheck's own release binary through pip and
+  # checks its sha256, so the hook needs no Docker daemon and no system
+  # package. Its tag is the shellcheck release it wraps, plus a packaging digit.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: "{{pin}}"
     hooks:
       - id: shellcheck

@@ -22,8 +22,8 @@ hooks:
     rev: fixture-check-json5
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: fixture-markdownlint-cli
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: fixture-shellcheck-precommit
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: fixture-shellcheck-py
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: fixture-pre-commit-shfmt
   - repo: https://github.com/codespell-project/codespell
@@ -40,8 +40,8 @@ hooks:
     rev: fixture-sqlfluff
   - repo: https://github.com/JohnnyMorganz/StyLua
     rev: fixture-stylua
-  - repo: https://github.com/hadolint/hadolint
-    rev: fixture-hadolint
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: fixture-hadolint-py
   - repo: https://github.com/jdx/jactionlint
     rev: fixture-actionlint
   - repo: https://github.com/antonbabenko/pre-commit-terraform

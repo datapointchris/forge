@@ -137,6 +137,8 @@ var knownAliases = map[string]bool{
 	"stylua-github": true,
 	// jactionlint forks it, in the github-actions block.
 	"actionlint": true,
+	// Same tool, different id, in the docker block.
+	"hadolint-docker": true,
 }
 
 // BlockName extracts the block name from a numbered filename.

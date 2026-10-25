@@ -185,7 +185,7 @@ func TestACustomSectionWhoseJobIsGoneHoldsTheWorkflowBack(t *testing.T) {
 		"      - run: echo installing yq\n\n" +
 		"      # generated:shell\n      - run: shellcheck bin/*\n"
 	committed := "# forge-toolchain: 1\nrepos:\n  # generated:shell\n" +
-		"  - repo: https://github.com/koalaman/shellcheck-precommit\n    rev: v0.10.0\n    hooks:\n      - id: shellcheck\n"
+		"  - repo: https://github.com/shellcheck-py/shellcheck-py\n    rev: v0.10.0.1\n    hooks:\n      - id: shellcheck\n"
 	target := fixture(t, stacks("shell"), map[string]string{ci.WorkflowPath: existing, ".pre-commit-config.yaml": committed})
 
 	changes := reconcile.Assess(target, CI{}).Changes

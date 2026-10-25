@@ -126,7 +126,7 @@ func TestTwoComponentsRenderingOneSetupGetItOnce(t *testing.T) {
 // gets.
 func TestAStackWithNoCIBlockStillGetsItsHooksRun(t *testing.T) {
 	workflow := generateFor(t, comps("docker", "."))
-	if !strings.Contains(jobSteps(workflow, HooksJob), "\n            hadolint-docker\n") {
+	if !strings.Contains(jobSteps(workflow, HooksJob), "\n            hadolint\n") {
 		t.Errorf("no hooks job running hadolint:\n%s", workflow)
 	}
 }
