@@ -1,4 +1,4 @@
-# forge-toolchain: 52
+# forge-toolchain: 53
 fail_fast: true
 default_stages: [pre-commit]
 repos:
@@ -85,8 +85,12 @@ repos:
   # worse than either erroring. identify already tags these files zsh,
   # so this is the native exclusion rather than a path regex that would have to
   # enumerate .zshrc, .zprofile, .zlogin and the rest.
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.10.0
+  #
+  # shellcheck-py installs shellcheck's own release binary through pip and
+  # checks its sha256, so the hook needs no Docker daemon and no system
+  # package. Its tag is the shellcheck release it wraps, plus a packaging digit.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
     hooks:
       - id: shellcheck
         exclude_types: [zsh]
