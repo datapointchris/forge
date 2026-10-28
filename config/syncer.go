@@ -81,13 +81,10 @@ type Repo struct {
 	// comment above rules out. The repo is what knows it keeps generated data outside
 	// git; forge only has to know the operation.
 	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty" yaml:"synced_dirs,omitempty"`
-	// Binary is the command this repo installs, when that name cannot be read
-	// out of the repo. Declared for the same reason Toolchain is: a Go CLI has
-	// no standard place to state its binary name, so a repo whose binary is
-	// named unlike the repo lives
-	// only in a cobra Use: string and a `go build -o` path, and nothing that
-	// reads the registry can find it. Omit it wherever the repo name, a
-	// pyproject [project.scripts] key, or a goreleaser binary: already says so.
+	// Binary is the command this repo installs for a person to run, declared on
+	// every entry that has one and absent where it has none. Declared for the
+	// same reason Toolchain is: a Go CLI has no standard place to state its
+	// binary name, and a reader of the registry should not have to find one.
 	Binary string `json:"binary,omitempty" yaml:"binary,omitempty"`
 }
 
