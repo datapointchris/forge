@@ -39,7 +39,7 @@ func comps(pairs ...string) []config.Component {
 // hide which failed and make them share a setup step.
 func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, hostedRunner(t))
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 // pipeline gates on it. Seven repos had no repo-wide lint at all; generating
 // them a workflow with no reachable trigger would have looked like a fix.
 func TestGenerateRunsOnPushToMain(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), "", nil, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestGenerateRunsOnPushToMain(t *testing.T) {
 // Where a release gates on this workflow it already runs on a push to main, so
 // emitting push here runs every job twice for one commit.
 func TestGenerateOmitsPushWhenTheReleaseGatesOnIt(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), "", nil, Gated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", ""), "", nil, Gated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestInvokesGoSemanticRelease(t *testing.T) {
 // A root component is the common case and should not carry a redundant
 // working-directory or a directory suffix in its job name.
 func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestGenerateOmitsWorkingDirectoryAtRoot(t *testing.T) {
 // there is no baseline job to run. Those must not produce empty jobs.
 func TestGenerateSkipsStacksWithNoBlock(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", ".", "docker", "."), "", nil, Ungated, hostedRunner(t))
+		comps("go", ".", "docker", "."), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestGoCacheIsOnlyRestoredOnARunnerThatStartsEmpty(t *testing.T) {
 		{hostedRunner(t), "cache: true"},
 		{SelfHosted, "cache: false"},
 	} {
-		workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, testCase.runner)
+		workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, nil, testCase.runner)
 		if err != nil {
 			t.Fatalf("Generate(%s): %v", testCase.runner, err)
 		}
@@ -314,7 +314,7 @@ func TestGoCacheIsOnlyRestoredOnARunnerThatStartsEmpty(t *testing.T) {
 }
 
 func TestGenerateFailsWhenNoComponentHasABlock(t *testing.T) {
-	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), "", nil, Ungated, hostedRunner(t)); err == nil {
+	if _, err := Generate(os.DirFS("blocks"), testManifest(t), comps("docker", "."), "", nil, Ungated, nil, hostedRunner(t)); err == nil {
 		t.Fatal("expected an error rather than a workflow with zero jobs")
 	}
 }
@@ -329,7 +329,7 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 		}
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -342,8 +342,28 @@ func TestGenerateTakesActionVersionsFromManifest(t *testing.T) {
 	}
 }
 
+// A library deployed to an older Python is tested on its own floor, and the
+// rest of the workflow on the highest.
+func TestGeneratePinsEachPythonJobToItsFloor(t *testing.T) {
+	floors := map[string]string{"library": "3.11", "cli": "3.13"}
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "library", "python", "cli"), "", nil, Ungated, floors, hostedRunner(t))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(workflow, "\nenv:\n  UV_PYTHON: \"3.13\"\n") {
+		t.Errorf("workflow UV_PYTHON is not the highest floor:\n%s", workflow)
+	}
+	library := workflow[strings.Index(workflow, "  python-library:"):strings.Index(workflow, "  python-cli:")]
+	if !strings.Contains(library, "    env:\n      UV_PYTHON: \"3.11\"\n") {
+		t.Errorf("library job does not run on its own floor:\n%s", library)
+	}
+	if strings.Count(workflow, "UV_PYTHON") != 2 {
+		t.Errorf("want UV_PYTHON on the workflow and the library job only:\n%s", workflow)
+	}
+}
+
 func TestGenerateUsesAThirdPartyActionByItsCommit(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), "", nil, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -376,7 +396,7 @@ func TestGenerateRefusesAPinTheManifestCannotFill(t *testing.T) {
 	manifest := testManifest(t)
 	manifest.Tools = nil
 
-	_, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, hostedRunner(t))
+	_, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, nil, hostedRunner(t))
 	if err == nil || !strings.Contains(err.Error(), "govulncheck") {
 		t.Fatalf("Generate = %v, want a refusal naming govulncheck", err)
 	}
@@ -391,7 +411,7 @@ func TestCustomBeforeSectionFollowsCheckout(t *testing.T) {
 			"      - run: sops decrypt secrets/test.enc.env > .env",
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), "", custom, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("python", "."), "", custom, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -423,7 +443,7 @@ func TestAnAfterSectionStopsAtTheNextJob(t *testing.T) {
 	}
 
 	first, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("python", ".", "go", "api"), "", custom, Ungated, hostedRunner(t))
+		comps("python", ".", "go", "api"), "", custom, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -434,7 +454,7 @@ func TestAnAfterSectionStopsAtTheNextJob(t *testing.T) {
 	}
 
 	second, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("python", ".", "go", "api"), "", extracted, Ungated, hostedRunner(t))
+		comps("python", ".", "go", "api"), "", extracted, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}
@@ -458,7 +478,7 @@ func TestAnAfterAllSectionKeepsItsWholeJob(t *testing.T) {
 			"      - run: pytest",
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", custom, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", custom, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -554,7 +574,7 @@ func TestEveryCloneIntoAPathThatOutlivesTheJobLandsInADirectoryMadeForIt(t *test
 // The ci die refuses a vue repo missing NodeVersionFile. A block reading any
 // other file would pass that check and fail at setup-node.
 func TestTheVueJobTakesNodeFromTheFileTheDieRequires(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("vue", "web"), "", nil, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("vue", "web"), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -574,7 +594,7 @@ func TestACustomSectionTakesTheDeclaredPins(t *testing.T) {
 			"      - uses: actions/checkout@v1",
 	}
 
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", custom, Ungated, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", custom, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}

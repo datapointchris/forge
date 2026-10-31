@@ -320,6 +320,10 @@ func handWrittenWorkflowsMatch(root string, ref *regexp.Regexp) (bool, error) {
 //
 // A stack's setup block puts on PATH what its hooks call, so it opens both the
 // stack's own job and HooksJob. A stack with no checks of its own gets no job.
+//
+// pythonFloors is PythonFloors for the repo. The workflow's UV_PYTHON is the
+// highest of them, so a custom section's job runs on a Python every component
+// admits. A python job whose own floor is lower runs on that one.
 func Generate(
 	blocksFS fs.FS,
 	manifest *toolchain.Toolchain,
@@ -327,6 +331,7 @@ func Generate(
 	preCommitConfig string,
 	customSections map[string]string,
 	releaseGated ReleaseGating,
+	pythonFloors map[string]string,
 	runner Runner,
 ) (string, error) {
 	checkout, err := loadBlock(blocksFS, "checkout")
@@ -369,8 +374,18 @@ func Generate(
 		"permissions:",
 		"  contents: read",
 		"",
-		"jobs:",
 	)
+	highest := highestFloor(pythonFloors)
+	if highest != "" {
+		lines = append(lines,
+			"# uv runs on this Python rather than whatever the runner happens to",
+			"# have. It is the highest requires-python floor among the components.",
+			"env:",
+			fmt.Sprintf("  UV_PYTHON: %q", highest),
+			"",
+		)
+	}
+	lines = append(lines, "jobs:")
 
 	jobs := 0
 	var hookSetups []string
@@ -402,6 +417,9 @@ func Generate(
 		}
 		jobs++
 		job := workflowJob{name: JobName(component), dir: component.Dir, checkout: shared, block: joinSteps(stripDescription(setup), stripDescription(checks))}
+		if floor, ok := pythonFloors[component.Dir]; ok && category == "python" && floor != highest {
+			job.uvPython = floor
+		}
 		lines = append(lines, job.render(manifest, customSections, runner)...)
 	}
 
@@ -502,6 +520,9 @@ type workflowJob struct {
 	dir      string
 	checkout string
 	block    string
+	// uvPython overrides the workflow's UV_PYTHON, for a component whose
+	// floor is below the highest.
+	uvPython string
 }
 
 // render is the job's lines, custom sections included.
@@ -509,6 +530,9 @@ func (j workflowJob) render(manifest *toolchain.Toolchain, customSections map[st
 	lines := []string{"", fmt.Sprintf("  %s:", j.name), fmt.Sprintf("    runs-on: %s", runner)}
 	if j.dir != "" && j.dir != "." {
 		lines = append(lines, "    defaults:", "      run:", fmt.Sprintf("        working-directory: %s", j.dir))
+	}
+	if j.uvPython != "" {
+		lines = append(lines, "    env:", fmt.Sprintf("      UV_PYTHON: %q", j.uvPython))
 	}
 	lines = append(lines, "    steps:")
 

@@ -106,8 +106,9 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		return nil, err
 	}
 	customSections := precommit.ExtractCustomSections(existing)
+	fleetPython, _ := t.Assets.Manifest.RuntimeVersion("python")
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommitConfig,
-		customSections, ci.ReleaseGatesOnValidate(root), runner)
+		customSections, ci.ReleaseGatesOnValidate(root), ci.PythonFloors(root, components, fleetPython), runner)
 	if errors.Is(err, ci.ErrNoJobs) {
 		return ciState{reason: "no component has a CI block and the committed pre-commit config names no hook to run"}, nil
 	}

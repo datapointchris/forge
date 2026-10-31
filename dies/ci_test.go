@@ -103,7 +103,7 @@ func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWit
 		ci.Hosted(assets.Manifest): assets.Manifest.HostedRunner,
 	} {
 		workflow, err := ci.Generate(assets.CI, assets.Manifest,
-			[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, runner)
+			[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, nil, runner)
 		if err != nil {
 			t.Fatalf("Generate: %s", err)
 		}

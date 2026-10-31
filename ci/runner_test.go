@@ -32,7 +32,7 @@ func runsOnLines(workflow string) []string {
 
 func TestAPrivateRepoTakesTheSelfHostedPoolOnEveryJob(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, SelfHosted)
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, nil, SelfHosted)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestAPrivateRepoTakesTheSelfHostedPoolOnEveryJob(t *testing.T) {
 // runner just as well.
 func TestAPublicRepoNeverNamesTheSelfHostedPool(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, hostedRunner(t))
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, nil, hostedRunner(t))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestRunnerLabelsJoinThePoolAndNoJobIsLeftWithoutARunner(t *testing.T) {
 		t.Fatalf("RunnerFor: %v", err)
 	}
 	workflow, err := Generate(os.DirFS("blocks"), manifest,
-		comps("go", "api", "vue", "web"), "", nil, Ungated, runner)
+		comps("go", "api", "vue", "web"), "", nil, Ungated, nil, runner)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 		t.Fatalf("RunnerFor: %v", err)
 	}
 	workflow, err := Generate(os.DirFS("blocks"), manifest,
-		comps("go", "api", "vue", "web"), "", nil, Ungated, runner)
+		comps("go", "api", "vue", "web"), "", nil, Ungated, nil, runner)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 	manifest := testManifest(t)
 	for _, runner := range []Runner{Hosted(manifest), SelfHosted} {
-		workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, runner)
+		workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, nil, runner)
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
@@ -304,7 +304,7 @@ func TestACustomSectionOnAnotherRunnerIsNamedWithItsJob(t *testing.T) {
 func TestAWorkflowEntirelyOnItsOwnRunnerNamesNothing(t *testing.T) {
 	for _, runner := range []Runner{hostedRunner(t), SelfHosted} {
 		workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-			comps("go", "api", "vue", "web"), "", nil, false, runner)
+			comps("go", "api", "vue", "web"), "", nil, false, nil, runner)
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
