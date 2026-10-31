@@ -21,26 +21,69 @@ import (
 // pydantic-core had none for CPython 3.15, and its source build needs a
 // compiler the image lacks. Pinned to the floor, CI also runs the oldest
 // Python the project claims to support.
+//
+// The components of one uv workspace share the newest floor among them and
+// the workspace root. uv resolves a workspace once for every member, on the
+// intersection of their requires-python, so `uv sync` in a member whose own
+// floor is lower refuses that Python.
 func PythonFloors(root string, components []config.Component, fallback string) map[string]string {
 	floors := map[string]string{}
 	for _, component := range components {
 		if precommit.StackToCategory(component.Stack) != "python" {
 			continue
 		}
-		floor := fallback
-		if data, err := os.ReadFile(filepath.Join(root, component.Dir, "pyproject.toml")); err == nil {
-			if match := requiresPythonFloorRE.FindSubmatch(data); match != nil {
-				floor = string(match[1])
+		if floor := declaredPythonFloor(filepath.Join(root, component.Dir), fallback); floor != "" {
+			floors[component.Dir] = floor
+		}
+	}
+
+	members := map[string][]string{}
+	for dir := range floors {
+		if workspace, ok := uvWorkspaceRoot(root, dir); ok {
+			members[workspace] = append(members[workspace], dir)
+		}
+	}
+	for workspace, dirs := range members {
+		shared := declaredPythonFloor(filepath.Join(root, workspace), "")
+		for _, dir := range dirs {
+			if shared == "" || olderPython(shared, floors[dir]) {
+				shared = floors[dir]
 			}
 		}
-		if floor != "" {
-			floors[component.Dir] = floor
+		for _, dir := range dirs {
+			floors[dir] = shared
 		}
 	}
 	return floors
 }
 
-var requiresPythonFloorRE = regexp.MustCompile(`(?m)^requires-python\s*=\s*["'][^"'\n]*?(?:>=|~=|==)\s*(\d+\.\d+)`)
+// declaredPythonFloor is the floor dir's pyproject.toml declares, or fallback.
+func declaredPythonFloor(dir, fallback string) string {
+	if data, err := os.ReadFile(filepath.Join(dir, "pyproject.toml")); err == nil {
+		if match := requiresPythonFloorRE.FindSubmatch(data); match != nil {
+			return string(match[1])
+		}
+	}
+	return fallback
+}
+
+// uvWorkspaceRoot is the nearest directory from dir up to root whose
+// pyproject.toml declares a uv workspace, relative to root, as uv finds it.
+func uvWorkspaceRoot(root, dir string) (string, bool) {
+	for current := filepath.Clean(dir); ; current = filepath.Dir(current) {
+		if data, err := os.ReadFile(filepath.Join(root, current, "pyproject.toml")); err == nil && uvWorkspaceRE.Match(data) {
+			return current, true
+		}
+		if current == "." || current == string(filepath.Separator) {
+			return "", false
+		}
+	}
+}
+
+var (
+	requiresPythonFloorRE = regexp.MustCompile(`(?m)^requires-python\s*=\s*["'][^"'\n]*?(?:>=|~=|==)\s*(\d+\.\d+)`)
+	uvWorkspaceRE         = regexp.MustCompile(`(?m)^\[tool\.uv\.workspace\]`)
+)
 
 // highestFloor is the newest of floors, which every python component admits.
 func highestFloor(floors map[string]string) string {
