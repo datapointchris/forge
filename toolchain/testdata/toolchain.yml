@@ -88,6 +88,10 @@ binaries:
     version: fixture-bats-assert
   - name: jq
     version: fixture-jq
+  - name: yq
+    version: fixture-yq
+  - name: rg
+    version: fixture-rg
   - name: cargo_audit
     version: fixture-cargo-audit
   - name: terraform
