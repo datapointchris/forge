@@ -122,6 +122,12 @@ type Toolchain struct {
 	// the registry, with a reason attached, visible to anyone reading what the
 	// repo asks for.
 	ShellcheckDisable []ShellcheckException `json:"shellcheck_disable,omitempty" yaml:"shellcheck_disable,omitempty"`
+	// RunnerLabels are added to the self-hosted pool on every job the ci die
+	// generates, such as "docker" where a custom section inside a generated
+	// job starts a container. The die writes that job's runs-on, so the
+	// section cannot ask for the label itself. Declared on a private repo only,
+	// and each one a label the pool's runners carry.
+	RunnerLabels []string `json:"runner_labels,omitempty" yaml:"runner_labels,omitempty"`
 	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
 	// whose content is invalid on purpose. logsift keeps a tree of deliberately
 	// broken files to generate real hook output for its pattern tests; every

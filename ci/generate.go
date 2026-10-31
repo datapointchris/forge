@@ -64,6 +64,17 @@ const ActionlintHookRepo = "https://github.com/jdx/jactionlint"
 // generated workflow to change.
 const RunnerLabel = "private-ci"
 
+// DockerLabel is carried by every self-hosted runner with a Docker daemon. A
+// job that starts a container asks for it, so a runner with no daemon never
+// takes that job.
+const DockerLabel = "docker"
+
+// poolLabels are the labels a self-hosted runner may carry beside RunnerLabel.
+// A repo's declared runner labels must come from here. GitHub holds a job
+// whose labels no runner carries in the queue for a day before failing it, and
+// says nothing in that time.
+var poolLabels = []string{DockerLabel}
+
 // Runner is the runs-on value every job in a generated workflow carries.
 //
 // A named type rather than a bool beside the release gate: two adjacent
@@ -92,11 +103,65 @@ func Hosted(manifest *toolchain.Toolchain) Runner {
 // on a public repo runs the fork's own code on whatever runner it lands on, and
 // a self-hosted runner sits inside a private network. A repo the registry does
 // not describe therefore stays hosted.
-func RunnerFor(private bool, manifest *toolchain.Toolchain) Runner {
-	if private {
-		return SelfHosted
+//
+// labels are the repo's declared runner labels, added to the pool on every
+// generated job. They are refused on a repo that is not private, because a
+// hosted image carries no custom label and every job would queue. A label no
+// self-hosted runner carries is refused for the same reason.
+func RunnerFor(private bool, labels []string, manifest *toolchain.Toolchain) (Runner, error) {
+	for _, label := range labels {
+		if !slices.Contains(poolLabels, label) {
+			return "", fmt.Errorf("runner label %q is carried by no self-hosted runner; expected one of %s",
+				label, strings.Join(poolLabels, ", "))
+		}
 	}
-	return Hosted(manifest)
+	if !private {
+		if len(labels) > 0 {
+			return "", fmt.Errorf("runner labels %s are declared on a repo not declared private; a hosted image carries none of them",
+				strings.Join(labels, ", "))
+		}
+		return Hosted(manifest), nil
+	}
+	names := []string{"self-hosted", RunnerLabel}
+	for _, label := range poolLabels {
+		if slices.Contains(labels, label) {
+			names = append(names, label)
+		}
+	}
+	return Runner("[" + strings.Join(names, ", ") + "]"), nil
+}
+
+// IsSelfHosted reports whether this runner is the self-hosted pool, with or
+// without labels beside it.
+func (r Runner) IsSelfHosted() bool {
+	return onThePool(string(r))
+}
+
+// onThePool reports whether a runs-on value names the self-hosted pool, with
+// any of the labels its runners carry. A job asking for one of them reaches a
+// runner, whatever the repo's generated jobs ask for.
+func onThePool(value string) bool {
+	inner, ok := strings.CutPrefix(value, "[")
+	if !ok {
+		return false
+	}
+	inner, ok = strings.CutSuffix(inner, "]")
+	if !ok {
+		return false
+	}
+	labels := strings.Split(inner, ",")
+	for i := range labels {
+		labels[i] = strings.TrimSpace(labels[i])
+	}
+	if len(labels) < 2 || labels[0] != "self-hosted" || labels[1] != RunnerLabel {
+		return false
+	}
+	for _, label := range labels[2:] {
+		if !slices.Contains(poolLabels, label) {
+			return false
+		}
+	}
+	return true
 }
 
 // ActionlintConfig declares to jactionlint the runner labels it cannot
@@ -110,10 +175,16 @@ func RunnerFor(private bool, manifest *toolchain.Toolchain) Runner {
 // The pool is declared only where the repo takes the self-hosted runner.
 // Declaring it in a public repo would retire the one check that catches a
 // hand-written workflow there reaching the self-hosted runner.
+//
+// A private repo gets every label the pool's runners carry, whatever its
+// generated jobs ask for. A hand-written job starting a container asks for
+// DockerLabel in a repo whose generated jobs need no daemon.
 func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner) string {
 	labels := "    - " + manifest.HostedRunner + "\n"
-	if runner == SelfHosted {
-		labels += "    - " + RunnerLabel + "\n"
+	if runner.IsSelfHosted() {
+		for _, label := range append([]string{RunnerLabel}, poolLabels...) {
+			labels += "    - " + label + "\n"
+		}
 	}
 	return fmt.Sprintf(`%s
 # Labels jactionlint cannot discover. Its list of GitHub's hosted images is the
@@ -377,6 +448,10 @@ func Generate(
 // any step runs, so it reports zero steps and no failing step, while the rest
 // of the workflow is green. A provisioning suite sat in exactly that state,
 // and it gated what reaches every container's authorized_keys.
+//
+// On the self-hosted runner, a job asking for the pool with any labels its
+// runners carry is not foreign. A custom section starting a container asks
+// for DockerLabel where the generated jobs do not.
 func ForeignRunners(workflow string, runner Runner) []string {
 	var (
 		foreign []string
@@ -388,13 +463,14 @@ func ForeignRunners(workflow string, runner Runner) []string {
 			continue
 		}
 		value, ok := strings.CutPrefix(line, "    runs-on: ")
-		if !ok || strings.TrimSpace(value) == string(runner) {
+		value = strings.TrimSpace(value)
+		if !ok || value == string(runner) || (runner.IsSelfHosted() && onThePool(value)) {
 			continue
 		}
 		if job == "" {
 			job = "(unnamed job)"
 		}
-		foreign = append(foreign, job+" on "+strings.TrimSpace(value))
+		foreign = append(foreign, job+" on "+value)
 	}
 	return foreign
 }
@@ -580,5 +656,5 @@ func applyDir(content, dir string) string {
 // log before reporting the cache as not found. One such step reached 153k lines
 // and 29 MB, which is then a log the ingest webhook downloads and parses.
 func applyGoCache(content string, runner Runner) string {
-	return strings.ReplaceAll(content, "{{gocache}}", strconv.FormatBool(runner != SelfHosted))
+	return strings.ReplaceAll(content, "{{gocache}}", strconv.FormatBool(!runner.IsSelfHosted()))
 }

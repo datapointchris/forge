@@ -72,6 +72,39 @@ func TestAPublicRepoNeverNamesTheSelfHostedPool(t *testing.T) {
 	}
 }
 
+// A declared label reaches every generated job, and a label that would leave
+// every job queued is refused: one no self-hosted runner carries, or any label
+// on a repo that takes the hosted image.
+func TestRunnerLabelsJoinThePoolAndNoJobIsLeftWithoutARunner(t *testing.T) {
+	manifest := testManifest(t)
+	runner, err := RunnerFor(true, []string{DockerLabel}, manifest)
+	if err != nil {
+		t.Fatalf("RunnerFor: %v", err)
+	}
+	workflow, err := Generate(os.DirFS("blocks"), manifest,
+		comps("go", "api", "vue", "web"), "", nil, Ungated, runner)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	for _, value := range runsOnLines(workflow) {
+		if value != "[self-hosted, private-ci, docker]" {
+			t.Errorf("runs-on = %q, want the pool with docker", value)
+		}
+	}
+
+	for _, refused := range []struct {
+		private bool
+		labels  []string
+	}{
+		{true, []string{"dockr"}},
+		{false, []string{DockerLabel}},
+	} {
+		if runner, err := RunnerFor(refused.private, refused.labels, manifest); err == nil {
+			t.Errorf("RunnerFor(%v, %v) = %q, want a refusal", refused.private, refused.labels, runner)
+		}
+	}
+}
+
 // The image is the declaration's pin, never a label forge carries. GitHub moves
 // ubuntu-latest to a new release on its own schedule, and a job that passed the
 // day before then fails with nothing in the repo changed.
@@ -79,8 +112,12 @@ func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 	manifest := testManifest(t)
 	manifest.HostedRunner = "ubuntu-98.10"
 
+	runner, err := RunnerFor(false, nil, manifest)
+	if err != nil {
+		t.Fatalf("RunnerFor: %v", err)
+	}
 	workflow, err := Generate(os.DirFS("blocks"), manifest,
-		comps("go", "api", "vue", "web"), "", nil, Ungated, RunnerFor(false, manifest))
+		comps("go", "api", "vue", "web"), "", nil, Ungated, runner)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -132,6 +169,10 @@ func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 		if !slices.Contains(parsed.SelfHostedRunner.Labels, label) {
 			t.Errorf("the workflow runs on %q and self-hosted-runner.labels is %v:\n%s",
 				label, parsed.SelfHostedRunner.Labels, config)
+		}
+		if runner.IsSelfHosted() && !slices.Contains(parsed.SelfHostedRunner.Labels, DockerLabel) {
+			t.Errorf("a private repo's self-hosted-runner.labels is %v, without %q for a hand-written job starting a container",
+				parsed.SelfHostedRunner.Labels, DockerLabel)
 		}
 	}
 }
@@ -245,11 +286,13 @@ func TestACustomSectionOnAnotherRunnerIsNamedWithItsJob(t *testing.T) {
 	workflow := "jobs:\n\n  go:\n    runs-on: [self-hosted, private-ci]\n" +
 		"    steps:\n      - run: go test ./...\n\n" +
 		"# > custom:after:all - the deploy suite\n  pyinfra:\n    runs-on: ubuntu-latest\n" +
-		"    steps:\n      - run: pytest\n"
+		"    steps:\n      - run: pytest\n\n" +
+		"  image:\n    runs-on: [self-hosted, private-ci, docker]\n" +
+		"    steps:\n      - run: docker build .\n"
 
 	foreign := ForeignRunners(workflow, SelfHosted)
 	if len(foreign) != 1 {
-		t.Fatalf("foreign = %v, want just the custom job", foreign)
+		t.Fatalf("foreign = %v, want just the hosted custom job; a pool job asking for docker reaches a runner", foreign)
 	}
 	if !strings.Contains(foreign[0], "pyinfra") || !strings.Contains(foreign[0], "ubuntu-latest") {
 		t.Errorf("foreign = %q, want the job name and the runner it names", foreign[0])

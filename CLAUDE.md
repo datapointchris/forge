@@ -326,6 +326,15 @@ declared private takes the hosted image, and that direction is the safety proper
 request on a public repo runs the fork's code, and a self-hosted runner sits inside a private network.
 `TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner` keeps the choice in `RunnerFor`.
 
+**A private repo's `toolchain.runner_labels` joins the pool on every generated job.** A custom
+section inside a generated job cannot set that job's `runs-on`, so a section starting a container
+needs the repo to declare `docker`. Every generated job in that repo then asks for it. `RunnerFor`
+refuses a label no self-hosted runner carries, and any label on a repo not declared private,
+because GitHub queues such a job for a day with no runner to take it. `ForeignRunners` accepts a
+custom job asking for the pool with any of its labels. The generated `actionlint.yaml` of every
+private repo declares all of them, because a hand-written job asks for `docker` whatever the
+generated jobs ask for.
+
 **The hosted image is a pinned release, `runners.hosted` in the declaration.** `ubuntu-latest` moves
 to a new release on GitHub's schedule, and a job that passed the day before then fails with nothing
 in the repo changed. Both loaders refuse a declaration naming no release, or naming `ubuntu-latest`.

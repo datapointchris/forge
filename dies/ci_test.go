@@ -93,8 +93,13 @@ func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWit
 	requireActionlint(t)
 
 	assets := testAssets(t)
+	withDocker, err := ci.RunnerFor(true, []string{ci.DockerLabel}, assets.Manifest)
+	if err != nil {
+		t.Fatalf("RunnerFor: %s", err)
+	}
 	for runner, label := range map[ci.Runner]string{
 		ci.SelfHosted:              ci.RunnerLabel,
+		withDocker:                 ci.RunnerLabel,
 		ci.Hosted(assets.Manifest): assets.Manifest.HostedRunner,
 	} {
 		workflow, err := ci.Generate(assets.CI, assets.Manifest,

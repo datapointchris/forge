@@ -45,9 +45,9 @@ type ciState struct {
 	// files are every file this die owns in this repo, in the order they must
 	// be written.
 	files []generatedFile
-	// selfHosted records which runner the workflow names, for the row a
-	// converged repo shows.
-	selfHosted bool
+	// runner is the runner the workflow names, for the row a converged repo
+	// shows.
+	runner ci.Runner
 	// repinned are the repo's own workflows, each wanting the declared pins
 	// and nothing else changed.
 	repinned []generatedFile
@@ -61,8 +61,8 @@ func (s ciState) Summary() string {
 	if anyUnmeasured(s.blockers) {
 		return "validate.yml not checked"
 	}
-	if s.selfHosted {
-		return "validate.yml current, on the self-hosted runner"
+	if s.runner.IsSelfHosted() {
+		return "validate.yml current, on the self-hosted runner " + string(s.runner)
 	}
 	return "validate.yml current"
 }
@@ -97,7 +97,14 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		existing = string(data)
 	}
 
-	runner := ci.RunnerFor(t.Repo.IsPrivate(), t.Assets.Manifest)
+	var runnerLabels []string
+	if t.Repo.Toolchain != nil {
+		runnerLabels = t.Repo.Toolchain.RunnerLabels
+	}
+	runner, err := ci.RunnerFor(t.Repo.IsPrivate(), runnerLabels, t.Assets.Manifest)
+	if err != nil {
+		return nil, err
+	}
 	customSections := precommit.ExtractCustomSections(existing)
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommitConfig,
 		customSections, ci.ReleaseGatesOnValidate(root), runner)
@@ -113,7 +120,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	lintConfig := ci.ActionlintConfig(t.Assets.Manifest, runner)
 	state := ciState{
 		applicable: true,
-		selfHosted: runner == ci.SelfHosted,
+		runner:     runner,
 		files: []generatedFile{
 			readGenerated(root, ci.ActionlintConfigPath, lintConfig),
 			readGenerated(root, ci.WorkflowPath, wanted),
@@ -176,7 +183,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// Only where the repo takes the self-hosted runner. A public repo's custom
 	// section naming something else is that section's business, and a hosted
 	// job there runs.
-	if runner == ci.SelfHosted {
+	if runner.IsSelfHosted() {
 		if foreign := ci.ForeignRunners(wanted, runner); len(foreign) > 0 {
 			state.blockers = append(state.blockers, blocker(ci.WorkflowPath, fmt.Sprintf(
 				"a custom section in %s puts %s; expected every job on the self-hosted runner",
