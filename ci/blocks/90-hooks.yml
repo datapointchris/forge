@@ -9,6 +9,14 @@
         with:
           version: "{{pin}}"
 
+      # pre-commit takes a `language: node` hook's Node from PATH where node and
+      # npm are there, and otherwise downloads the newest release. That release
+      # can need libraries a runner image lacks, as Node 25 needs libatomic. So
+      # the job puts the declared Node on PATH, on every runner alike.
+      - uses: actions/setup-node@{{pin}}
+        with:
+          node-version: "{{pin}}"
+
       # A self-hosted runner keeps ~/.cache/pre-commit between jobs, so there
       # the archive is a download of what is already on disk.
       - uses: actions/cache@{{pin}}
@@ -162,8 +170,12 @@
           )
           # Every hook runs whatever the one before it found, so one push
           # reports every failing hook rather than the first.
+          #
+          # pre-commit builds each `language: python` hook on the interpreter
+          # running it. Left to uv, that is whatever Python the runner ships,
+          # so pre-commit runs on the declared floor instead.
           status=0
           for hook in "${hooks[@]}"; do
-            uvx pre-commit run "$hook" "${scope[@]}" --show-diff-on-failure || status=1
+            uvx --python {{pin}} pre-commit run "$hook" "${scope[@]}" --show-diff-on-failure || status=1
           done
           exit "$status"

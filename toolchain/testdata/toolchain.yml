@@ -98,3 +98,5 @@ runtimes:
     version: fixture-node
   - name: go
     version: fixture-go
+  - name: python
+    version: fixture-python

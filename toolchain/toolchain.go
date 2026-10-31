@@ -51,6 +51,8 @@ var (
 	// block happens to name — the exact drift the manifest exists to prevent.
 	binaryLineRE = regexp.MustCompile(`^(\s*)([a-z0-9_]+)_version="\S+"\s*$`)
 	uvxLineRE    = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
+	// uvx naming the interpreter its tool runs on.
+	uvxPythonRE = regexp.MustCompile(`^(.*\buvx\s+--python\s+)(\S+)(.*)$`)
 	// A YAML list item naming a Go module at a version, which is how a
 	// `language: golang` hook's additional_dependencies spells what it installs.
 	dependencyLineRE = regexp.MustCompile(`^(\s*-\s+)([A-Za-z0-9._~/-]+)@(\S+)\s*$`)
@@ -620,9 +622,26 @@ func multiReleaseLists(lines []string) map[int]bool {
 	return held
 }
 
+// ApplyUvxPython rewrites the interpreter `uvx --python <version>` asks for to
+// the python floor. A floor the manifest does not declare leaves the line
+// alone, so a block's Pin survives for Unpinned to report.
+func (t *Toolchain) ApplyUvxPython(content string) string {
+	version, managed := t.RuntimeVersion("python")
+	if !managed {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if m := uvxPythonRE.FindStringSubmatch(line); m != nil {
+			lines[i] = m[1] + version + m[3]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ApplyAll runs every substitution a generated file may need.
 func (t *Toolchain) ApplyAll(content string) string {
-	return t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionReleaseInputs(t.ApplyActionVersions(t.ApplyPreCommitPins(content)))))))
+	return t.ApplyUvxPython(t.ApplyUvxVersions(t.ApplyBinaryVersions(t.ApplyRuntimeVersions(t.ApplyToolVersions(t.ApplyActionReleaseInputs(t.ApplyActionVersions(t.ApplyPreCommitPins(content))))))))
 }
 
 // HookPinnedVersion is the upstream release a tool's hook rev wraps, and whether
