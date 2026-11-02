@@ -37,17 +37,17 @@ var (
 
 // Discover resolves active repos to installed binaries.
 //
-// Binary names are derived from what each repo already declares — a
-// pyproject.toml [project.scripts] key, a goreleaser binary: — falling back to
-// the repo's own name. Nothing is added to the registry to make this work, so a
-// repo that names its binary only inside a build script cannot be found here
-// and comes back in Unresolved.
+// Binary names are what each repo declares: the registry's binary, then a
+// pyproject.toml [project.scripts] key or a goreleaser binary: in its
+// checkout. A repo declaring none ships no command, because the registry
+// declares binary on every entry that has one. Its own name is never tried:
+// the claude config repo would read Claude Code's binary.
 func Discover(repos []config.Repo) (found []Candidate, unresolved []Unresolved) {
 	for _, r := range repos {
 		if r.Reference || r.Status != "active" {
 			continue
 		}
-		names, declared := candidateNames(r)
+		names := candidateNames(r)
 		var hit bool
 		for _, n := range names {
 			if p, err := exec.LookPath(n); err == nil {
@@ -56,18 +56,18 @@ func Discover(repos []config.Repo) (found []Candidate, unresolved []Unresolved) 
 				break
 			}
 		}
-		if !hit && declared {
+		if !hit && len(names) > 0 {
 			unresolved = append(unresolved, Unresolved{Repo: r.Name, Tried: names})
 		}
 	}
 	return found, unresolved
 }
 
-// candidateNames is the repo's declared entry points, most specific first, with
-// the repo name last as the common case. declared reports whether the repo
-// actually says it ships a command, which is what separates a missing tool from
-// a library that was never one.
-func candidateNames(r config.Repo) (names []string, declared bool) {
+// candidateNames is the repo's declared entry points, most specific first. None
+// is a repo that ships no command, which separates a library that was never a
+// tool from a tool missing here.
+func candidateNames(r config.Repo) []string {
+	var names []string
 	root := expand(r.Path)
 	seen := map[string]bool{}
 	add := func(n string) {
@@ -79,25 +79,16 @@ func candidateNames(r config.Repo) (names []string, declared bool) {
 
 	// An explicit declaration wins: it exists precisely for the repo whose
 	// binary name is not readable from any file in it.
-	if r.Binary != "" {
-		add(r.Binary)
-		declared = true
-	}
-
+	add(r.Binary)
 	for _, dir := range componentDirs(r) {
 		for _, n := range pyprojectScripts(filepath.Join(root, dir, "pyproject.toml")) {
 			add(n)
-			declared = true
 		}
 		for _, f := range []string{".goreleaser.yaml", ".goreleaser.yml"} {
-			if b := goreleaserBinary(filepath.Join(root, dir, f)); b != "" {
-				add(b)
-				declared = true
-			}
+			add(goreleaserBinary(filepath.Join(root, dir, f)))
 		}
 	}
-	add(r.Name)
-	return names, declared
+	return names
 }
 
 func componentDirs(r config.Repo) []string {

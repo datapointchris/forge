@@ -10,7 +10,7 @@ import (
 
 func TestDiscoverReachesOnlyActiveReposWeOwn(t *testing.T) {
 	bin := t.TempDir()
-	for _, name := range []string{"alpha", "beta", "gamma", "delta"} {
+	for _, name := range []string{"alpha", "beta", "gamma", "delta", "epsilon"} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -22,10 +22,11 @@ func TestDiscoverReachesOnlyActiveReposWeOwn(t *testing.T) {
 		{Name: "beta", Path: t.TempDir(), Binary: "beta", Status: "dormant"},
 		{Name: "gamma", Path: t.TempDir(), Binary: "gamma"},
 		{Name: "delta", Path: t.TempDir(), Binary: "delta", Status: "active", Reference: true},
+		{Name: "epsilon", Path: t.TempDir(), Status: "active"},
 	}
 	found, unresolved := Discover(repos)
 	if len(found) != 1 || found[0].Repo != "alpha" {
-		t.Errorf("found = %+v, want only alpha — an absent status is not active", found)
+		t.Errorf("found = %+v, want only alpha — an absent status is not active, and a repo declaring no binary ships none", found)
 	}
 	if len(unresolved) != 0 {
 		t.Errorf("unresolved = %+v, want none", unresolved)
