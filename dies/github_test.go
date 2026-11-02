@@ -87,6 +87,33 @@ func TestGitHubDiesReportUnmeasuredRatherThanDriftWhenGhIsMissing(t *testing.T) 
 	}
 }
 
+// A token that can only read a repo, such as a GitHub App's read token, is
+// answered without its merge settings. Applying on it would be refused, so a
+// portfolio run on one must not plan every repo as drifted.
+func TestMergeSettingsATokenCannotSeeAreUnmeasuredRatherThanDrift(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkTool(t, bin, "git")
+	script := "#!/bin/sh\ncase \"$1\" in\nrepo) echo 'datapointchris/thing main' ;;\napi) echo 'null null null null null' ;;\nesac\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	target := fixture(t, stacks("go"), nil)
+	withRemote(t, target, "git@github.com:datapointchris/thing.git")
+
+	measured := reconcile.Assess(target, MergeSettings{})
+
+	if len(measured.Changes) != 1 || measured.Changes[0].Verdict != reconcile.Unknown {
+		t.Fatalf("changes = %v, want one unknown", measured.Changes)
+	}
+	if reconcile.CodeFor([]reconcile.Result{measured.Fold(reconcile.LensPlan)}) != reconcile.ExitConverged {
+		t.Error("settings the token cannot see moved the exit code")
+	}
+}
+
 // A repo with no origin at all cannot be asked about its settings, and is not
 // drift for it.
 func TestGitHubDiesSkipARepoWithNoRemote(t *testing.T) {

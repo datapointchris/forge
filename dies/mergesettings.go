@@ -2,6 +2,7 @@ package dies
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/datapointchris/forge/reconcile"
@@ -86,6 +87,15 @@ func (MergeSettings) Observe(t reconcile.Target) (reconcile.Observation, error) 
 		return mergeSettingsState{
 			repo:    repo,
 			changes: []reconcile.Change{unknownChange("merge settings", "unreadable settings for "+repo.slug)},
+		}, nil
+	}
+	// GitHub answers a token that can only read the repository without its
+	// merge settings, and jq renders each one it left out as null. Applying
+	// on such a token would be refused besides.
+	if slices.Contains(fields, "null") {
+		return mergeSettingsState{
+			repo:    repo,
+			changes: []reconcile.Change{unknownChange("merge settings", "the token reading "+repo.slug+" cannot see its merge settings")},
 		}, nil
 	}
 
