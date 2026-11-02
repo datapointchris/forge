@@ -102,7 +102,7 @@ func (ConflictMarkers) Observe(t reconcile.Target) (reconcile.Observation, error
 // heuristic. git writes conflict markers into a file's content; it cannot write
 // them into a fence, because a fence is the author declaring the lines inside
 // it to be an example. Without this, every document explaining how to resolve a
-// conflict reports as one — `terminal-library/workflows/git-merge-conflicts.md`
+// conflict reports as one — `terminal-library/cards/git-merge-conflicts.md`
 // is the live case, and a die that reports it every run is a die nobody reads.
 //
 // The cost is a real conflict inside a fenced code block, which this misses. It

@@ -51,7 +51,7 @@ func TestConflictMarkersReportsACommittedConflictWithItsLine(t *testing.T) {
 
 // The live false positive: a document explaining how to resolve a conflict
 // contains a complete conflict, at the start of its lines, inside a fence.
-// terminal-library/workflows/git-merge-conflicts.md is the case, and a die
+// terminal-library/cards/git-merge-conflicts.md is the case, and a die
 // reporting it every run is a die nobody reads.
 func TestConflictMarkersIgnoresAnExampleInsideAMarkdownFence(t *testing.T) {
 	target := unversionedFixture(t, stacks("go"), map[string]string{
