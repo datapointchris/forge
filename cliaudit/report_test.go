@@ -105,6 +105,27 @@ func TestASingularNameAnotherToolNamespacesIsABareNoun(t *testing.T) {
 	}
 }
 
+func TestAScreenWithNoExamplesHeadingIsReported(t *testing.T) {
+	bare := node("bare")
+	bare.Body = "Usage: demo bare\n\nDo the thing.\n"
+	panel := node("panel")
+	panel.Body = "╭─ Options ─╮\n╰───╯\n╭─ Examples ─╮\n│ demo panel │\n"
+	unread := node("unread")
+	unread.Unread = true
+	t1 := tool("demo", bare, panel, unread)
+	t1.Root.Body = "Usage: demo\n\nExamples:\n  demo bare\n"
+
+	var flagged []string
+	for _, f := range Analyze([]*clisurface.Tool{t1}, nil).Findings {
+		if f.Kind == "no-example" {
+			flagged = append(flagged, f.Command)
+		}
+	}
+	if len(flagged) != 1 || flagged[0] != "bare" {
+		t.Errorf("no-example = %v, want only [bare]; a Rich panel heading counts, and an unread screen says nothing", flagged)
+	}
+}
+
 func TestUnreadableToolIsReported(t *testing.T) {
 	rep := Analyze([]*clisurface.Tool{{Binary: "quiet", Framework: clisurface.FrameworkRich, Root: &clisurface.Node{Name: "quiet"}}}, nil)
 	var found bool

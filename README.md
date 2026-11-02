@@ -333,19 +333,22 @@ and fails if anything on disk changed. Registering a die is what holds it to tha
 
 ```bash
 forge cli spec                          # every installed CLI's command tree
-forge cli audit                         # where their grammar varies from each other
+forge cli audit                         # where their grammar varies, and which help has no example
 forge cli snapshot                      # keep this reading as the next version
 forge cli diff                          # what moved since the last snapshot
 forge cli diff 3 4                      # between two saved versions
 ```
 
-With no arguments, the tools are the active repos in the registry whose binary is on `PATH`.
+With no arguments, the tools are the active repos in the registry whose declared binary is on
+`PATH`. A repo declares one in the registry's `binary`, a `pyproject.toml` script or a goreleaser
+`binary:`, and a repo declaring none ships no command.
 Everything is read from `--help`, and from cobra's `__complete` callback where a tool has one. No
 bare subcommand is ever run. The shape most worth finding is a noun that performs a read when
 invoked with no verb, and running it to find out would fire that read.
 
 `audit` compares tools to each other and reports variation without failing, because that register
-is design guidance. `snapshot` and `diff` compare one tool to its own past, and that register binds.
+is design guidance. It also names each command whose help screen carries no example. Some commands
+need none, so that finding is for a person to read too. `snapshot` and `diff` compare one tool to its own past, and that register binds.
 A command or flag that was there and is not is a broken contract for whatever called it. No repo's
 own suite covers it, because the break is at the seam between two. Both exit 0 whatever they find.
 

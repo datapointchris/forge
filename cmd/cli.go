@@ -57,10 +57,12 @@ var cliAuditCmd = &cobra.Command{
 	Short: "Report where command grammar varies across the fleet",
 	Long: `Compare the extracted surfaces and report the variations.
 
-Three things are reported. Verb spellings, as a distribution per job, so the
+Four things are reported. Verb spellings, as a distribution per job, so the
 shape of the split is visible. Bare nouns that act, which cli-design.md asks be
-namespaced or justified. And hyphenated verb-noun commands, which read as a
-namespace that was never created.
+namespaced or justified. Hyphenated verb-noun commands, which read as a
+namespace that was never created. And commands whose help carries no example,
+which help.md asks of every node, the root included. Some commands need none,
+so each is one to read rather than one to fix.
 
 Exits 0 whatever it finds.`,
 	Example: "  forge cli audit\n  forge cli audit --json\n  forge cli audit alpha beta",
@@ -117,7 +119,7 @@ func init() {
 }
 
 func runCLISnapshot(cmd *cobra.Command, args []string) error {
-	tools, unresolved, err := resolveTools(cmd, args)
+	tools, unresolved, err := resolveTools(cmd, args, clisurface.Options{})
 	if err != nil {
 		return err
 	}
@@ -151,7 +153,7 @@ func runCLISnapshot(cmd *cobra.Command, args []string) error {
 // default.
 func resolveSurface(cmd *cobra.Command, arg string) (*clisurface.Snapshot, error) {
 	if arg == "" {
-		tools, _, err := resolveTools(cmd, nil)
+		tools, _, err := resolveTools(cmd, nil, clisurface.Options{})
 		if err != nil {
 			return nil, err
 		}
@@ -209,15 +211,15 @@ func runCLIDiff(cmd *cobra.Command, args []string) error {
 	return clisurface.WriteDiff(cmd.OutOrStdout(), d)
 }
 
-// resolveTools turns the positional arguments into extracted trees, falling
-// back to registry discovery when none are named.
-func resolveTools(cmd *cobra.Command, args []string) ([]*clisurface.Tool, []cliaudit.Unresolved, error) {
+// resolveTools turns the positional arguments into extracted trees, read under
+// opts, falling back to registry discovery when none are named.
+func resolveTools(cmd *cobra.Command, args []string, opts clisurface.Options) ([]*clisurface.Tool, []cliaudit.Unresolved, error) {
 	if len(args) > 0 {
 		tools := make([]*clisurface.Tool, 0, len(args))
 		for _, name := range args {
 			// A named tool that cannot be read is the answer to what was asked,
 			// so this fails rather than reporting an empty surface for it.
-			tool, err := clisurface.Extract(name, clisurface.Options{})
+			tool, err := clisurface.Extract(name, opts)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -233,7 +235,7 @@ func resolveTools(cmd *cobra.Command, args []string) ([]*clisurface.Tool, []clia
 	found, unresolved := cliaudit.Discover(cfg.Repos)
 	tools := make([]*clisurface.Tool, 0, len(found))
 	for _, c := range found {
-		tool, err := clisurface.Extract(c.Binary, clisurface.Options{})
+		tool, err := clisurface.Extract(c.Binary, opts)
 		if err != nil {
 			// Discovery saw the binary on PATH, so failing to read it now is a
 			// gap in this run rather than a reason to abandon the sweep.
@@ -246,7 +248,7 @@ func resolveTools(cmd *cobra.Command, args []string) ([]*clisurface.Tool, []clia
 }
 
 func runCLISpec(cmd *cobra.Command, args []string) error {
-	tools, unresolved, err := resolveTools(cmd, args)
+	tools, unresolved, err := resolveTools(cmd, args, clisurface.Options{})
 	if err != nil {
 		return err
 	}
@@ -270,7 +272,9 @@ func runCLISpec(cmd *cobra.Command, args []string) error {
 }
 
 func runCLIAudit(cmd *cobra.Command, args []string) error {
-	tools, unresolved, err := resolveTools(cmd, args)
+	// Every node's screen is read during the walk anyway, so keeping it costs
+	// no spawn, and the examples finding reads it.
+	tools, unresolved, err := resolveTools(cmd, args, clisurface.Options{WithBody: true})
 	if err != nil {
 		return err
 	}

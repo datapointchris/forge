@@ -3,6 +3,7 @@ package cliaudit
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -51,7 +52,28 @@ var queryNames = map[string]bool{
 var kindNote = map[string]string{
 	"bare-noun":       "a noun that acts. Namespace it, or record why it will never grow a second verb",
 	"hyphen-compound": "a namespace wearing a hyphen; the arrow is the shape it wants",
+	"no-example":      "its help carries no example, which help.md asks of every node. Some need none",
 	"unreadable":      "the tree is not reachable from the root help screen",
+}
+
+// examplesHeading is how a help screen opens its examples: cobra prints
+// `Examples:`, argparse whatever its epilog opens with, a Rich panel
+// `╭─ Examples ─`, and a hand-written usage `e.g.`. Anchored to a line's start,
+// past any panel border, so prose mentioning an example does not count.
+var examplesHeading = regexp.MustCompile(`(?im)^[\s│|╭─]*(examples?\b|e\.g\.)`)
+
+// escapes are the CSI sequences a tool prints even under NO_COLOR, which would
+// otherwise sit between a line's start and its heading.
+var escapes = regexp.MustCompile(`\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]`)
+
+// lacksExample reports a node whose screen was read and carries no examples
+// heading. A node with no screen, such as one the walk never opened, says
+// nothing either way.
+func lacksExample(n *clisurface.Node) bool {
+	if n.Unread || strings.TrimSpace(n.Body) == "" {
+		return false
+	}
+	return !examplesHeading.MatchString(escapes.ReplaceAllString(n.Body, ""))
 }
 
 // VerbUse is one tool's spellings for one job.
@@ -87,6 +109,11 @@ func Analyze(tools []*clisurface.Tool, unresolved []Unresolved) *Report {
 
 	for _, t := range tools {
 		rep.Tools = append(rep.Tools, t.Binary)
+		// Walk skips the root, and the root screen is where an example is
+		// read first.
+		if t.Root != nil && lacksExample(t.Root) {
+			rep.Findings = append(rep.Findings, Finding{Kind: "no-example", Tool: t.Binary})
+		}
 		t.Walk(func(n *clisurface.Node) {
 			rep.NodeCount++
 			recordVerb(seen, t.Binary, n)
@@ -167,6 +194,9 @@ func namespaceNames(tools []*clisurface.Tool) map[string]bool {
 func inspect(t *clisurface.Tool, n *clisurface.Node, namespaced map[string]bool) []Finding {
 	var out []Finding
 	cmd := strings.Join(n.Path, " ")
+	if lacksExample(n) {
+		out = append(out, Finding{Kind: "no-example", Tool: t.Binary, Command: cmd})
+	}
 
 	// A hyphenated verb-noun is a namespace wearing a hyphen, so it is reported
 	// as a compound rather than as a noun. Checked first: a compound is already
