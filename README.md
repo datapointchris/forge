@@ -369,8 +369,9 @@ out to one repo before fanning out: `forge repos apply precommit -F <repo>`.
 No forge command writes a pin. A pin is chosen. Taking whatever each upstream last tagged is the
 opposite of pinning, and one command doing it would move every hook in every repo at once.
 
-`fleet versions` reads `forge stamp spec --json` at run time rather than keeping its own copy, so
-the installed forge is the one authority on where stamps live.
+`forge stamp spec --json` prints the stamp's prefix and every file it is written into, so a reader
+takes them at run time rather than keeping its own copy, and the installed forge is the one
+authority on where stamps live.
 
 ## The registry, and where forge writes
 

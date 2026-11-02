@@ -164,7 +164,7 @@ declaration, and a pin the declaration cannot fill is a refusal rather than a pl
 a repo (`toolchain.Unpinned`, `TestBlocksNameNoVersion`). Generation stamps the declaration's
 `version` as `# forge-toolchain: N`; bump it on any pin change, because the stamp is what staged
 rollout reads. `toolchain.StampPrefix` is its one definition. `forge stamp spec --json` prints it
-with `dies.StampedFiles`, which fleet reads at run time instead of keeping a copy, and
+with `dies.StampedFiles`, which a reader takes at run time instead of keeping a copy, and
 `TestStampedFilesAreExactlyTheFilesTheDiesStamp` holds that list to what the dies write. A tool
 forge runs outside its hook takes the release that hook pins, as `hookPinnedTools` maps them: a uvx
 line in a workflow, a Python repo's dev pin, the uv that writes a lock. A `binaries` entry for one is
