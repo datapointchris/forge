@@ -75,6 +75,11 @@ const DockerLabel = "docker"
 // says nothing in that time.
 var poolLabels = []string{DockerLabel}
 
+// DaemonFreeSetPrefix opens the name of a scale set with no Docker daemon. A
+// scale set always carries its own name as a label, so a job naming the set
+// reaches it alone, where the pool's labels also match the repo's Docker set.
+const DaemonFreeSetPrefix = "ci-runners-"
+
 // Runner is the runs-on value every job in a generated workflow carries.
 //
 // A named type rather than a bool beside the release gate: two adjacent
@@ -131,6 +136,40 @@ func RunnerFor(private bool, labels []string, manifest *toolchain.Toolchain) (Ru
 	return Runner("[" + strings.Join(names, ", ") + "]"), nil
 }
 
+// Runners says where each kind of generated job runs. The hooks job starts no
+// container even where a component's job does, so it can take a set with no
+// daemon.
+type Runners struct {
+	Jobs  Runner
+	Hooks Runner
+}
+
+// Everywhere puts every generated job on one runner.
+func Everywhere(runner Runner) Runners {
+	return Runners{Jobs: runner, Hooks: runner}
+}
+
+// RunnersFor picks the runners a repo's generated workflows may name:
+// RunnerFor's for every job, and for the hooks job the daemon-free scale set
+// hooksSet names, where it names one. A set is refused off the pool, because a
+// hosted image carries no such label and the job would queue for a day.
+func RunnersFor(private bool, labels []string, hooksSet string, manifest *toolchain.Toolchain) (Runners, error) {
+	runner, err := RunnerFor(private, labels, manifest)
+	if err != nil {
+		return Runners{}, err
+	}
+	if hooksSet == "" {
+		return Everywhere(runner), nil
+	}
+	if !runner.IsSelfHosted() {
+		return Runners{}, fmt.Errorf("hooks runner set %q is declared on a repo not declared private; a hosted image carries no scale set's name", hooksSet)
+	}
+	if !strings.HasPrefix(hooksSet, DaemonFreeSetPrefix) {
+		return Runners{}, fmt.Errorf("hooks runner set %q names no daemon-free scale set; expected %s<repo>", hooksSet, DaemonFreeSetPrefix)
+	}
+	return Runners{Jobs: runner, Hooks: Runner("[self-hosted, " + RunnerLabel + ", " + hooksSet + "]")}, nil
+}
+
 // IsSelfHosted reports whether this runner is the self-hosted pool, with or
 // without labels beside it.
 func (r Runner) IsSelfHosted() bool {
@@ -157,7 +196,7 @@ func onThePool(value string) bool {
 		return false
 	}
 	for _, label := range labels[2:] {
-		if !slices.Contains(poolLabels, label) {
+		if !slices.Contains(poolLabels, label) && !strings.HasPrefix(label, DaemonFreeSetPrefix) {
 			return false
 		}
 	}
@@ -178,12 +217,16 @@ func onThePool(value string) bool {
 //
 // A private repo gets every label the pool's runners carry, whatever its
 // generated jobs ask for. A hand-written job starting a container asks for
-// DockerLabel in a repo whose generated jobs need no daemon.
-func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner) string {
+// DockerLabel in a repo whose generated jobs need no daemon. hooksSet is the
+// scale set the repo's hooks job names, "" where it names none.
+func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner, hooksSet string) string {
 	labels := "    - " + manifest.HostedRunner + "\n"
 	if runner.IsSelfHosted() {
 		for _, label := range append([]string{RunnerLabel}, poolLabels...) {
 			labels += "    - " + label + "\n"
+		}
+		if hooksSet != "" {
+			labels += "    - " + hooksSet + "\n"
 		}
 	}
 	return fmt.Sprintf(`%s
@@ -332,7 +375,7 @@ func Generate(
 	customSections map[string]string,
 	releaseGated ReleaseGating,
 	pythonFloors map[string]string,
-	runner Runner,
+	runners Runners,
 ) (string, error) {
 	checkout, err := loadBlock(blocksFS, "checkout")
 	if err != nil {
@@ -420,7 +463,7 @@ func Generate(
 		if floor, ok := pythonFloors[component.Dir]; ok && category == "python" && floor != highest {
 			job.uvPython = floor
 		}
-		lines = append(lines, job.render(manifest, customSections, runner)...)
+		lines = append(lines, job.render(manifest, customSections, runners.Jobs)...)
 	}
 
 	if hooks := HooksToRun(preCommitConfig); len(hooks) > 0 {
@@ -434,7 +477,7 @@ func Generate(
 		jobs++
 		steps := append(slices.Clone(hookSetups), applyHooks(stripDescription(block), hooks))
 		job := workflowJob{name: HooksJob, checkout: shared, block: joinSteps(steps...)}
-		lines = append(lines, job.render(manifest, customSections, runner)...)
+		lines = append(lines, job.render(manifest, customSections, runners.Hooks)...)
 	}
 
 	if jobs == 0 {

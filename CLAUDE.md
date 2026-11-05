@@ -324,7 +324,7 @@ can be fetched, as on a repo's first push, the job checks every file and says so
 self-hosted pool, because GitHub bills hosted minutes on private repos only. Anything not positively
 declared private takes the hosted image, and that direction is the safety property: a fork's pull
 request on a public repo runs the fork's code, and a self-hosted runner sits inside a private network.
-`TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner` keeps the choice in `RunnerFor`.
+`TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner` keeps the choice in `RunnersFor`.
 
 **A private repo's `toolchain.runner_labels` joins the pool on every generated job.** A custom
 section inside a generated job cannot set that job's `runs-on`, so a section starting a container
@@ -334,6 +334,14 @@ because GitHub queues such a job for a day with no runner to take it. `ForeignRu
 custom job asking for the pool with any of its labels. The generated `actionlint.yaml` of every
 private repo declares all of them, because a hand-written job asks for `docker` whatever the
 generated jobs ask for.
+
+**`toolchain.hooks_runner_set` sends the hooks job to a named daemon-free scale set.** A job asking
+for the pool alone also matches a repo's Docker set, so it can take a Docker slot it has no use for.
+A scale set always carries its own name as a label, so `[self-hosted, private-ci, ci-runners-fleet]`
+reaches that set and no other. A new label would not do this: ARC sends a set's labels to GitHub
+only when it creates the set, so a live set never gains one. `RunnersFor` refuses a name outside
+`DaemonFreeSetPrefix` and any name on a repo not declared private, and the repo's generated
+`actionlint.yaml` declares the name.
 
 **The hosted image is a pinned release, `runners.hosted` in the declaration.** `ubuntu-latest` moves
 to a new release on GitHub's schedule, and a job that passed the day before then fails with nothing

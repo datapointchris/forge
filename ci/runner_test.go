@@ -32,7 +32,7 @@ func runsOnLines(workflow string) []string {
 
 func TestAPrivateRepoTakesTheSelfHostedPoolOnEveryJob(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, nil, SelfHosted)
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, nil, Everywhere(SelfHosted))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestAPrivateRepoTakesTheSelfHostedPoolOnEveryJob(t *testing.T) {
 // runner just as well.
 func TestAPublicRepoNeverNamesTheSelfHostedPool(t *testing.T) {
 	workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, nil, hostedRunner(t))
+		comps("go", "api", "go", "cli", "vue", "web"), "", nil, Ungated, nil, Everywhere(hostedRunner(t)))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestRunnerLabelsJoinThePoolAndNoJobIsLeftWithoutARunner(t *testing.T) {
 		t.Fatalf("RunnerFor: %v", err)
 	}
 	workflow, err := Generate(os.DirFS("blocks"), manifest,
-		comps("go", "api", "vue", "web"), "", nil, Ungated, nil, runner)
+		comps("go", "api", "vue", "web"), "", nil, Ungated, nil, Everywhere(runner))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 		t.Fatalf("RunnerFor: %v", err)
 	}
 	workflow, err := Generate(os.DirFS("blocks"), manifest,
-		comps("go", "api", "vue", "web"), "", nil, Ungated, nil, runner)
+		comps("go", "api", "vue", "web"), "", nil, Ungated, nil, Everywhere(runner))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 	manifest := testManifest(t)
 	for _, runner := range []Runner{Hosted(manifest), SelfHosted} {
-		workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, nil, runner)
+		workflow, err := Generate(os.DirFS("blocks"), manifest, comps("go", "."), "", nil, Ungated, nil, Everywhere(runner))
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
@@ -156,7 +156,7 @@ func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 		}
 		label := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(values[0], "[self-hosted,"), "]"))
 
-		config := ActionlintConfig(manifest, runner)
+		config := ActionlintConfig(manifest, runner, "")
 		var parsed struct {
 			SelfHostedRunner struct {
 				Labels []string `yaml:"labels"`
@@ -177,7 +177,7 @@ func TestTheLintConfigDeclaresTheLabelWhereActionlintReadsIt(t *testing.T) {
 	}
 }
 
-// Every production caller outside this package takes its runner from RunnerFor
+// Every production caller outside this package takes its runner from RunnersFor
 // rather than naming SelfHosted itself.
 //
 // Before the runner was a parameter, runs-on was the literal ubuntu-latest and
@@ -215,7 +215,7 @@ func TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner(t *testing
 			return err
 		}
 
-		// Names bound to a RunnerFor result, so the common shape of assigning it
+		// Names bound to a RunnersFor result, so the common shape of assigning it
 		// to a local and passing that local is accepted. Anything else — a
 		// constant, a field, a value from elsewhere — is a caller choosing the
 		// runner itself, which is the thing being ruled out.
@@ -227,7 +227,7 @@ func TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner(t *testing
 			}
 			for i, rhs := range assign.Rhs {
 				call, ok := rhs.(*ast.CallExpr)
-				if !ok || !isSelector(call.Fun, "ci", "RunnerFor") || i >= len(assign.Lhs) {
+				if !ok || !isSelector(call.Fun, "ci", "RunnersFor") || i >= len(assign.Lhs) {
 					continue
 				}
 				if ident, ok := assign.Lhs[i].(*ast.Ident); ok {
@@ -245,7 +245,7 @@ func TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner(t *testing
 			runner := call.Args[len(call.Args)-1]
 			switch arg := runner.(type) {
 			case *ast.CallExpr:
-				if isSelector(arg.Fun, "ci", "RunnerFor") {
+				if isSelector(arg.Fun, "ci", "RunnersFor") {
 					return true
 				}
 			case *ast.Ident:
@@ -263,7 +263,7 @@ func TestNoProductionCallerOutsideThisPackageNamesTheSelfHostedRunner(t *testing
 	}
 
 	if len(offenders) > 0 {
-		t.Errorf("these hand ci.Generate a runner not taken from ci.RunnerFor: %v", offenders)
+		t.Errorf("these hand ci.Generate a runner not taken from ci.RunnersFor: %v", offenders)
 	}
 }
 
@@ -304,7 +304,7 @@ func TestACustomSectionOnAnotherRunnerIsNamedWithItsJob(t *testing.T) {
 func TestAWorkflowEntirelyOnItsOwnRunnerNamesNothing(t *testing.T) {
 	for _, runner := range []Runner{hostedRunner(t), SelfHosted} {
 		workflow, err := Generate(os.DirFS("blocks"), testManifest(t),
-			comps("go", "api", "vue", "web"), "", nil, false, nil, runner)
+			comps("go", "api", "vue", "web"), "", nil, false, nil, Everywhere(runner))
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
@@ -319,8 +319,39 @@ func TestAWorkflowEntirelyOnItsOwnRunnerNamesNothing(t *testing.T) {
 func TestTheLintConfigCarriesTheGeneratedStamp(t *testing.T) {
 	manifest := testManifest(t)
 	manifest.Version = 42
-	config := ActionlintConfig(manifest, SelfHosted)
+	config := ActionlintConfig(manifest, SelfHosted, "")
 	if !strings.HasPrefix(config, "# forge-toolchain: 42\n") {
 		t.Errorf("stamp missing or wrong: %q", strings.SplitN(config, "\n", 2)[0])
+	}
+}
+
+// A repo with a Docker set and a daemon-free set sends its hooks job to the
+// second by name, and every component's job keeps asking for the daemon.
+func TestAHooksRunnerSetMovesOnlyTheHooksJob(t *testing.T) {
+	manifest := testManifest(t)
+	runners, err := RunnersFor(true, []string{DockerLabel}, "ci-runners-fleet", manifest)
+	if err != nil {
+		t.Fatalf("RunnersFor: %v", err)
+	}
+	components := comps("go", ".")
+	workflow, err := Generate(os.DirFS("blocks"), manifest, components, owedConfig(t, components), nil, Ungated, nil, runners)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got, want := runsOnLines(workflow), []string{"[self-hosted, private-ci, docker]", "[self-hosted, private-ci, ci-runners-fleet]"}; !slices.Equal(got, want) {
+		t.Errorf("runs-on = %q, want %q", got, want)
+	}
+	if foreign := ForeignRunners(workflow, runners.Jobs); len(foreign) > 0 {
+		t.Errorf("the hooks job read as foreign: %q", foreign)
+	}
+	if config := ActionlintConfig(manifest, runners.Jobs, "ci-runners-fleet"); !strings.Contains(config, "    - ci-runners-fleet\n") {
+		t.Errorf("jactionlint would report the set's name as a typo:\n%s", config)
+	}
+
+	if _, err := RunnersFor(true, nil, "ci-docker-fleet", manifest); err == nil {
+		t.Error("a set outside the daemon-free prefix was accepted")
+	}
+	if _, err := RunnersFor(false, nil, "ci-runners-fleet", manifest); err == nil {
+		t.Error("a scale set was accepted on a hosted runner, where the job would queue for a day")
 	}
 }

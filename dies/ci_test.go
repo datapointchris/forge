@@ -103,7 +103,7 @@ func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWit
 		ci.Hosted(assets.Manifest): assets.Manifest.HostedRunner,
 	} {
 		workflow, err := ci.Generate(assets.CI, assets.Manifest,
-			[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, nil, runner)
+			[]config.Component{{Stack: "go", Dir: "."}}, "", nil, ci.Ungated, nil, ci.Everywhere(runner))
 		if err != nil {
 			t.Fatalf("Generate: %s", err)
 		}
@@ -113,7 +113,7 @@ func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWit
 			t.Fatalf("jactionlint accepted an undeclared %s, so this test measures nothing: %q", label, bare)
 		}
 
-		if finding := lintWorkflow(workflow, ci.ActionlintConfig(assets.Manifest, runner)); finding != "" {
+		if finding := lintWorkflow(workflow, ci.ActionlintConfig(assets.Manifest, runner, "")); finding != "" {
 			t.Errorf("%s: the generated workflow does not lint against its own config: %s", runner, finding)
 		}
 	}

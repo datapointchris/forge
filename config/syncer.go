@@ -128,6 +128,11 @@ type Toolchain struct {
 	// section cannot ask for the label itself. Declared on a private repo only,
 	// and each one a label the pool's runners carry.
 	RunnerLabels []string `json:"runner_labels,omitempty" yaml:"runner_labels,omitempty"`
+	// HooksRunnerSet names the scale set the generated hooks job takes in place
+	// of RunnerLabels, such as "ci-runners-fleet" where a component's job needs
+	// a Docker daemon and the hooks job does not. A repo with both kinds of set
+	// otherwise spends its Docker slots on a job that starts no container.
+	HooksRunnerSet string `json:"hooks_runner_set,omitempty" yaml:"hooks_runner_set,omitempty"`
 	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
 	// whose content is invalid on purpose. logsift keeps a tree of deliberately
 	// broken files to generate real hook output for its pattern tests; every

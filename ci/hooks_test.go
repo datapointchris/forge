@@ -28,7 +28,7 @@ func owedConfig(t *testing.T, components []config.Component, scripts ...string) 
 // the precommit die owes them committed.
 func generateFor(t *testing.T, components []config.Component) string {
 	t.Helper()
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), components, owedConfig(t, components), nil, Ungated, nil, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), components, owedConfig(t, components), nil, Ungated, nil, Everywhere(hostedRunner(t)))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestAStackWithNoCIBlockStillGetsItsHooksRun(t *testing.T) {
 }
 
 func TestARepoWithNoPreCommitConfigGetsNoHooksJob(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, nil, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("go", "."), "", nil, Ungated, nil, Everywhere(hostedRunner(t)))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestOnlyASectionBesideAMissingJobIsOrphaned(t *testing.T) {
 
 // A node component lints with the vue block's hooks, and builds and tests in the vue job.
 func TestANodeComponentGetsTheVueJob(t *testing.T) {
-	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("node", "server"), "", nil, Ungated, nil, hostedRunner(t))
+	workflow, err := Generate(os.DirFS("blocks"), testManifest(t), comps("node", "server"), "", nil, Ungated, nil, Everywhere(hostedRunner(t)))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}

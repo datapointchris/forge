@@ -97,18 +97,23 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		existing = string(data)
 	}
 
-	var runnerLabels []string
+	var (
+		runnerLabels []string
+		hooksSet     string
+	)
 	if t.Repo.Toolchain != nil {
 		runnerLabels = t.Repo.Toolchain.RunnerLabels
+		hooksSet = t.Repo.Toolchain.HooksRunnerSet
 	}
-	runner, err := ci.RunnerFor(t.Repo.IsPrivate(), runnerLabels, t.Assets.Manifest)
+	runners, err := ci.RunnersFor(t.Repo.IsPrivate(), runnerLabels, hooksSet, t.Assets.Manifest)
 	if err != nil {
 		return nil, err
 	}
+	runner := runners.Jobs
 	customSections := precommit.ExtractCustomSections(existing)
 	fleetPython, _ := t.Assets.Manifest.RuntimeVersion("python")
 	wanted, err := ci.Generate(blocksFS, t.Assets.Manifest, components, preCommitConfig,
-		customSections, ci.ReleaseGatesOnValidate(root), ci.PythonFloors(root, components, fleetPython), runner)
+		customSections, ci.ReleaseGatesOnValidate(root), ci.PythonFloors(root, components, fleetPython), runners)
 	if errors.Is(err, ci.ErrNoJobs) {
 		return ciState{reason: "no component has a CI block and the committed pre-commit config names no hook to run"}, nil
 	}
@@ -118,7 +123,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 
 	// Its content depends on the runner, so a repo that stops being private
 	// sees the pool come out of it as a change to this file.
-	lintConfig := ci.ActionlintConfig(t.Assets.Manifest, runner)
+	lintConfig := ci.ActionlintConfig(t.Assets.Manifest, runner, hooksSet)
 	state := ciState{
 		applicable: true,
 		runner:     runner,
