@@ -51,7 +51,7 @@ func TestReleaseAddsTheConcurrencyGroupAboveJobs(t *testing.T) {
 	applyAll(t, target, Release{})
 
 	written := readFile(t, target.Path(releaseWorkflowPath))
-	if !strings.Contains(written, "concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\n  queue: max") {
+	if !strings.Contains(written, "concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\n") || strings.Contains(written, "  queue:") {
 		t.Errorf("the block did not land intact:\n%s", written)
 	}
 	body := splitLines(written)
@@ -60,22 +60,20 @@ func TestReleaseAddsTheConcurrencyGroupAboveJobs(t *testing.T) {
 	}
 }
 
-// A group without queue: max holds one waiting run, so a newer push cancels the
-// run already waiting. GitHub refuses queue: max beside cancel-in-progress: true.
-func TestReleaseAddsQueueToAGroupThatLacksIt(t *testing.T) {
-	grouped := "name: Release\non:\n  push:\n    branches: [main]\nconcurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\njobs:\n  release:\n    runs-on: ubuntu-latest\n"
-	target := releaseFixture(t, grouped)
+// queue: max keeps every run waiting oldest first, which puts the one run able to
+// release behind all the rest.
+func TestReleaseRemovesTheQueueKeyAndKeepsTheGroup(t *testing.T) {
+	queued := "name: Release\non:\n  push:\n    branches: [main]\n# Never cancel-in-progress.\nconcurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\n  queue: max\njobs:\n  release:\n    runs-on: ubuntu-latest\n"
+	target := releaseFixture(t, queued)
 
 	applyAll(t, target, Release{})
 
-	if written := readFile(t, target.Path(releaseWorkflowPath)); !strings.Contains(written, "  cancel-in-progress: false\n  queue: max\njobs:") {
-		t.Errorf("queue: max did not land at the end of the group:\n%s", written)
+	want := strings.Replace(queued, "  queue: max\n", "", 1)
+	if written := readFile(t, target.Path(releaseWorkflowPath)); written != want {
+		t.Errorf("wrote:\n%s\nwant:\n%s", written, want)
 	}
-	canceling := strings.Replace(grouped, "cancel-in-progress: false", "cancel-in-progress: true", 1)
-	for _, change := range assess(t, releaseFixture(t, canceling)) {
-		if change.Item == "concurrency.queue" && change.Repair != reconcile.ByHand {
-			t.Errorf("queue beside cancel-in-progress: true was marked %s, so apply would write a workflow GitHub refuses", change.Repair)
-		}
+	if hasChangeFor(assess(t, target), "concurrency.queue") {
+		t.Error("the queue key was still reported after its removal")
 	}
 }
 

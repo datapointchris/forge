@@ -3,6 +3,7 @@ package dies
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -32,7 +33,7 @@ type Release struct{}
 func (Release) Name() string { return "release" }
 
 func (Release) Description() string {
-	return "Assert the concurrency group a release workflow needs so every push to main queues a release run rather than racing or replacing a waiting one, and report one triggered on a tag."
+	return "Assert the concurrency group a release workflow needs so two pushes to main never race, with no queue key so a newer push replaces a waiting run, and report one triggered on a tag."
 }
 
 func (Release) Tags() []string {
@@ -49,24 +50,20 @@ func (Release) Tags() []string {
 // The group keys on the ref rather than the workflow, so a release on a branch
 // queues against that branch and not against main.
 //
-// queue: max keeps every pending run. Without it a group holds one, and a third
-// push cancels the second push's waiting run, so that merge never gets a
-// release run of its own.
+// The block sets no queue key. A group then holds one pending run, and a newer
+// push replaces it. Only main's tip can cut a version, so a burst of pushes
+// releases once, from its last commit. queue: max keeps every run waiting oldest
+// first, which puts the one run able to release behind all the rest.
 var concurrencyBlock = []string{
 	"# Two pushes to main inside one run's window would otherwise race. Both runs",
 	"# resolve the same version, and the later one fails pushing its tag or its",
 	"# version commit.",
 	"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
-	"# queue: max keeps every waiting run, so no push's release replaces another's.",
+	"# A newer push replaces a waiting run, so a burst of pushes releases once.",
 	"concurrency:",
 	"  group: release-${{ github.ref }}",
 	"  cancel-in-progress: false",
-	"  " + queueLine,
 }
-
-// queueLine is the key a concurrency block needs so a pending run waits behind
-// the one in flight instead of replacing the run already waiting.
-const queueLine = "queue: max"
 
 type releaseState struct {
 	exists bool
@@ -76,16 +73,12 @@ type releaseState struct {
 	parseErr error
 
 	hasConcurrency bool
-	// queue is the concurrency block's queue value, "" where it sets none.
-	queue string
-	// queueBlocked says why queue: max cannot be added automatically, "" where
-	// it can: a scalar block has no mapping to add a key to, and GitHub refuses
-	// queue: max beside cancel-in-progress: true.
-	queueBlocked string
-	// queueIndex is the 0-based line queue: max goes after, the last line of the
-	// concurrency mapping, and queueIndent the indentation of its keys.
+	// queue is the concurrency block's queue value, "" where it sets none, and
+	// queueIndex its 0-based line. queueInFlow says the block is written on one
+	// line, so removing that line would remove the whole block.
+	queue        string
 	queueIndex   int
-	queueIndent  string
+	queueInFlow  bool
 	tagTriggered bool
 	// jobsIndex is where the block goes, 0-based. -1 when there is no top-level
 	// jobs key to insert before.
@@ -142,61 +135,38 @@ func (Release) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	return state, nil
 }
 
-// observeQueue reads the concurrency block's queue key, and where queue: max
-// would go after the block's last line.
+// observeQueue reads the concurrency block's queue key and the line it sits on.
 func observeQueue(state *releaseState, concurrency *yaml.Node) {
-	if concurrency.Kind != yaml.MappingNode || len(concurrency.Content) == 0 {
-		state.queueBlocked = "concurrency names a group alone, with no mapping to add queue to"
+	key := mappingKey(concurrency, "queue")
+	if key == nil {
 		return
 	}
-	if concurrency.Style&yaml.FlowStyle != 0 {
-		state.queueBlocked = "concurrency is written on one line, in flow style"
-		return
-	}
-	if queue := mappingValue(concurrency, "queue"); queue != nil {
-		state.queue = queue.Value
-	}
-	if cancel := mappingValue(concurrency, "cancel-in-progress"); cancel != nil && cancel.Value == "true" {
-		state.queueBlocked = "cancel-in-progress is true, which GitHub refuses beside queue: max"
-	}
-	state.queueIndent = strings.Repeat(" ", concurrency.Content[0].Column-1)
-	state.queueIndex = concurrency.Content[len(concurrency.Content)-1].Line - 1
+	state.queue = mappingValue(concurrency, "queue").Value
+	state.queueIndex = key.Line - 1
+	state.queueInFlow = concurrency.Style&yaml.FlowStyle != 0
 }
 
-// queueChange is the finding for a concurrency block that does not set queue:
-// max.
+// queueChange is the finding for a concurrency block that sets a queue key.
 func queueChange(state releaseState) reconcile.Change {
 	change := reconcile.Change{
-		Item:    "concurrency.queue",
-		Verdict: reconcile.Missing,
-		Detail:  fmt.Sprintf("missing concurrency key: queue in %s; expected %s", releaseWorkflowPath, queueLine),
-		Advice:  "write the concurrency block of " + releaseWorkflowPath + " with group, cancel-in-progress: false and " + queueLine,
+		Item:     "concurrency.queue",
+		Verdict:  reconcile.Stale,
+		Detail:   fmt.Sprintf("%s has queue: %s; expected no queue key, so a newer push replaces a waiting run", releaseWorkflowPath, state.queue),
+		Observed: "queue: " + state.queue,
 	}
-	switch {
-	case state.queue != "":
-		change.Verdict = reconcile.Stale
+	if state.queueInFlow {
 		change.Repair = reconcile.ByHand
-		change.Detail = fmt.Sprintf("%s has queue: %s; expected %s", releaseWorkflowPath, state.queue, queueLine)
-		change.Observed = "queue: " + state.queue
-	case state.queueBlocked != "":
-		change.Repair = reconcile.ByHand
-		change.Detail += "; " + state.queueBlocked
-		change.Observed = state.queueBlocked
-	default:
-		change.Repair = reconcile.Automatic
-		change.Advice = ""
-		change.Patch = unifiedDiff(releaseWorkflowPath, joinLines(state.lines), joinLines(withQueue(state)))
+		change.Advice = "remove queue from the concurrency block of " + releaseWorkflowPath
+		return change
 	}
+	change.Repair = reconcile.Automatic
+	change.Patch = unifiedDiff(releaseWorkflowPath, joinLines(state.lines), joinLines(withoutQueue(state)))
 	return change
 }
 
-// withQueue returns the file's lines with queue: max after the concurrency
-// block's last line, at the indentation of its keys.
-func withQueue(state releaseState) []string {
-	out := make([]string, 0, len(state.lines)+1)
-	out = append(out, state.lines[:state.queueIndex+1]...)
-	out = append(out, state.queueIndent+queueLine)
-	return append(out, state.lines[state.queueIndex+1:]...)
+// withoutQueue returns the file's lines with the queue key's line removed.
+func withoutQueue(state releaseState) []string {
+	return slices.Delete(slices.Clone(state.lines), state.queueIndex, state.queueIndex+1)
 }
 
 func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
@@ -241,7 +211,7 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 		}
 		changes = append(changes, change)
 	}
-	if state.hasConcurrency && state.queue != "max" {
+	if state.queue != "" {
 		changes = append(changes, queueChange(state))
 	}
 	if state.tagTriggered {
@@ -276,14 +246,15 @@ func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile
 	}
 
 	var updated string
+	message := "added"
 	switch {
-	case change.Item == "concurrency.queue" && state.queue == "max":
-		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil
+	case change.Item == "concurrency.queue" && state.queue == "":
+		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already absent"}, nil
 	case change.Item == "concurrency.queue":
-		if !state.hasConcurrency || state.queue != "" || state.queueBlocked != "" {
+		if state.queueInFlow {
 			return changed, nil
 		}
-		updated = joinLines(withQueue(state))
+		updated, message = joinLines(withoutQueue(state)), "removed"
 	case state.hasConcurrency:
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil
 	case state.jobsIndex < 0:
@@ -294,7 +265,7 @@ func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile
 	if err := os.WriteFile(t.Path(releaseWorkflowPath), []byte(updated), 0o644); err != nil {
 		return reconcile.Outcome{}, err
 	}
-	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "added"}, nil
+	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: message}, nil
 }
 
 // withConcurrency returns the file's lines with the block above the jobs key.
