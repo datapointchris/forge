@@ -16,7 +16,7 @@ require (
 require github.com/datapointchris/goclikit v0.4.3
 
 require (
-	github.com/datapointchris/clisurface v0.8.1
+	github.com/datapointchris/clisurface v0.9.0
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	golang.org/x/sys v0.44.0
