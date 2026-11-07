@@ -67,16 +67,24 @@ type reconcileNoun struct {
 
 // command builds the noun's whole subtree.
 func (n *reconcileNoun) command() *cobra.Command {
+	verb := "forge " + n.name + " "
 	root := goclikit.AsNamespace(&cobra.Command{
 		Use:   n.name,
 		Short: n.short,
 		Long:  n.long,
+		Example: "  # What apply would change, across every one of the " + n.many + "\n" +
+			"  " + verb + "plan\n" +
+			"\n" +
+			"  # What only a person can settle\n" +
+			"  " + verb + "check\n" +
+			"\n" +
+			"  # Make one die's changes on one " + n.one + "\n" +
+			"  " + verb + "apply precommit -F " + n.member,
 	})
 	// Every verb under either noun resolves its targets from the registry, so
 	// the flag belongs to the namespace rather than being repeated on each.
 	addRegistryFlag(root)
 
-	verb := "forge " + n.name + " "
 	check := &cobra.Command{
 		Use:   "check [die]",
 		Short: "Report what is wrong, which apply cannot fix",

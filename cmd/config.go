@@ -26,6 +26,8 @@ var configCmd = goclikit.AsNamespace(&cobra.Command{
 	Short: "The machine config",
 	Long: `Inspect the machine config — the directories forge maintains that git does
 not version, and the paths forge resolves for its own files.`,
+	Example: `  # What forge will use, and which layer set each value
+  forge config show`,
 })
 
 var configShowCmd = &cobra.Command{

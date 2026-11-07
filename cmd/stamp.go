@@ -23,6 +23,11 @@ current standard from one behind it.
 
 A tool reading stamps takes both from here at run time, so the installed forge
 is the one authority on where stamps live.`,
+	Example: `  # Which files carry the stamp, and the line it sits on
+  forge stamp spec
+
+  # The same, for a tool that reads stamps
+  forge stamp spec --json`,
 })
 
 var stampSpecJSON bool

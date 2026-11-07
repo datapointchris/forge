@@ -38,18 +38,27 @@ This is the library. To run one, use a reconcile verb, which takes a die name:
   forge repos plan <die>     what apply would change
   forge repos check <die>    what is wrong that apply cannot fix
   forge repos apply <die>    make it so`,
+	Example: `  # Every die, with how often each has run
+  forge dies list
+
+  # What one die does, before applying it
+  forge dies show precommit`,
 })
 
 var diesListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List the dies",
-	Args:  cobra.NoArgs,
-	RunE:  runDiesList,
+	Example: `  # Every die forge can apply, with its run count and last run
+  forge dies list`,
+	Args: cobra.NoArgs,
+	RunE: runDiesList,
 }
 
 var diesShowCmd = &cobra.Command{
-	Use:               "show <die>",
-	Short:             "Show one die in full",
+	Use:   "show <die>",
+	Short: "Show one die in full",
+	Example: `  # What the pre-commit die does and how often it has run
+  forge dies show precommit`,
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeDieNames,
 	RunE:              runDiesShow,
@@ -58,13 +67,23 @@ var diesShowCmd = &cobra.Command{
 var diesSearchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search dies by name, description, or tags",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runDiesSearch,
+	Example: `  # The dies that check a repo's git hygiene
+  forge dies search hygiene`,
+	Args: cobra.ExactArgs(1),
+	RunE: runDiesSearch,
 }
 
 var diesStatsCmd = &cobra.Command{
-	Use:               "stats [die]",
-	Short:             "Show execution history",
+	Use:   "stats [die]",
+	Short: "Show execution history",
+	Example: `  # How often each die has run, and how the last runs went
+  forge dies stats
+
+  # Every run of one die over the last week
+  forge dies stats precommit --since 7d
+
+  # The same summary, for a script
+  forge dies stats --json`,
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeDieNames,
 	RunE:              runDiesStats,

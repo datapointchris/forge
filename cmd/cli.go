@@ -37,6 +37,12 @@ yet.
 that does bind: a command or flag that was there and is not is a broken
 contract for whatever called it, which is why it is worth keeping a surface
 around to subtract from.`,
+	Example: `  # Where the installed CLIs differ from each other
+  forge cli audit
+
+  # Record every surface now, then what changed since the last record
+  forge cli snapshot
+  forge cli diff`,
 })
 
 var cliSpecCmd = &cobra.Command{

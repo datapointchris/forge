@@ -46,6 +46,11 @@ func resolveVersion(ldflagsVersion, moduleVersion string) string {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print forge version information",
+	Example: `  # The release running, with the commit and date it was built from
+  forge version
+
+  # The release alone, on one line
+  forge --version`,
 	Run: func(cmd *cobra.Command, args []string) {
 		current := buildVersion()
 		fmt.Printf("forge %s\n", current)

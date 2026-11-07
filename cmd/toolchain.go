@@ -34,13 +34,17 @@ names, bumping its ` + "`stamp.version`" + `, then rolling out to one repo befor
 fanning out:
 
   forge repos apply precommit -F <repo>`,
+	Example: `  # What every generated config pins, and the file that declares it
+  forge toolchain show`,
 })
 
 var toolchainShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Print the manifest version and what it pins",
-	Args:  cobra.NoArgs,
-	RunE:  runToolchainShow,
+	Example: `  # Which version a generated pin came from, and the file to raise it in
+  forge toolchain show`,
+	Args: cobra.NoArgs,
+	RunE: runToolchainShow,
 }
 
 func init() {

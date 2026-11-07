@@ -41,6 +41,11 @@ go to stderr, so stdout is the commands' output alone:
   forge repos exec -- git log --oneline --since=14.days | cut -f1 | sort | uniq -c
 
 For anything reusable, write a die instead — it gets plan, check and apply.`,
+		Example: `  # Which repos have uncommitted work
+  forge repos exec -- git status --short
+
+  # Which repos a command would reach, running nothing
+  forge repos exec -n -- git pull --ff-only`,
 		RunE: runExec,
 	}
 	cmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
