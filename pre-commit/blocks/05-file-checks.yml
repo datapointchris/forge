@@ -4,7 +4,7 @@
     hooks:
       # --unsafe parses instead of safe_load'ing. Every mkdocs-material repo
       # carries `!!python/name:material.extensions.emoji.twemoji`, which
-      # safe_load can never construct — five repos fail this hook without it.
+      # safe_load can never construct — a repo carrying that tag fails this hook without it.
       # The alternative is excluding mkdocs.yml, which checks strictly less.
       - id: check-yaml
         args: [--unsafe]
