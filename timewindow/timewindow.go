@@ -1,9 +1,8 @@
 // Package timewindow reads a read's `--since` and `--until` into two instants.
 //
 // Each bound is a span back from now (30m, 12h, 7d, 2w), a day read in the
-// machine's zone, or an RFC 3339 instant, which is cli-design.md's rule for a
-// read bounded by time. Every forge read bounded by time resolves its flags
-// here, so one spelling means one instant on every command.
+// machine's zone, or an RFC 3339 instant. Every forge read bounded by time
+// resolves its flags here, so one spelling means one instant on every command.
 package timewindow
 
 import (

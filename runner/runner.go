@@ -47,9 +47,8 @@ type Opts struct {
 // as retired. Dormant is most of the portfolio and none of it takes another
 // release, so a maintenance die swept across it is pure churn: a config every
 // repo "should" have is worth nothing in one that will never run the tool.
-// Status is matched plainly: the registry suite refuses an entry without one,
-// so a reader supplying a meaning for the absent case would be choosing for a
-// value the file never holds.
+// Status is matched plainly, so an entry with no status is swept by nothing,
+// and `forge repos list` counts it under "with no status".
 func ActiveRepos(repos []config.Repo) []config.Repo {
 	var active []config.Repo
 	for _, r := range repos {

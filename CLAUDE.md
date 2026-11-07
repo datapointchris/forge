@@ -87,7 +87,7 @@ own git — check-json5 builds with poetry — and trips on the inherited variab
 
 **Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach. A name that matches nothing is a usage error, exit 2, on every command that takes names, because a run that dropped it would report the rest and a caller would read the dropped name as passing.
 
-**Selection is not the only gate, and the second one decides what a die may do.** Reaching a repo is `SelectRepos`; acting on it is each die's own applicability test, and for `precommit` that test is `maintained`. A declaration answers for a repo somebody works in. Forge's own `# forge-toolchain:` stamp answers for one nobody does: forge wrote those files, so it owns keeping them right, and a registry silent about the repo's stacks has not unwritten them. A stamped repo with no declaration generates as if it declared no components, which is the spelling a declaration of no components already has. That is not the same as "the generic blocks only": `Generate` seeds `git` from the target being versioned, which is gated on no component. **The stamp authorizes correcting what forge wrote and nothing else**: first deployment still needs a declaration, and git hooks forge never installed are not installed by it. Those hooks are still *measured* there and reported `ByHand`, because a stage the config names with no hook installed is broken whether or not forge may fix it. Without both gates, every repo forge has written to but does not track holds whatever it last generated, and every verb reports converged because nothing looked.
+**Selection is not the only gate, and the second one decides what a die may do.** Reaching a repo is `SelectRepos`; acting on it is each die's own applicability test, and for `precommit` that test is `maintained`. A declaration answers for a repo somebody works in. Forge's own `# forge-toolchain:` stamp answers for one nobody does: forge wrote those files, so it owns keeping them right, and a registry silent about the repo's stacks has not unwritten them. A stamped repo with no declaration generates as if it declared no components, which is the spelling a declaration of no components already has. That is not the same as "the generic blocks only": `Generate` adds the `git` block whenever the target is a git repo, whatever components it declares. **The stamp authorizes correcting what forge wrote and nothing else**: first deployment still needs a declaration, and git hooks forge never installed are not installed by it. Those hooks are still *measured* there and reported `ByHand`, because a stage the config names with no hook installed is broken whether or not forge may fix it. Without both gates, every repo forge has written to but does not track holds whatever it last generated, and every verb reports converged because nothing looked.
 
 **The stamp that authorizes those four files lives in only one of them**, so deleting `.pre-commit-config.yaml` returns the other three to exactly that unreachable state. `strandedToolConfigs` is what closes it: with no declaration and no config at all, the three generic tool configs are reported `ByHand` when **all three** are present. Forge deploys them together, so the full set is evidence forge wrote there and a lone `.editorconfig` is not. That evidence is weaker than a stamp and can afford to be, because what it authorizes is a report — nothing is written, overwritten or removed, and a stamp is still what would be needed to touch them.
 
@@ -97,8 +97,8 @@ own git — check-json5 builds with poetry — and trips on the inherited variab
 
 **`AssessAll` measures one repo per CPU at once, and rows print in registry order as they land.** The
 dies spend most of a walk waiting on `gh`, pre-commit and uv, so a serial walk leaves the machine
-idle. A repo's own dies still run in turn. A repo's rows
-print once it and every repo above it are measured. Where stderr is a terminal, a status line under
+idle. A repo's own dies still run in turn. A repo's rows print once it and every repo above it are
+measured. Where stderr is a terminal, a status line under
 the rows counts the measured repos and names the ones still running. `apply` performs serially,
 after the whole plan has printed.
 
@@ -173,17 +173,16 @@ refused as a second copy.
 for real pins: each names its tool, except a third-party action's, which load holds to an exact
 release and a full commit, so it carries a placeholder of each.
 
-**A hook whose tool is a Go module never runs it from `PATH`.** A hook doing so passes or fails by what that
-machine last installed, and gofumpt writes, so two releases rewrite each other. A hook whose tool is
-a Go module runs as a `repo: local`, `language: golang` hook. pre-commit installs it from an
-`additional_dependencies` item `- <module>@{{pin}}`, which `ApplyDependencyVersions` fills from the
-`tools` pin. pre-commit builds it with the Go on `PATH`, or downloads a Go where there is none, so
-CI runs the same hook with no install step of its own. Each such hook runs over a whole module,
-never only the staged files. A formatter fed the staged files leaves the rest of the module as it
-was, and the next commit touching one of those files fails on a change it did not make. So the Go
-pair `cd`s into each declared directory, and golangci-lint must start beside the go.mod it loads
-anyway. The tekwizely hooks walk every go.mod themselves and
-stay one copy.
+**A hook whose tool is a Go module never runs it from `PATH`.** A hook doing so passes or fails by
+what that machine last installed, and gofumpt writes, so two releases rewrite each other. A hook
+whose tool is a Go module runs as a `repo: local`, `language: golang` hook. pre-commit installs it
+from an `additional_dependencies` item `- <module>@{{pin}}`, which `ApplyDependencyVersions` fills
+from the `tools` pin. pre-commit builds it with the Go on `PATH`, or downloads a Go where there is
+none, so CI runs the same hook with no install step of its own. Each such hook runs over a whole
+module, never only the staged files. A formatter fed the staged files leaves the rest of the module
+as it was, and the next commit touching one of those files fails on a change it did not make. So the
+Go pair `cd`s into each declared directory, and golangci-lint must start beside the go.mod it loads
+anyway. The tekwizely hooks walk every go.mod themselves and stay one copy.
 
 **stylua runs StyLua's release binary, installed from npm, never StyLua's own hook.** That hook is
 `language: rust`, and pre-commit's cargo build takes the crate's default features, which leave out
@@ -315,10 +314,10 @@ time, so a finding in a file nobody touched cannot fail a push. A change touchin
 config, a manifest, a lockfile or a toolchain file is the exception, and the job checks every file.
 A new ruff rule or linter release matches no source file's type filter. Scoped to the change, it
 would grade nothing, and its findings would land on the next author to touch the code. The run
-script names each file that widens the scope. The checkout stays one commit deep
-and the job fetches only the base commit. pre-commit falls back to a two-dot diff where two commits
-share no history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit
-can be fetched, as on a repo's first push, the job checks every file and says so in a notice.
+script names each file that widens the scope. The checkout stays one commit deep and the job
+fetches only the base commit. pre-commit falls back to a two-dot diff where two commits share no
+history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit can be
+fetched, as on a repo's first push, the job checks every file and says so in a notice.
 
 **`runs-on` follows the repo's declared visibility, through `ci.RunnerFor`.** A private repo takes the
 self-hosted pool, because GitHub bills hosted minutes on private repos only. Anything not positively
@@ -361,8 +360,8 @@ hand-written config at `.yaml` or `.yml` is reported and left alone. The die lin
 config too, and holds back `validate.yml` or a repin it refuses.
 
 **The output is `validate.yml`, not `ci.yml`.** `ci.yml` is the name a hand-written pipeline takes
-by default, and generating over one would destroy work nothing could recover. The die refuses any `validate.yml`
-lacking the `# forge-toolchain:` header for the same reason.
+by default, and generating over one would destroy a pipeline nothing could recover. The die refuses
+any `validate.yml` lacking the `# forge-toolchain:` header for the same reason.
 
 **`forge repos check` is the pre-rollout gate.** The `precommit` and `ci` dies run jactionlint and
 `pre-commit validate-config`, and report what would block a real sync as `ByHand`. One trap no schema
@@ -374,10 +373,11 @@ the `versions_file` config key, and unset is an error, because forge ships no pi
 `forge toolchain show` prints the path it read.
 
 **The declared pins reach workflows forge did not write.** The `ci` die rewrites the declared action,
-the release a downloading action installs, and `go install`, uvx and binary versions in every hand-written workflow and in every custom section of
-the generated one, through `ApplyWorkflowPins`, and changes nothing else in them. A runtime version is
-left alone, because a hand-written matrix may test several on purpose. So is a commit pin on an
-action the declaration names by tag alone, because the tag would loosen it.
+the release a downloading action installs, and `go install`, uvx and binary versions in every
+hand-written workflow and in every custom section of the generated one, through
+`ApplyWorkflowPins`, and changes nothing else in them. A runtime version is left alone, because a
+hand-written matrix may test several on purpose. So is a commit pin on an action the declaration
+names by tag alone, because the tag would loosen it.
 
 **A third-party action is used by commit, a first-party one by tag.** An action outside `actions/*`
 declares `sha` beside an exact `version`, and every line naming it becomes `@<sha> # <version>`,

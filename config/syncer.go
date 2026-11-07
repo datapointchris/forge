@@ -76,10 +76,10 @@ type Repo struct {
 	// SyncedDirs are repo-relative directories the synced-dirs die keeps in the
 	// sync base, by symlink.
 	//
-	// Declared rather than built into the die, because a repo's name inside a
-	// generic tool is a fact about one deployment, which DefaultReposPath's
-	// comment above rules out. The repo is what knows it keeps generated data outside
-	// git; forge only has to know the operation.
+	// Declared rather than built into the die, because a repo's name is a fact
+	// about one deployment and does not belong in a generic tool. The repo is what
+	// knows it keeps generated data outside git; forge only has to know the
+	// operation.
 	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty" yaml:"synced_dirs,omitempty"`
 	// Binary is the command this repo installs for a person to run, declared on
 	// every entry that has one and absent where it has none. Declared for the

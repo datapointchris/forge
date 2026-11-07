@@ -15,9 +15,9 @@ import (
 	"github.com/datapointchris/forge/lint"
 )
 
-// `forge lint sleepy` where sleepy is dormant, like most of a registry, linted
-// nothing and exited 0, and so did `forge lint no-such-repo`. A script running
-// `forge lint <repo> && deploy` read both as the repo passing.
+// The default selection drops dormant repos, so resolving names after it would
+// lint nothing at exit 0, and `forge lint <repo> && deploy` would read that as
+// the repo passing.
 func TestANamedDormantRepoIsLintedAndANameMatchingNothingExits2(t *testing.T) {
 	checkout := t.TempDir()
 	registry := filepath.Join(t.TempDir(), "repos.json")

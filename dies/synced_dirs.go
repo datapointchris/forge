@@ -212,7 +212,7 @@ func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]re
 	for _, dir := range state.dirs {
 		switch {
 		case dir.linked() && dir.targetExists:
-			// Nothing to say.
+			// Already linked to a live target: converged.
 
 		case dir.linked():
 			changes = append(changes, reconcile.Change{
@@ -410,8 +410,8 @@ func syncBase(t reconcile.Target) (string, error) {
 	return t.Config.ResolvedSyncBase()
 }
 
-// sameTree reports whether two paths hold identical content, recursively —
-// what `diff -rq` answered for the bash die.
+// sameTree reports whether two paths hold identical content, recursively, as
+// `diff -rq` would.
 func sameTree(a, b string) (bool, error) {
 	infoA, err := os.Lstat(a)
 	if err != nil {

@@ -105,9 +105,6 @@ func TestRunnerLabelsJoinThePoolAndNoJobIsLeftWithoutARunner(t *testing.T) {
 	}
 }
 
-// The image is the declaration's pin, never a label forge carries. GitHub moves
-// ubuntu-latest to a new release on its own schedule, and a job that passed the
-// day before then fails with nothing in the repo changed.
 func TestAPublicRepoRunsOnTheImageTheDeclarationPins(t *testing.T) {
 	manifest := testManifest(t)
 	manifest.HostedRunner = "ubuntu-98.10"

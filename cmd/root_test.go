@@ -46,8 +46,8 @@ func TestAnUnknownSubcommandNamesTheNearOnes(t *testing.T) {
 	}
 }
 
-// Cobra parses a group's flags before its arguments, so an unknown word followed
-// by a flag only a leaf declares reported the flag and never the word.
+// Left to cobra, which parses a group's flags before its arguments, an unknown
+// word followed by a flag only a leaf declares reports the flag and never the word.
 func TestAWordBeforeAFlagIsRefusedOnEveryGroup(t *testing.T) {
 	for _, group := range []string{"cli", "config", "dies", "directories", "repos", "stamp", "toolchain"} {
 		err := runLine(t, group, "bogus", "--json")
@@ -61,8 +61,8 @@ func TestAWordBeforeAFlagIsRefusedOnEveryGroup(t *testing.T) {
 	}
 }
 
-// Cobra answers --help before it validates arguments, so a mistyped word asking
-// for help printed the group's screen and exited 0 as though it had matched.
+// Left to cobra, which answers --help before it validates arguments, a mistyped
+// word asking for help prints the group's screen and exits 0 as though it matched.
 func TestAWordTypedWithHelpIsRefusedOnEveryGroup(t *testing.T) {
 	lines := [][]string{{"repos", "bogus", "-h"}}
 	for _, group := range []string{"cli", "config", "dies", "directories", "repos", "stamp", "toolchain"} {
@@ -134,8 +134,8 @@ func resolves(line string) error {
 }
 
 // The root help is what a session reads before guessing, so every command it
-// shows has to run. Each of these was typed after reading a help screen that
-// listed the dies apart from the verbs that take them.
+// shows has to run. Each of these reads as a command on a help screen that
+// lists the dies apart from the verbs that take them.
 func TestResolvesRefusesTheWordsForgeDoesNotHave(t *testing.T) {
 	for _, line := range []string{
 		"forge precommit",

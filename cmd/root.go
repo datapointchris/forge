@@ -31,9 +31,6 @@ func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
 	embeddedCI = ciBlocks
 }
 
-// rootCmd's help is the first screen anyone reads, so it says where to start
-// and in what order, not only what exists.
-//
 // A die is an argument to a reconcile verb, never a command of its own, and
 // nothing in a bare list of subcommands says so: `forge precommit`, `forge ci`
 // and `forge dies release` all read as plausible. The help names every die
@@ -65,8 +62,8 @@ var rootCmd = &cobra.Command{
 		"A repo's stacks are declared in the registry rather than reached by a\n" +
 		"command: `forge test` runs their suites.\n" +
 		"\n" +
-		"Reach for `forge toolchain show` when a pinned version is the line that\n" +
-		"caught your eye. It names the file every generated pin comes from.\n" +
+		"When a plan row names a pinned version, `forge toolchain show` names the\n" +
+		"file every generated pin comes from.\n" +
 		"\n" +
 		"Questions about the portfolio as a whole belong to fleet: `fleet status`\n" +
 		"for what each repo's status says, `fleet info` for everything in\n" +

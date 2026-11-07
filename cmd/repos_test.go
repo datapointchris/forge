@@ -13,7 +13,7 @@ import (
 )
 
 // Other readers of one registry take a wider set than forge does, so a bare
-// list of names read as the whole registry and two tools appeared to disagree
+// list of names reads as the whole registry and two tools appear to disagree
 // about how many repos it holds.
 func TestReposListNamesItsSetAndWhatItLeftOut(t *testing.T) {
 	checkout := t.TempDir()

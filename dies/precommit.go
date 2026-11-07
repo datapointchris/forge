@@ -193,8 +193,8 @@ func (m maintenance) reason() string {
 //
 // An undeclared repo is generated as if it declared no components, which is the
 // existing spelling a declaration of no components already has. That is not the
-// same as "the generic blocks only": Generate seeds the git block from
-// versioned, which is gated on no component. A stack the registry stopped naming
+// same as "the generic blocks only": Generate adds the git block whenever the
+// target is a git repo, whatever components it declares. A stack the registry stopped naming
 // is not guessed at from what happens to be on disk.
 //
 // First deployment is untouched. Without a stamp there is no file, so a repo
