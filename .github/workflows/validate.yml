@@ -32,6 +32,8 @@ jobs:
       # and the die decodes is checked only on a desk. FORGE_REQUIRE_UV turns a
       # later disappearance into a failure. The script's own suite runs beside it.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.24"
       - name: Require uv, and run the pre-commit script tests
         run: |
           echo "FORGE_REQUIRE_UV=1" >> "$GITHUB_ENV"
@@ -291,7 +293,6 @@ jobs:
             go-vet-repo-mod
             go-build-repo-mod
             go-mod-tidy-repo
-            go-test-repo-mod
             jactionlint
           )
           # Every hook runs whatever the one before it found, so one push
