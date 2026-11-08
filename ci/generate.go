@@ -431,7 +431,7 @@ func Generate(
 	lines = append(lines, "jobs:")
 
 	jobs := 0
-	var hookSetups []string
+	var hookSetups, jobCategories []string
 	for _, component := range components {
 		// By the category that lints the stack, as its pre-commit hooks are: a
 		// node component carries the vue block's hooks, and needs node for them.
@@ -459,6 +459,7 @@ func Generate(
 			continue
 		}
 		jobs++
+		jobCategories = append(jobCategories, category)
 		job := workflowJob{name: JobName(component), dir: component.Dir, checkout: shared, block: joinSteps(stripDescription(setup), stripDescription(checks))}
 		if floor, ok := pythonFloors[component.Dir]; ok && category == "python" && floor != highest {
 			job.uvPython = floor
@@ -466,7 +467,12 @@ func Generate(
 		lines = append(lines, job.render(manifest, customSections, runners.Jobs)...)
 	}
 
-	if hooks := HooksToRun(preCommitConfig); len(hooks) > 0 {
+	hooks := slices.DeleteFunc(HooksToRun(preCommitConfig), func(id string) bool {
+		return slices.ContainsFunc(jobCategories, func(category string) bool {
+			return slices.Contains(runInFullByStackJob[category], id)
+		})
+	})
+	if len(hooks) > 0 {
 		block, err := loadBlock(blocksFS, HooksJob)
 		if err != nil {
 			return "", err
@@ -603,8 +609,13 @@ const HooksJob = "hooks"
 // go stack's.
 const SetupSuffix = "-setup"
 
-// HooksToRun lists what the hooks job runs: every hook a standard block put in
-// the config, by id, at the pre-commit stage.
+// runInFullByStackJob names, per category, the hooks its own job already runs
+// in full, which the hooks job leaves out. The go job's `go test ./...` holds
+// every test the go-test hook's -short run does.
+var runInFullByStackJob = map[string][]string{"go": {"go-test-repo-mod"}}
+
+// HooksToRun lists every hook a standard block put in the config, by id, at the
+// pre-commit stage. The hooks job runs these less runInFullByStackJob's.
 //
 // A hook in a custom section is the repo's own and stays out. Some need a
 // workstation, such as one that drives an editor or a local stack, and a repo

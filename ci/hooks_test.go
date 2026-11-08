@@ -50,7 +50,7 @@ func jobSteps(workflow, job string) string {
 }
 
 // Every hook a standard block carries at the pre-commit stage, whatever its
-// stack, is one the hooks job runs. No stack job runs a copy of any of them.
+// stack, is one HooksToRun lists.
 func TestTheHooksJobRunsEveryHookAStandardBlockCarries(t *testing.T) {
 	entries, err := os.ReadDir("../pre-commit/blocks")
 	if err != nil {
@@ -86,6 +86,18 @@ func TestAnAliasedHookRunsUnderItsID(t *testing.T) {
 	got := HooksToRun(owedConfig(t, comps("python", "."), "bin/tool"))
 	if !slices.Contains(got, "ruff-format") || slices.Contains(got, "ruff-format-scripts") {
 		t.Errorf("hooks = %v, want ruff-format and not ruff-format-scripts", got)
+	}
+}
+
+// The go job's whole suite holds the go-test hook's -short run, so CI runs
+// those tests once.
+func TestTheHooksJobLeavesTheShortGoTestsToTheGoJob(t *testing.T) {
+	workflow := generateFor(t, comps("go", "."))
+	if hooks := jobSteps(workflow, HooksJob); strings.Contains(hooks, "go-test-repo-mod") || !strings.Contains(hooks, "go-vet-repo-mod") {
+		t.Errorf("hooks job should run go-vet-repo-mod and not go-test-repo-mod:\n%s", hooks)
+	}
+	if !strings.Contains(jobSteps(workflow, "go"), "go test ./...") {
+		t.Error("the go job no longer runs the whole suite, so the hooks job must run go-test-repo-mod again")
 	}
 }
 
