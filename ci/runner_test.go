@@ -379,6 +379,9 @@ func TestAReleaseRunnerIsTakenOnlyWhenTheReleasePassesIt(t *testing.T) {
 	if !strings.Contains(workflow, "  workflow_call:\n    inputs:\n") {
 		t.Errorf("no runs-on input on workflow_call:\n%s", workflow)
 	}
+	if strings.Contains(workflow, "cache: true") {
+		t.Errorf("setup-go restores a cache, as on a hosted runner, though every runner here is self-hosted:\n%s", workflow)
+	}
 	if foreign := ForeignRunners(workflow, runners.Jobs); len(foreign) > 0 {
 		t.Errorf("a generated job read as foreign: %q", foreign)
 	}

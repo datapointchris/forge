@@ -538,7 +538,7 @@ func Generate(
 		if floor, ok := pythonFloors[component.Dir]; ok && category == "python" && floor != highest {
 			job.uvPython = floor
 		}
-		lines = append(lines, job.render(manifest, customSections, runners.runsOn(runners.Jobs))...)
+		lines = append(lines, job.render(manifest, customSections, runners.Jobs, runners)...)
 	}
 
 	hooks := slices.DeleteFunc(HooksToRun(preCommitConfig), func(id string) bool {
@@ -557,7 +557,7 @@ func Generate(
 		jobs++
 		steps := append(slices.Clone(hookSetups), applyHooks(stripDescription(block), hooks))
 		job := workflowJob{name: HooksJob, checkout: shared, block: joinSteps(steps...)}
-		lines = append(lines, job.render(manifest, customSections, runners.runsOn(runners.Hooks))...)
+		lines = append(lines, job.render(manifest, customSections, runners.Hooks, runners)...)
 	}
 
 	if jobs == 0 {
@@ -651,9 +651,10 @@ type workflowJob struct {
 	uvPython string
 }
 
-// render is the job's lines, custom sections included.
-func (j workflowJob) render(manifest *toolchain.Toolchain, customSections map[string]string, runner Runner) []string {
-	lines := []string{"", fmt.Sprintf("  %s:", j.name), fmt.Sprintf("    runs-on: %s", runner)}
+// render is the job's lines, custom sections included. runner is the job's own
+// runner, which its placeholders read, and runs-on carries runners.runsOn of it.
+func (j workflowJob) render(manifest *toolchain.Toolchain, customSections map[string]string, runner Runner, runners Runners) []string {
+	lines := []string{"", fmt.Sprintf("  %s:", j.name), fmt.Sprintf("    runs-on: %s", runners.runsOn(runner))}
 	if j.dir != "" && j.dir != "." {
 		lines = append(lines, "    defaults:", "      run:", fmt.Sprintf("        working-directory: %s", j.dir))
 	}
