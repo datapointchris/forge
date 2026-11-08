@@ -9,6 +9,7 @@
 package ci
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -142,6 +143,67 @@ func RunnerFor(private bool, labels []string, manifest *toolchain.Toolchain) (Ru
 type Runners struct {
 	Jobs  Runner
 	Hooks Runner
+	// Release is the runner a release workflow keeps for itself, "" where the
+	// repo keeps none. Where set, every generated job takes a runs-on input,
+	// so a release calling this workflow runs it there.
+	Release Runner
+}
+
+// WithRelease adds the runner a release workflow keeps for itself, named by its
+// one custom label. A hosted image carries no custom label, so the label is
+// refused off the self-hosted pool.
+func (r Runners) WithRelease(label string) (Runners, error) {
+	if label == "" {
+		return r, nil
+	}
+	if !r.Jobs.IsSelfHosted() {
+		return Runners{}, fmt.Errorf("release runner label %q is declared on a repo not declared private; a hosted image carries no custom label", label)
+	}
+	r.Release = Runner("[self-hosted, " + label + "]")
+	return r, nil
+}
+
+// runsOn is what a generated job's runs-on says: its own runner, or, where the
+// repo keeps a release runner, whatever runner a caller passes, falling back to
+// its own.
+func (r Runners) runsOn(own Runner) Runner {
+	if r.Release == "" {
+		return own
+	}
+	return Runner(fmt.Sprintf("${{ inputs.runs-on && fromJSON(inputs.runs-on) || fromJSON('%s') }}", own.JSON()))
+}
+
+// overridableRE matches the runs-on runsOn writes, capturing the job's own
+// runner as JSON.
+var overridableRE = regexp.MustCompile(`^\$\{\{ inputs\.runs-on && fromJSON\(inputs\.runs-on\) \|\| fromJSON\('(.+)'\) \}\}$`)
+
+// ownRunner is the runner a runs-on falls back to when it is the one runsOn
+// writes, and false for any other value.
+func ownRunner(value string) (Runner, bool) {
+	match := overridableRE.FindStringSubmatch(value)
+	if match == nil {
+		return "", false
+	}
+	var labels []string
+	if err := json.Unmarshal([]byte(match[1]), &labels); err != nil {
+		return "", false
+	}
+	return Runner("[" + strings.Join(labels, ", ") + "]"), true
+}
+
+// JSON is the runner as GitHub's fromJSON reads it: a list of labels for the
+// pool, a string for a hosted image.
+func (r Runner) JSON() string {
+	value := any(string(r))
+	if inner, ok := strings.CutPrefix(string(r), "["); ok {
+		labels := strings.Split(strings.TrimSuffix(inner, "]"), ",")
+		for i := range labels {
+			labels[i] = strings.TrimSpace(labels[i])
+		}
+		value = labels
+	}
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
 }
 
 // Everywhere puts every generated job on one runner.
@@ -217,16 +279,19 @@ func onThePool(value string) bool {
 //
 // A private repo gets every label the pool's runners carry, whatever its
 // generated jobs ask for. A hand-written job starting a container asks for
-// DockerLabel in a repo whose generated jobs need no daemon. hooksSet is the
-// scale set the repo's hooks job names, "" where it names none.
-func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner, hooksSet string) string {
+// DockerLabel in a repo whose generated jobs need no daemon. extra are the
+// labels only this repo's jobs name: the scale set its hooks job takes and the
+// runner its release keeps, each "" where it names none.
+func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner, extra ...string) string {
 	labels := "    - " + manifest.HostedRunner + "\n"
 	if runner.IsSelfHosted() {
 		for _, label := range append([]string{RunnerLabel}, poolLabels...) {
 			labels += "    - " + label + "\n"
 		}
-		if hooksSet != "" {
-			labels += "    - " + hooksSet + "\n"
+		for _, label := range extra {
+			if label != "" {
+				labels += "    - " + label + "\n"
+			}
 		}
 	}
 	return fmt.Sprintf(`%s
@@ -409,10 +474,19 @@ func Generate(
 		)
 	}
 
+	lines = append(lines, "  pull_request:", "  workflow_call:")
+	if runners.Release != "" {
+		lines = append(lines,
+			"    inputs:",
+			"      # The runner every job takes, as JSON. The release passes the one it",
+			"      # keeps for itself. Unset, as on a pull request, each job takes its own.",
+			"      runs-on:",
+			"        type: string",
+			`        default: ""`,
+		)
+	}
 	lines = append(
 		lines,
-		"  pull_request:",
-		"  workflow_call:",
 		"",
 		"permissions:",
 		"  contents: read",
@@ -464,7 +538,7 @@ func Generate(
 		if floor, ok := pythonFloors[component.Dir]; ok && category == "python" && floor != highest {
 			job.uvPython = floor
 		}
-		lines = append(lines, job.render(manifest, customSections, runners.Jobs)...)
+		lines = append(lines, job.render(manifest, customSections, runners.runsOn(runners.Jobs))...)
 	}
 
 	hooks := slices.DeleteFunc(HooksToRun(preCommitConfig), func(id string) bool {
@@ -483,7 +557,7 @@ func Generate(
 		jobs++
 		steps := append(slices.Clone(hookSetups), applyHooks(stripDescription(block), hooks))
 		job := workflowJob{name: HooksJob, checkout: shared, block: joinSteps(steps...)}
-		lines = append(lines, job.render(manifest, customSections, runners.Hooks)...)
+		lines = append(lines, job.render(manifest, customSections, runners.runsOn(runners.Hooks))...)
 	}
 
 	if jobs == 0 {
@@ -531,6 +605,9 @@ func ForeignRunners(workflow string, runner Runner) []string {
 		}
 		value, ok := strings.CutPrefix(line, "    runs-on: ")
 		value = strings.TrimSpace(value)
+		if own, overridable := ownRunner(value); overridable {
+			value = string(own)
+		}
 		if !ok || value == string(runner) || (runner.IsSelfHosted() && onThePool(value)) {
 			continue
 		}

@@ -133,6 +133,12 @@ type Toolchain struct {
 	// a Docker daemon and the hooks job does not. A repo with both kinds of set
 	// otherwise spends its Docker slots on a job that starts no container.
 	HooksRunnerSet string `json:"hooks_runner_set,omitempty" yaml:"hooks_runner_set,omitempty"`
+	// ReleaseRunnerLabel names a self-hosted runner the repo's release workflow
+	// keeps for itself, such as "app-release", so a release never waits
+	// behind pull request CI. The generated workflow takes a runs-on input the
+	// release passes it, and actionlint.yaml declares the label. Declared on a
+	// private repo only.
+	ReleaseRunnerLabel string `json:"release_runner_label,omitempty" yaml:"release_runner_label,omitempty"`
 	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
 	// whose content is invalid on purpose. logsift keeps a tree of deliberately
 	// broken files to generate real hook output for its pattern tests; every

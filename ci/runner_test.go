@@ -352,3 +352,40 @@ func TestAHooksRunnerSetMovesOnlyTheHooksJob(t *testing.T) {
 		t.Error("a scale set was accepted on a hosted runner, where the job would queue for a day")
 	}
 }
+
+// A repo keeping a release runner takes the runner its release passes, and a
+// pull request, which passes none, keeps each job on its own.
+func TestAReleaseRunnerIsTakenOnlyWhenTheReleasePassesIt(t *testing.T) {
+	manifest := testManifest(t)
+	runners, err := RunnersFor(true, []string{DockerLabel}, "ci-runners-app", manifest)
+	if err == nil {
+		runners, err = runners.WithRelease("app-release")
+	}
+	if err != nil {
+		t.Fatalf("runners: %v", err)
+	}
+	components := comps("go", ".")
+	workflow, err := Generate(os.DirFS("blocks"), manifest, components, owedConfig(t, components), nil, Gated, nil, runners)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	want := []string{
+		`${{ inputs.runs-on && fromJSON(inputs.runs-on) || fromJSON('["self-hosted","private-ci","docker"]') }}`,
+		`${{ inputs.runs-on && fromJSON(inputs.runs-on) || fromJSON('["self-hosted","private-ci","ci-runners-app"]') }}`,
+	}
+	if got := runsOnLines(workflow); !slices.Equal(got, want) {
+		t.Errorf("runs-on = %q, want %q", got, want)
+	}
+	if !strings.Contains(workflow, "  workflow_call:\n    inputs:\n") {
+		t.Errorf("no runs-on input on workflow_call:\n%s", workflow)
+	}
+	if foreign := ForeignRunners(workflow, runners.Jobs); len(foreign) > 0 {
+		t.Errorf("a generated job read as foreign: %q", foreign)
+	}
+	if config := ActionlintConfig(manifest, runners.Jobs, "", "app-release"); !strings.Contains(config, "    - app-release\n") {
+		t.Errorf("jactionlint would report the release runner's label as a typo:\n%s", config)
+	}
+	if _, err := Everywhere(Hosted(manifest)).WithRelease("app-release"); err == nil {
+		t.Error("a release runner was accepted on a hosted runner, where the job would queue for a day")
+	}
+}
