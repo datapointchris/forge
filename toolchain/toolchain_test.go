@@ -278,7 +278,7 @@ func TestTheRefusalOfATagAloneAsksForBothFields(t *testing.T) {
 	}
 }
 
-func TestOnlyTheDownloadingActionsOwnInputIsRewritten(t *testing.T) {
+func TestEveryDownloadingActionStepNamesThePinnedRelease(t *testing.T) {
 	manifest := &Toolchain{Version: 1, Hooks: []Hook{{Repo: hookPinnedTools["uv"], Rev: "0.9.1"}}}
 	workflow := strings.Join([]string{
 		"      - uses: astral-sh/setup-uv@v7",
@@ -287,27 +287,45 @@ func TestOnlyTheDownloadingActionsOwnInputIsRewritten(t *testing.T) {
 		"      - uses: goreleaser/goreleaser-action@v6",
 		"        with:",
 		"          version: v2.1.0",
-		"      - name: no input",
-		"        uses: astral-sh/setup-uv@v7",
+		"      - name: no with",
+		"        uses: astral-sh/setup-uv@v7 # v7.0.0",
+		"",
 		"      - run: echo version: 1",
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          enable-cache: true",
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          version: 0.9.1",
+	}, "\n")
+	want := strings.Join([]string{
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		`          version: "0.9.1"`,
+		"      - uses: goreleaser/goreleaser-action@v6",
+		"        with:",
+		"          version: v2.1.0",
+		"      - name: no with",
+		"        uses: astral-sh/setup-uv@v7 # v7.0.0",
+		"        with:",
+		`          version: "0.9.1"`,
+		"",
+		"      - run: echo version: 1",
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		`          version: "0.9.1"`,
+		"          enable-cache: true",
 		"      - uses: astral-sh/setup-uv@v7",
 		"        with:",
 		"          version: 0.9.1",
 	}, "\n")
 
-	got := strings.Split(manifest.ApplyActionReleaseInputs(workflow), "\n")
-
-	if got[2] != `          version: "0.9.1"` {
-		t.Errorf("setup-uv's input = %q, want the uv its hook pins", got[2])
+	got := manifest.ApplyActionReleaseInputs(workflow)
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
-	if got[5] != "          version: v2.1.0" {
-		t.Errorf("another action's input was rewritten: %q", got[5])
-	}
-	if len(got) != 12 {
-		t.Errorf("an input was added to a step that had none:\n%s", strings.Join(got, "\n"))
-	}
-	if got[11] != "          version: 0.9.1" {
-		t.Errorf("an input already naming the release was rewritten: %q", got[11])
+	if again := manifest.ApplyActionReleaseInputs(got); again != got {
+		t.Errorf("a second pass changed the workflow again:\n%s", again)
 	}
 }
 

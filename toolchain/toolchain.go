@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -469,38 +470,119 @@ func (t *Toolchain) ApplyUvxVersions(content string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ApplyActionReleaseInputs rewrites the input naming the tool's release on
-// each step whose action downloads that tool, to the release the tool's binary
+// ApplyActionReleaseInputs sets the input naming the tool's release on each
+// step whose action downloads that tool, to the release the tool's binary
 // resolves as. Only an input inside that step's `with:` is read, so another
 // action's input of the same name is left alone. A step without the input
-// gets none: what an author left out of a workflow is not added here.
+// gains it, because left out the action installs whatever release is newest.
 func (t *Toolchain) ApplyActionReleaseInputs(content string) string {
 	lines := strings.Split(content, "\n")
-	var release releaseInput
-	withIndent := -1
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); {
+		if !stepStartRE.MatchString(lines[i]) {
+			out = append(out, lines[i])
+			i++
+			continue
+		}
+		end := stepEnd(lines, i)
+		out = append(out, t.pinStepRelease(lines[i:end])...)
+		i = end
+	}
+	return strings.Join(out, "\n")
+}
 
-	for i, line := range lines {
-		if stepStartRE.MatchString(line) {
-			release, withIndent = releaseInput{}, -1
-		}
-		if m := usesLineRE.FindStringSubmatch(line); m != nil {
-			release = downloadingActions[m[2]]
+// pinStepRelease returns one step's lines with its downloading action's release
+// input set, or the lines unchanged where the step uses no such action.
+func (t *Toolchain) pinStepRelease(step []string) []string {
+	keyColumn := itemKeyColumn(step[0])
+	usesAt, withAt := -1, -1
+	for i, line := range step {
+		key := strings.TrimLeft(line, " ")
+		if i == 0 {
+			key = strings.TrimLeft(strings.TrimPrefix(key, "-"), " ")
+		} else if leadingSpaces(line) != keyColumn {
 			continue
 		}
-		if m := withLineRE.FindStringSubmatch(line); m != nil {
-			withIndent = len(m[1])
+		switch {
+		case strings.HasPrefix(key, "uses:"):
+			usesAt = i
+		case strings.HasPrefix(key, "with:"):
+			withAt = i
+		}
+	}
+	if usesAt < 0 {
+		return step
+	}
+	m := usesLineRE.FindStringSubmatch(step[usesAt])
+	if m == nil {
+		return step
+	}
+	release := downloadingActions[m[2]]
+	version, managed := t.BinaryVersion(release.binary)
+	if release.input == "" || !managed {
+		return step
+	}
+	input := fmt.Sprintf("%s: %q", release.input, version)
+
+	if withAt < 0 {
+		pad := strings.Repeat(" ", keyColumn)
+		return slices.Concat(step[:usesAt+1], []string{pad + "with:", pad + "  " + input}, step[usesAt+1:])
+	}
+	// A flow mapping such as `with: {enable-cache: true}` is left to its author,
+	// since a second `with:` key would make the step invalid.
+	if !withLineRE.MatchString(step[withAt]) {
+		return step
+	}
+	childIndent := -1
+	for j := withAt + 1; j < len(step); j++ {
+		line := step[j]
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		m := inputLineRE.FindStringSubmatch(line)
-		if m == nil || release.input == "" || withIndent < 0 || len(m[1]) <= withIndent || m[2] != release.input {
+		if leadingSpaces(line) <= keyColumn {
+			break
+		}
+		if childIndent < 0 {
+			childIndent = leadingSpaces(line)
+		}
+		in := inputLineRE.FindStringSubmatch(line)
+		if len(in) < 4 || len(in[1]) != childIndent || in[2] != release.input {
 			continue
 		}
 		// A value already naming the release stays as written, quoted or not.
-		if version, managed := t.BinaryVersion(release.binary); managed && strings.Trim(m[3], `"'`) != version {
-			lines[i] = fmt.Sprintf("%s%s: %q", m[1], m[2], version)
+		if strings.Trim(in[3], `"'`) != version {
+			step = slices.Clone(step)
+			step[j] = strings.Repeat(" ", childIndent) + input
+		}
+		return step
+	}
+	if childIndent < 0 {
+		childIndent = keyColumn + 2
+	}
+	return slices.Concat(step[:withAt+1], []string{strings.Repeat(" ", childIndent) + input}, step[withAt+1:])
+}
+
+// stepEnd is the index of the first line after the list item starting at
+// start: the next non-blank line indented less than the item's keys.
+func stepEnd(lines []string, start int) int {
+	keyColumn := itemKeyColumn(lines[start])
+	for i := start + 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) != "" && leadingSpaces(lines[i]) < keyColumn {
+			return i
 		}
 	}
-	return strings.Join(lines, "\n")
+	return len(lines)
+}
+
+// itemKeyColumn is the column a list item's keys start at: the first
+// character after its dash and the spaces following it.
+func itemKeyColumn(line string) int {
+	afterDash := strings.Index(line, "-") + 1
+	return afterDash + leadingSpaces(line[afterDash:])
+}
+
+func leadingSpaces(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " "))
 }
 
 // ApplyWorkflowPins rewrites the pins a workflow forge did not write shares

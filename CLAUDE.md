@@ -392,7 +392,9 @@ setup-terraform the newest terraform, unless an input names one. `downloadingAct
 that input and to the binary its release resolves as, and `ApplyActionReleaseInputs` fills it on
 every step naming the action, in a generated workflow or a hand-written one. uv takes the uv-lock
 hook's rev. terraform is a `binaries` entry, so a declaration without one refuses every Terraform
-repo. A hand-written step without the input is left without it.
+repo. A hand-written step without the input gains it, with a `with:` block where it had none. Left
+out, the release job builds with a newer tool than the validation it gates on ran. A `with:` written
+as a flow mapping is left alone, because a second `with:` key would make the step invalid.
 
 **The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
 and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
