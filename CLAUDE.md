@@ -342,6 +342,11 @@ only when it creates the set, so a live set never gains one. `RunnersFor` refuse
 `DaemonFreeSetPrefix` and any name on a repo not declared private, and the repo's generated
 `actionlint.yaml` declares the name.
 
+**`toolchain.runner_set` sends every generated job to a named daemon-free scale set**, for a repo
+whose generated jobs start no container while a hand-written job still needs its Docker set.
+`hooks_runner_set` still overrides it for the hooks job. `RunnersFor` checks it as it checks the
+hooks set, and refuses it beside `runner_labels`, because a daemon-free set carries none of them.
+
 **The hosted image is a pinned release, `runners.hosted` in the declaration.** `ubuntu-latest` moves
 to a new release on GitHub's schedule, and a job that passed the day before then fails with nothing
 in the repo changed. Both loaders refuse a declaration naming no release, or naming `ubuntu-latest`.

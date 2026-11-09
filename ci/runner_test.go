@@ -326,7 +326,7 @@ func TestTheLintConfigCarriesTheGeneratedStamp(t *testing.T) {
 // second by name, and every component's job keeps asking for the daemon.
 func TestAHooksRunnerSetMovesOnlyTheHooksJob(t *testing.T) {
 	manifest := testManifest(t)
-	runners, err := RunnersFor(true, []string{DockerLabel}, "ci-runners-fleet", manifest)
+	runners, err := RunnersFor(true, []string{DockerLabel}, "", "ci-runners-fleet", manifest)
 	if err != nil {
 		t.Fatalf("RunnersFor: %v", err)
 	}
@@ -345,11 +345,33 @@ func TestAHooksRunnerSetMovesOnlyTheHooksJob(t *testing.T) {
 		t.Errorf("jactionlint would report the set's name as a typo:\n%s", config)
 	}
 
-	if _, err := RunnersFor(true, nil, "ci-docker-fleet", manifest); err == nil {
+	if _, err := RunnersFor(true, nil, "", "ci-docker-fleet", manifest); err == nil {
 		t.Error("a set outside the daemon-free prefix was accepted")
 	}
-	if _, err := RunnersFor(false, nil, "ci-runners-fleet", manifest); err == nil {
+	if _, err := RunnersFor(false, nil, "", "ci-runners-fleet", manifest); err == nil {
 		t.Error("a scale set was accepted on a hosted runner, where the job would queue for a day")
+	}
+}
+
+// A repo whose generated jobs start no container sends every one of them to its
+// daemon-free set by name, so none takes a Docker slot.
+func TestARunnerSetMovesEveryGeneratedJob(t *testing.T) {
+	manifest := testManifest(t)
+	runners, err := RunnersFor(true, nil, "ci-runners-app", "", manifest)
+	if err != nil {
+		t.Fatalf("RunnersFor: %v", err)
+	}
+	components := comps("go", ".")
+	workflow, err := Generate(os.DirFS("blocks"), manifest, components, owedConfig(t, components), nil, Ungated, nil, runners)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	set := "[self-hosted, private-ci, ci-runners-app]"
+	if got, want := runsOnLines(workflow), []string{set, set}; !slices.Equal(got, want) {
+		t.Errorf("runs-on = %q, want %q", got, want)
+	}
+	if _, err := RunnersFor(true, []string{DockerLabel}, "ci-runners-app", "", manifest); err == nil {
+		t.Error("a runner set was accepted beside the docker label, which a daemon-free set lacks")
 	}
 }
 
@@ -357,7 +379,7 @@ func TestAHooksRunnerSetMovesOnlyTheHooksJob(t *testing.T) {
 // pull request, which passes none, keeps each job on its own.
 func TestAReleaseRunnerIsTakenOnlyWhenTheReleasePassesIt(t *testing.T) {
 	manifest := testManifest(t)
-	runners, err := RunnersFor(true, []string{DockerLabel}, "ci-runners-app", manifest)
+	runners, err := RunnersFor(true, []string{DockerLabel}, "", "ci-runners-app", manifest)
 	if err == nil {
 		runners, err = runners.WithRelease("app-release")
 	}

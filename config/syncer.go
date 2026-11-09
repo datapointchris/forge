@@ -128,6 +128,12 @@ type Toolchain struct {
 	// section cannot ask for the label itself. Declared on a private repo only,
 	// and each one a label the pool's runners carry.
 	RunnerLabels []string `json:"runner_labels,omitempty" yaml:"runner_labels,omitempty"`
+	// RunnerSet names the daemon-free scale set every generated job takes in
+	// place of the pool, such as "ci-runners-app" where no generated job
+	// starts a container. A job asking for the pool alone also matches the
+	// repo's Docker set, and nearly always takes a Docker slot it has no use
+	// for. Refused beside RunnerLabels, which a daemon-free set carries none of.
+	RunnerSet string `json:"runner_set,omitempty" yaml:"runner_set,omitempty"`
 	// HooksRunnerSet names the scale set the generated hooks job takes in place
 	// of RunnerLabels, such as "ci-runners-fleet" where a component's job needs
 	// a Docker daemon and the hooks job does not. A repo with both kinds of set

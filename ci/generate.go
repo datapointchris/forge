@@ -212,24 +212,45 @@ func Everywhere(runner Runner) Runners {
 }
 
 // RunnersFor picks the runners a repo's generated workflows may name:
-// RunnerFor's for every job, and for the hooks job the daemon-free scale set
-// hooksSet names, where it names one. A set is refused off the pool, because a
-// hosted image carries no such label and the job would queue for a day.
-func RunnersFor(private bool, labels []string, hooksSet string, manifest *toolchain.Toolchain) (Runners, error) {
+// RunnerFor's for every job, or the daemon-free scale set jobsSet names, and
+// for the hooks job the set hooksSet names, where it names one. A set is
+// refused off the pool, because a hosted image carries no such label and the
+// job would queue for a day. jobsSet is refused beside labels, because a
+// daemon-free set carries none of them.
+func RunnersFor(private bool, labels []string, jobsSet, hooksSet string, manifest *toolchain.Toolchain) (Runners, error) {
 	runner, err := RunnerFor(private, labels, manifest)
 	if err != nil {
 		return Runners{}, err
 	}
+	if jobsSet != "" {
+		if len(labels) > 0 {
+			return Runners{}, fmt.Errorf("runner set %q is declared beside runner labels %s; a daemon-free set carries none of them",
+				jobsSet, strings.Join(labels, ", "))
+		}
+		if runner, err = onSet(runner, "runner set", jobsSet); err != nil {
+			return Runners{}, err
+		}
+	}
 	if hooksSet == "" {
 		return Everywhere(runner), nil
 	}
-	if !runner.IsSelfHosted() {
-		return Runners{}, fmt.Errorf("hooks runner set %q is declared on a repo not declared private; a hosted image carries no scale set's name", hooksSet)
+	hooks, err := onSet(runner, "hooks runner set", hooksSet)
+	if err != nil {
+		return Runners{}, err
 	}
-	if !strings.HasPrefix(hooksSet, DaemonFreeSetPrefix) {
-		return Runners{}, fmt.Errorf("hooks runner set %q names no daemon-free scale set; expected %s<repo>", hooksSet, DaemonFreeSetPrefix)
+	return Runners{Jobs: runner, Hooks: hooks}, nil
+}
+
+// onSet is the runner naming one daemon-free scale set, which only a job
+// already on the self-hosted pool may take.
+func onSet(pool Runner, field, set string) (Runner, error) {
+	if !pool.IsSelfHosted() {
+		return "", fmt.Errorf("%s %q is declared on a repo not declared private; a hosted image carries no scale set's name", field, set)
 	}
-	return Runners{Jobs: runner, Hooks: Runner("[self-hosted, " + RunnerLabel + ", " + hooksSet + "]")}, nil
+	if !strings.HasPrefix(set, DaemonFreeSetPrefix) {
+		return "", fmt.Errorf("%s %q names no daemon-free scale set; expected %s<repo>", field, set, DaemonFreeSetPrefix)
+	}
+	return Runner("[self-hosted, " + RunnerLabel + ", " + set + "]"), nil
 }
 
 // IsSelfHosted reports whether this runner is the self-hosted pool, with or
@@ -288,8 +309,8 @@ func ActionlintConfig(manifest *toolchain.Toolchain, runner Runner, extra ...str
 		for _, label := range append([]string{RunnerLabel}, poolLabels...) {
 			labels += "    - " + label + "\n"
 		}
-		for _, label := range extra {
-			if label != "" {
+		for i, label := range extra {
+			if label != "" && !slices.Contains(extra[:i], label) {
 				labels += "    - " + label + "\n"
 			}
 		}

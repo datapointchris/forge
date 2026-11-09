@@ -99,15 +99,17 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 
 	var (
 		runnerLabels []string
+		jobsSet      string
 		hooksSet     string
 		releaseLabel string
 	)
 	if t.Repo.Toolchain != nil {
 		runnerLabels = t.Repo.Toolchain.RunnerLabels
+		jobsSet = t.Repo.Toolchain.RunnerSet
 		hooksSet = t.Repo.Toolchain.HooksRunnerSet
 		releaseLabel = t.Repo.Toolchain.ReleaseRunnerLabel
 	}
-	runners, err := ci.RunnersFor(t.Repo.IsPrivate(), runnerLabels, hooksSet, t.Assets.Manifest)
+	runners, err := ci.RunnersFor(t.Repo.IsPrivate(), runnerLabels, jobsSet, hooksSet, t.Assets.Manifest)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +130,7 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 
 	// Its content depends on the runner, so a repo that stops being private
 	// sees the pool come out of it as a change to this file.
-	lintConfig := ci.ActionlintConfig(t.Assets.Manifest, runner, hooksSet, releaseLabel)
+	lintConfig := ci.ActionlintConfig(t.Assets.Manifest, runner, jobsSet, hooksSet, releaseLabel)
 	state := ciState{
 		applicable: true,
 		runner:     runner,
