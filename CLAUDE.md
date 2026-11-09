@@ -133,8 +133,12 @@ collapse; differing ones get their hook ids suffixed with the directory. A block
 Four categories are seeded by `Generate` rather than by a component:
 
 - `sql` follows a declared `sql_dialect`, because nothing in a `.sql` file says which dialect it is.
-- `git` (conventional-commits) follows whether the target is versioned. On an unversioned target it
-  would be a hook that can never fire, and `uninstalledHooks` would not report it.
+- `git` (conventional-commits and ci-skip-marker) follows whether the target is versioned. On an
+  unversioned target each would be a hook that can never fire, and `uninstalledHooks` would not
+  report it. ci-skip-marker refuses a message holding a CI skip marker in GitHub's or Bitbucket's
+  documented spellings. It goes to every versioned repo rather than to the `actions` category,
+  because that category follows a declared component rather than whether a repo runs CI, so a
+  repo with workflows and no such component would go without it.
 - `python-scripts` follows a scan of tracked files for extensionless apps with a
   `#!/usr/bin/env -S uv run --script` shebang. identify tags those `uv`, not `python`, so the ordinary
   ruff and mypy hooks skip them without a word — and mypy's `mypy .` collects by extension, so fixing

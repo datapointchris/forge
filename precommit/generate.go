@@ -61,8 +61,8 @@ const wholeScope = "after:all"
 // repo declaring Python, and go-release by a Go component whose releases
 // go-semantic-release cuts.
 //
-// git is gated that way because its block hooks commit-msg, which only fires on
-// a commit. A target git does not version would carry a hook that can never run,
+// git is gated that way because its blocks hook commit-msg, which only fires on
+// a commit. A target git does not version would carry hooks that can never run,
 // and nothing would say so, because uninstalledHooks reports no missing stages
 // where there is no .git to install them into.
 //
@@ -71,6 +71,7 @@ const wholeScope = "after:all"
 // for a Go module. Under python-semantic-release the hook's remedy cuts nothing.
 var categoryMap = map[string]string{
 	"conventional-commits":    "git",
+	"ci-skip-marker":          "git",
 	"python-format":           "python",
 	"python-lint":             "python",
 	"python-scripts":          ScriptCategory,
