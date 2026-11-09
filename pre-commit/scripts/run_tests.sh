@@ -5,4 +5,4 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-uv run --with tomlkit python3 test_merge_pyproject_tools.py
+uv run --with tomlkit python3 -B test_merge_pyproject_tools.py
