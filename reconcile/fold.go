@@ -225,15 +225,28 @@ func CodeFor(results []Result) ExitCode {
 	return code
 }
 
-// ExitError carries a non-zero verdict up to main without a message.
+// ExitError carries a non-zero verdict up to main.
 //
-// The verb has already printed its rows, so there is nothing left to say; what
-// is left is the number. cmd.Execute unwraps this before its error printer, so
-// a plan that found drift exits 1 silently rather than printing an error for
-// something that is not one.
-type ExitError struct{ Code ExitCode }
+// Where the verb has printed its rows, there is nothing left to say, so Err is
+// nil and what is left is the number. cmd.Execute unwraps this before its error
+// printer, so a plan that found drift exits 1 silently rather than printing an
+// error for something that is not one.
+//
+// Err is set where the verb stopped before measuring anything, such as a
+// declaration that will not load. No row says why, so main prints it.
+type ExitError struct {
+	Code ExitCode
+	Err  error
+}
 
-func (e *ExitError) Error() string { return fmt.Sprintf("exit %d", e.Code) }
+func (e *ExitError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return fmt.Sprintf("exit %d", e.Code)
+}
+
+func (e *ExitError) Unwrap() error { return e.Err }
 
 // ExitFor returns the error a verb should return, or nil when converged.
 func ExitFor(results []Result) error {

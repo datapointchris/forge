@@ -51,7 +51,7 @@ forge repos plan precommit -F <repo>   # exits 0: converged, which proves apply 
 from `-c <path>`, then `$FORGE_REPOS_REGISTRY`, then `repos_registry` in forge's config at
 `$XDG_CONFIG_HOME/forge/config.yml`, then `$XDG_DATA_HOME/forge/repos.json`. The declaration
 resolves from `$FORGE_VERSIONS_FILE`, then `versions_file`. With neither, `toolchain show` exits 1
-and names both, and every reconcile verb refuses, because forge ships no pins of its own.
+and names both, and every reconcile verb refuses with exit 3, because forge ships no pins of its own.
 
 `precommit` deploys into a repo for the first time only where the registry gives it a `toolchain`.
 A repo with neither that declaration nor forge's stamp on an existing config is left alone, and its

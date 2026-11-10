@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -110,6 +113,31 @@ func TestUnknownDieNameIsAUsageError(t *testing.T) {
 	_, err := selectedDies([]string{"nosuchdie"})
 	if !errors.Is(err, goclikit.ErrUsage) {
 		t.Errorf("not a usage error, so it exits 1 rather than 2: %v", err)
+	}
+}
+
+// A plan that measured nothing would otherwise exit 1, which a caller reads as
+// changes pending, and check would answer the 1 it never gives.
+func TestADeclarationThatWillNotLoadExits3AndSaysWhy(t *testing.T) {
+	registry := execRegistry(t, "alpha")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	invalid := filepath.Join(t.TempDir(), "versions.json")
+	if err := os.WriteFile(invalid, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cfgPath = "" })
+
+	for _, declared := range []string{"", invalid} {
+		t.Setenv("FORGE_VERSIONS_FILE", declared)
+		for _, verb := range []string{"check", "plan"} {
+			var stderr bytes.Buffer
+			if code := exitCode(&stderr, runLine(t, "repos", verb, "-c", registry)); code != 3 {
+				t.Errorf("repos %s with versions file %q exits %d, want 3", verb, declared, code)
+			}
+			if !strings.Contains(stderr.String(), "versions_file") {
+				t.Errorf("repos %s printed %q, want the reason naming versions_file", verb, stderr.String())
+			}
+		}
 	}
 }
 

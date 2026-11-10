@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -198,16 +199,26 @@ func (n *reconcileNoun) selected(cmd *cobra.Command) ([]config.Repo, *config.Syn
 	return selected, cfg, nil
 }
 
+// refused is the error a verb that measures returns when it stops before
+// measuring anything: exit 3, never 1, because 1 is plan's answer for drift and
+// nothing was measured. A usage error keeps its 2.
+func refused(err error) error {
+	if errors.Is(err, goclikit.ErrUsage) {
+		return err
+	}
+	return &reconcile.ExitError{Code: reconcile.ExitIssue, Err: err}
+}
+
 // targets resolves what to walk, with the assets every die may need.
 func (n *reconcileNoun) targets(cmd *cobra.Command) ([]reconcile.Target, error) {
 	selected, cfg, err := n.selected(cmd)
 	if err != nil {
-		return nil, err
+		return nil, refused(err)
 	}
 
 	assets, err := loadAssets()
 	if err != nil {
-		return nil, err
+		return nil, refused(err)
 	}
 
 	walked := make([]reconcile.Target, 0, len(selected))

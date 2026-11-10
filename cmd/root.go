@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -93,27 +94,35 @@ func run(config autoupdate.Config) error {
 
 func Execute() {
 	if err := run(autoupdate.Config{Update: updateConfig()}); err != nil {
-		// A reconcile verb has already printed its rows, so what is left is the
-		// number, not a message. Checked before the printer below: `plan` that
-		// found drift exits 1 and prints nothing extra, because pending changes
-		// are its answer rather than an error.
-		var verdict *reconcile.ExitError
-		if errors.As(err, &verdict) {
-			os.Exit(int(verdict.Code))
-		}
-		// A reported error is already on screen, so printing it here would say
-		// it twice. The update command writes its own ✗ line, and a command
-		// given none of the arguments it requires prints its help.
-		if !errors.Is(err, goclikit.ErrReported) {
-			fmt.Fprintln(os.Stderr, err)
-		}
-		// 2 says the command line was wrong rather than the run, which is the
-		// only failure a caller should retry with different arguments.
-		if errors.Is(err, goclikit.ErrUsage) {
-			os.Exit(2)
-		}
-		os.Exit(1)
+		os.Exit(exitCode(os.Stderr, err))
 	}
+}
+
+// exitCode prints what err leaves unsaid to w and answers the process's exit code.
+func exitCode(w io.Writer, err error) int {
+	// A reconcile verb that printed its rows leaves only the number. Checked
+	// before the printer below: `plan` that found drift exits 1 and prints
+	// nothing extra, because pending changes are its answer rather than an
+	// error. A verb that refused before measuring carries its reason.
+	var verdict *reconcile.ExitError
+	if errors.As(err, &verdict) {
+		if verdict.Err != nil {
+			_, _ = fmt.Fprintln(w, verdict.Err)
+		}
+		return int(verdict.Code)
+	}
+	// A reported error is already on screen, so printing it here would say
+	// it twice. The update command writes its own ✗ line, and a command
+	// given none of the arguments it requires prints its help.
+	if !errors.Is(err, goclikit.ErrReported) {
+		_, _ = fmt.Fprintln(w, err)
+	}
+	// 2 says the command line was wrong rather than the run, which is the
+	// only failure a caller should retry with different arguments.
+	if errors.Is(err, goclikit.ErrUsage) {
+		return 2
+	}
+	return 1
 }
 
 // wrapList joins words with commas into indented lines no wider than width.
