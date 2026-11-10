@@ -181,17 +181,28 @@ would change", which is ` + "`plan`" + `.`,
 	return root
 }
 
-// selected answers which of this noun's members the filter names, and is where
-// an empty selection becomes an error. Separate from targets because the verbs
-// that need no die — `run` — must answer a typo the same way the ones that do
-// already answer it, and they would otherwise pay for assets they never read.
-func (n *reconcileNoun) selected(cmd *cobra.Command) ([]config.Repo, *config.SyncerConfig, error) {
+// resolveFilter answers which of this noun's members the filter names, and
+// refuses any name that matched nothing. Every verb taking -F resolves through
+// it, so a typo gets one answer whichever verb it was typed under.
+func (n *reconcileNoun) resolveFilter(cmd *cobra.Command) ([]config.Repo, *config.SyncerConfig, error) {
 	selected, cfg, err := n.resolve(cmd, n.filterNames)
 	if err != nil {
 		return nil, nil, err
 	}
 	if missing := unmatched(selected, n.filterNames); len(missing) > 0 {
 		return nil, nil, noneMatched(n.many, missing)
+	}
+	return selected, cfg, nil
+}
+
+// selected is resolveFilter for a verb that acts, where an empty selection is
+// an error. Separate from targets because the verbs that need no die — `run`
+// and `exec` — must answer a typo the same way the ones that do already answer
+// it, and they would otherwise pay for assets they never read.
+func (n *reconcileNoun) selected(cmd *cobra.Command) ([]config.Repo, *config.SyncerConfig, error) {
+	selected, cfg, err := n.resolveFilter(cmd)
+	if err != nil {
+		return nil, nil, err
 	}
 	if len(selected) == 0 {
 		return nil, nil, goclikit.UsageError(fmt.Errorf("no %s are declared", n.many))
@@ -393,7 +404,7 @@ func (n *reconcileNoun) confirmApply(cmd *cobra.Command, args []string, planned 
 }
 
 func (n *reconcileNoun) runList(cmd *cobra.Command, _ []string) error {
-	selected, cfg, err := n.resolve(cmd, n.filterNames)
+	selected, cfg, err := n.resolveFilter(cmd)
 	if err != nil {
 		return err
 	}

@@ -141,6 +141,44 @@ func TestADeclarationThatWillNotLoadExits3AndSaysWhy(t *testing.T) {
 	}
 }
 
+// A command that drops a typo beside a real name reports the real one, and a
+// caller reads the typo as passing. Walked from the root, so a command gaining
+// -F later is held to the same answer.
+func TestANameMatchingNothingExits2OnEveryCommandTakingFilter(t *testing.T) {
+	registry := execRegistry(t, "sample")
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	writeDeclaredDirectory(t, configHome)
+	t.Cleanup(func() { cfgPath, repos.filterNames, directories.filterNames = "", nil, nil })
+
+	var filtered []*cobra.Command
+	var walk func(*cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if cmd.Flags().Lookup("filter") != nil {
+			filtered = append(filtered, cmd)
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(rootCmd)
+	if len(filtered) == 0 {
+		t.Fatal("no command declares -F")
+	}
+
+	for _, cmd := range filtered {
+		line := strings.Fields(cmd.CommandPath())[1:]
+		line = append(line, "-c", registry, "-F", "sample,no-such-name")
+		if cmd.Name() == "exec" {
+			line = append(line, "--", "true")
+		}
+		err := runLine(t, line...)
+		if !errors.Is(err, goclikit.ErrUsage) || !strings.HasSuffix(err.Error(), "matched: no-such-name") {
+			t.Errorf("forge %s = %v, want a usage error naming no-such-name alone", strings.Join(line, " "), err)
+		}
+	}
+}
+
 // One die name is the ordinary case and stays legal.
 func TestOneDieNameIsAccepted(t *testing.T) {
 	cmd := findSub(t, repos.command(), "plan")

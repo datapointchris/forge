@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
@@ -13,17 +12,17 @@ import (
 )
 
 var (
-	execFilterNames []string
-	execDryRun      bool
-	scriptFile      string
+	execDryRun bool
+	scriptFile string
 )
 
 // newExecCmd is the escape hatch, and what makes dies affordable as Go only: a
 // one-off sweep is one command here, with nothing to register.
 //
 // Built fresh for each repos subtree, because AddCommand reparents a command
-// and a shared one belongs to whichever subtree was built last.
-func newExecCmd() *cobra.Command {
+// and a shared one belongs to whichever subtree was built last. Takes the noun
+// so -F resolves through the same selection the reconcile verbs use.
+func newExecCmd(n *reconcileNoun) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exec [-- command...]",
 		Short: "Run an arbitrary command in each repo",
@@ -46,15 +45,17 @@ For anything reusable, write a die instead — it gets plan, check and apply.`,
 
   # Which repos a command would reach, running nothing
   forge repos exec -n -- git pull --ff-only`,
-		RunE: runExec,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runExec(n, cmd, args)
+		},
 	}
-	cmd.Flags().StringSliceVarP(&execFilterNames, "filter", "F", nil, "comma-separated repo names to include")
+	cmd.Flags().StringSliceVarP(&n.filterNames, "filter", "F", nil, "comma-separated "+n.one+" names to include")
 	cmd.Flags().BoolVarP(&execDryRun, "dry-run", "n", false, "show which repos would be affected without executing")
 	cmd.Flags().StringVarP(&scriptFile, "file", "f", "", "path to script file to execute in each repo")
 	return cmd
 }
 
-func runExec(cmd *cobra.Command, args []string) error {
+func runExec(n *reconcileNoun, cmd *cobra.Command, args []string) error {
 	if scriptFile == "" && len(args) == 0 {
 		return goclikit.UsageError(fmt.Errorf("provide a command after -- or use -f to specify a script file"))
 	}
@@ -76,14 +77,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	cfg, err := loadRepos(cmd)
+	repos, _, err := n.selected(cmd)
 	if err != nil {
 		return err
-	}
-
-	repos := runner.SelectRepos(cfg.Repos, execFilterNames)
-	if len(repos) == 0 {
-		return fmt.Errorf("no repos matched filter: %s", strings.Join(execFilterNames, ", "))
 	}
 
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()

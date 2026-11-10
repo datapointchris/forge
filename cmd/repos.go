@@ -16,9 +16,9 @@ import (
 
 // repos is the portfolio: everything in the registry that git versions.
 //
-// SelectRepos is deliberately not shared with directories. status, brief and
-// exec all mean repos, and a maintained directory entering one of those sweeps
-// would be a target with no remote handed to something that assumes one.
+// SelectRepos is deliberately not shared with directories. exec means repos,
+// and a maintained directory entering its sweep would be a target with no
+// remote handed to something that assumes one.
 var repos = &reconcileNoun{
 	name:   "repos",
 	one:    "repo",
@@ -52,7 +52,7 @@ Exit codes: 0 converged, 1 changes pending (plan only), 3 something is wrong.`,
 		}
 		return runner.SelectRepos(cfg.Repos, names), cfg, nil
 	},
-	only:  func(*reconcileNoun) []*cobra.Command { return []*cobra.Command{newExecCmd()} },
+	only:  func(n *reconcileNoun) []*cobra.Command { return []*cobra.Command{newExecCmd(n)} },
 	scope: reposScope,
 }
 
