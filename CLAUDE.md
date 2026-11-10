@@ -202,9 +202,11 @@ whose per-platform packages carry the release binary from the npm registry. The 
 `hooks` stays the one declaration of the release: `hookPinnedTools` maps the package to that repo,
 and `ApplyDependencyVersions` fills the quoted item with its rev.
 
-**Every template in `pre-commit/configs/` carries `# forge-managed` on its first line.** `handWritten`
-reads it, and a file at a managed path without it is reported rather than overwritten
-(`TestEveryDeployedToolConfigCarriesTheManagedMarker`). What each deployed config has learned:
+**Every template in `pre-commit/configs/` that forge deploys whole carries `# forge-managed` on its
+first line.** `handWritten` reads it, and a file at a managed path without it is reported rather
+than overwritten (`TestEveryDeployedToolConfigCarriesTheManagedMarker`). `pyproject-tools.toml` is
+merged into a repo's `pyproject.toml` rather than deployed, so it carries none. What each deployed
+config has learned:
 
 - **markdownlint and prettier are YAML, not JSON**, because JSON cannot carry the marker and prettier
   warns on an unknown key every run. Both tools prefer the JSON file when both exist, so

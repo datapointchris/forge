@@ -171,8 +171,8 @@ What forge refuses to overwrite:
 - **A hand-written pipeline.** The output is `validate.yml`, never `ci.yml`. `ci.yml` is the name a
   hand-written pipeline takes by default, and generating over one would destroy work nothing could
   recover. A `validate.yml` without forge's stamp is reported and left alone.
-- **A hand-written tool config.** Every template carries `# forge-managed` on its first line. A
-  file at a managed path without it is reported rather than overwritten.
+- **A hand-written tool config.** Every tool config forge deploys whole carries `# forge-managed` on
+  its first line. A file at a managed path without it is reported rather than overwritten.
 - **A custom hook.** A repo's own hooks sit under a marker, and regeneration keeps them. A hook in
   the config with no marker blocks regeneration and is reported by `check`.
 
