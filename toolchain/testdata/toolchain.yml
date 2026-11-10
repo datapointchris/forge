@@ -79,21 +79,31 @@ tools:
 
 # Every tool in hookPinnedTools is absent on purpose: it takes its release from
 # its hook, and Load refuses a binaries entry for one.
+#
+# A sha256 or commit must have its real shape, so each is a placeholder of one
+# repeated digit.
 binaries:
   - name: bats
     version: fixture-bats
+    commit: "1111111111111111111111111111111111111111"
   - name: bats_support
     version: fixture-bats-support
+    commit: "2222222222222222222222222222222222222222"
   - name: bats_assert
     version: fixture-bats-assert
+    commit: "3333333333333333333333333333333333333333"
   - name: jq
     version: fixture-jq
+    sha256: "4444444444444444444444444444444444444444444444444444444444444444"
   - name: yq
     version: fixture-yq
+    sha256: "5555555555555555555555555555555555555555555555555555555555555555"
   - name: rg
     version: fixture-rg
+    sha256: "6666666666666666666666666666666666666666666666666666666666666666"
   - name: cargo_audit
     version: fixture-cargo-audit
+    sha256: "7777777777777777777777777777777777777777777777777777777777777777"
   - name: terraform
     version: fixture-terraform
 

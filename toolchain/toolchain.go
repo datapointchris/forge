@@ -50,7 +50,8 @@ var (
 	// include one and let backtracking find the final `_version`. Without that a
 	// multi-word tool silently never matches, and ships whatever version the
 	// block happens to name — the exact drift the manifest exists to prevent.
-	binaryLineRE = regexp.MustCompile(`^(\s*)([a-z0-9_]+)_version="\S+"\s*$`)
+	binaryLineRE = regexp.MustCompile(`^(\s*)([a-z0-9_]+)_(version|sha256|commit)="\S+"\s*$`)
+	sha256RE     = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	uvxLineRE    = regexp.MustCompile(`^(.*\buvx\s+)([a-z0-9-]+)@(\S+)(.*)$`)
 	// uvx naming the interpreter its tool runs on.
 	uvxPythonRE = regexp.MustCompile(`^(.*\buvx\s+--python\s+)(\S+)(.*)$`)
@@ -142,10 +143,16 @@ type Toolchain struct {
 	Languages map[string]Language `yaml:"-"`
 }
 
-// Binary is a released executable pinned to a version.
+// Binary is a released executable pinned to a version, and to the bytes that
+// version served when it was pinned. A release asset or a tag can be replaced
+// afterward, so CI checks a download against Sha256 and a clone against Commit.
 type Binary struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
+	Name    string `yaml:"name" json:"name"`
+	Version string `yaml:"version" json:"version"`
+	// Sha256 is the digest of the release asset CI downloads.
+	Sha256 string `yaml:"sha256" json:"sha256"`
+	// Commit is the commit the version's tag points at, for a tool CI clones.
+	Commit string `yaml:"commit" json:"commit"`
 }
 
 // Runtime is a language runtime pinned to a version.
@@ -253,11 +260,18 @@ func (t *Toolchain) refuseFloatingRunner() error {
 
 // refuseDerivedBinaries rejects a binaries entry for a tool whose CI version
 // comes from its hook's pin. The entry would be a second copy of that version,
-// and ApplyBinaryVersions would never read it.
+// and ApplyBinaryVersions would never read it. It also rejects a sha256 or a
+// commit that is not one, which CI would otherwise discover as a failed check.
 func (t *Toolchain) refuseDerivedBinaries() error {
 	for _, binary := range t.Binaries {
 		if repo, derived := hookPinnedTools[binary.Name]; derived {
 			return fmt.Errorf("binaries pins %s, whose CI version is the release its hook pin %s wraps — remove the binaries entry", binary.Name, repo)
+		}
+		if binary.Sha256 != "" && !sha256RE.MatchString(binary.Sha256) {
+			return fmt.Errorf("binaries pins %s to sha256 %q, which is not 64 lowercase hex digits", binary.Name, binary.Sha256)
+		}
+		if binary.Commit != "" && !commitRE.MatchString(binary.Commit) {
+			return fmt.Errorf("binaries pins %s to commit %q, which is not a full 40-character commit id", binary.Name, binary.Commit)
 		}
 	}
 	return nil
@@ -754,19 +768,41 @@ func (t *Toolchain) BinaryVersion(name string) (string, bool) {
 	return "", false
 }
 
-// ApplyBinaryVersions rewrites `<name>_version="X"` shell assignments in a
-// block to the manifest's pinned version. An unmanaged name is left alone, so a
-// block can still use the same shape for a version the manifest does not own.
+// binaryIntegrity returns the sha256 or commit the manifest pins for a released
+// binary. An entry that leaves the field empty does not manage it, so a block
+// line asking for it keeps its placeholder and Unpinned refuses the file.
+func (t *Toolchain) binaryIntegrity(name, field string) (string, bool) {
+	for _, binary := range t.Binaries {
+		if binary.Name != name {
+			continue
+		}
+		value := binary.Sha256
+		if field == "commit" {
+			value = binary.Commit
+		}
+		return value, value != ""
+	}
+	return "", false
+}
+
+// ApplyBinaryVersions rewrites `<name>_version="X"`, `<name>_sha256="X"` and
+// `<name>_commit="X"` shell assignments in a block to what the manifest pins.
+// An unmanaged name is left alone, so a block can still use the same shape for
+// a version the manifest does not own.
 func (t *Toolchain) ApplyBinaryVersions(content string) string {
 	lines := strings.Split(content, "\n")
 
 	for i, line := range lines {
 		m := binaryLineRE.FindStringSubmatch(line)
-		if len(m) < 3 {
+		if len(m) < 4 {
 			continue
 		}
-		if version, managed := t.BinaryVersion(m[2]); managed {
-			lines[i] = fmt.Sprintf("%s%s_version=%q", m[1], m[2], version)
+		value, managed := t.BinaryVersion(m[2])
+		if m[3] != "version" {
+			value, managed = t.binaryIntegrity(m[2], m[3])
+		}
+		if managed {
+			lines[i] = fmt.Sprintf("%s%s_%s=%q", m[1], m[2], m[3], value)
 		}
 	}
 	return strings.Join(lines, "\n")

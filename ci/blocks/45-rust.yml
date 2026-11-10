@@ -9,13 +9,18 @@
       # vulnerability and only prints an unmaintained or unsound crate, which
       # is a warning in cargo-audit's own default. The release is a static musl
       # binary, so the job needs no cargo install. The tag holds a slash, which
-      # the download URL carries as %2F.
+      # the download URL carries as %2F. The archive is checked against the
+      # sha256 the declaration records before it is unpacked, because a release
+      # asset can be replaced after its version was pinned.
       - name: Vulnerabilities
         run: |
           cargo_audit_version="{{pin}}"
+          cargo_audit_sha256="{{pin}}"
           release="cargo-audit-x86_64-unknown-linux-musl-v${cargo_audit_version}"
           mkdir -p "$RUNNER_TEMP/cargo-audit"
-          curl -fsSL --retry 3 "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${cargo_audit_version}/${release}.tgz" \
-            | tar -xzf - -C "$RUNNER_TEMP/cargo-audit" --strip-components=1 "${release}/cargo-audit"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/cargo-audit/${release}.tgz" \
+            "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${cargo_audit_version}/${release}.tgz"
+          echo "${cargo_audit_sha256}  $RUNNER_TEMP/cargo-audit/${release}.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/cargo-audit/${release}.tgz" -C "$RUNNER_TEMP/cargo-audit" --strip-components=1 "${release}/cargo-audit"
           "$RUNNER_TEMP/cargo-audit/cargo-audit" --version
           "$RUNNER_TEMP/cargo-audit/cargo-audit" audit

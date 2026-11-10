@@ -157,16 +157,21 @@ func TestApplyToolVersionsOverridesGoInstall(t *testing.T) {
 	}
 }
 
+// A block asking for a sha256 or commit the entry does not declare keeps its
+// placeholder, so Unpinned refuses the file rather than shipping no check.
 func TestApplyBinaryVersionsOverridesBlockPin(t *testing.T) {
+	commit := strings.Repeat("c", 40)
 	manifest := &Toolchain{
 		Version:  9,
-		Binaries: []Binary{{Name: "bats", Version: "9.9.9"}},
+		Binaries: []Binary{{Name: "bats", Version: "9.9.9", Commit: commit}, {Name: "jq", Version: "1.8.2"}},
 	}
 
-	got := manifest.ApplyBinaryVersions("          bats_version=\"0.0.1\"\n")
+	got := manifest.ApplyBinaryVersions("          bats_version=\"0.0.1\"\n          bats_commit=\"" + Pin + "\"\n          jq_sha256=\"" + Pin + "\"\n")
 
-	if !strings.Contains(got, `bats_version="9.9.9"`) {
-		t.Errorf("manifest binary version not applied: %q", got)
+	for _, want := range []string{`bats_version="9.9.9"`, `bats_commit="` + commit + `"`, `jq_sha256="` + Pin + `"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %s in %q", want, got)
+		}
 	}
 	if strings.Contains(got, "0.0.1") {
 		t.Errorf("block version survived the override: %q", got)
