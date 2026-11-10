@@ -146,6 +146,7 @@ die swept across them would be churn.
 stream it was written to. Each repo's status and the closing tally go to stderr, so stdout carries
 only the commands' output. The command sees the repo's registry name as `FORGE_REPO_NAME`, because
 a checkout's basename is not unique. A command exiting 2 is reported as skipped rather than failed.
+`repos exec` exits 1 when the command failed in any repo, and 0 when every repo ran it or skipped.
 `exec` skips any directory without a `.git`. Anything worth running twice belongs in a die, which
 gets plan, check and apply.
 

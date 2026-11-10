@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
@@ -106,5 +108,9 @@ func runExec(n *reconcileNoun, cmd *cobra.Command, args []string) error {
 	}
 
 	runner.PrintSummary(stderr, results)
+	// The summary already names each failed repo, so the error adds only the exit code.
+	if slices.ContainsFunc(results, func(r runner.Result) bool { return strings.HasPrefix(r.Status, "FAIL") }) {
+		return goclikit.ErrReported
+	}
 	return nil
 }

@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/datapointchris/goclikit"
 	"github.com/datapointchris/goselfupdate/autoupdate"
 )
 
@@ -59,6 +61,18 @@ func TestExecStdoutIsTheCommandsTaggedOutputAlone(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "2 ok") {
 		t.Errorf("stderr = %q, want each repo's status and the tally", stderr)
+	}
+}
+
+func TestExecExitsNonZeroWhenTheCommandFailsInAnyRepo(t *testing.T) {
+	registry := execRegistry(t, "alpha", "beta")
+	original := os.Args
+	os.Args = []string{"forge", "repos", "exec", "-c", registry, "--", "sh", "-c", `test "$FORGE_REPO_NAME" = alpha`}
+	rootCmd.SetErr(&bytes.Buffer{})
+	t.Cleanup(func() { os.Args, cfgPath = original, ""; rootCmd.SetErr(nil) })
+
+	if err := run(autoupdate.Config{Suppress: true}); !errors.Is(err, goclikit.ErrReported) {
+		t.Errorf("a run where beta failed returned %v, want the reported failure that exits 1", err)
 	}
 }
 
