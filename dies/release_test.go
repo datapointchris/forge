@@ -77,6 +77,25 @@ func TestReleaseRemovesTheQueueKeyAndKeepsTheGroup(t *testing.T) {
 	}
 }
 
+// A comment this die wrote earlier said the later run fails pushing a version
+// commit, in repos whose release writes none.
+func TestReleaseRewritesACommentItWroteEarlier(t *testing.T) {
+	earlier := strings.Join(earlierConcurrencyComments[1], "\n")
+	keys := "concurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\n"
+	workflow := "name: Release\non:\n  push:\n    branches: [main]\n" + earlier + "\n" + keys + "jobs:\n  release:\n    runs-on: ubuntu-latest\n"
+	target := releaseFixture(t, workflow)
+
+	applyAll(t, target, Release{})
+
+	want := strings.Replace(workflow, earlier, strings.Join(concurrencyComment, "\n"), 1)
+	if written := readFile(t, target.Path(releaseWorkflowPath)); written != want {
+		t.Errorf("wrote:\n%s\nwant:\n%s", written, want)
+	}
+	if hasChangeFor(assess(t, target), "concurrency.comment") {
+		t.Error("the comment was still reported after its rewrite")
+	}
+}
+
 // The whole point of asserting presence rather than generating the file: what
 // the repo already wrote has to come through untouched.
 func TestReleaseLeavesTheRestOfTheWorkflowAlone(t *testing.T) {

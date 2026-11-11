@@ -33,7 +33,7 @@ type Release struct{}
 func (Release) Name() string { return "release" }
 
 func (Release) Description() string {
-	return "Assert the concurrency group a release workflow needs so two pushes to main never race, with no queue key so a newer push replaces a waiting run, and report one triggered on a tag."
+	return "Assert the concurrency group a release workflow needs so two pushes to main never race, with no queue key so a newer push replaces a waiting run, keep the comment it wrote above the group current, and report one triggered on a tag."
 }
 
 func (Release) Tags() []string {
@@ -54,15 +54,50 @@ func (Release) Tags() []string {
 // push replaces it. Only main's tip can cut a version, so a burst of pushes
 // releases once, from its last commit. queue: max keeps every run waiting oldest
 // first, which puts the one run able to release behind all the rest.
-var concurrencyBlock = []string{
-	"# Two pushes to main inside one run's window would otherwise race. Both runs",
-	"# resolve the same version, and the later one fails pushing its tag or its",
-	"# version commit.",
-	"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
-	"# A newer push replaces a waiting run, so a burst of pushes releases once.",
+var concurrencyBlock = append(slices.Clone(concurrencyComment),
 	"concurrency:",
 	"  group: release-${{ github.ref }}",
 	"  cancel-in-progress: false",
+)
+
+// concurrencyComment opens the block. It names no tag push or version commit,
+// because which of those a release writes differs from repo to repo.
+var concurrencyComment = []string{
+	"# Two pushes to main inside one run's window would otherwise race, because",
+	"# both runs resolve the same next version from the same newest tag.",
+	"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
+	"# A newer push replaces a waiting run, so a burst of pushes releases once.",
+}
+
+// earlierConcurrencyComments are the comments this die wrote above the block
+// before concurrencyComment. A workflow carrying one gets concurrencyComment in
+// its place. A comment a person wrote matches none, so it is left alone.
+var earlierConcurrencyComments = [][]string{
+	{
+		"# Two pushes to main inside one run's window would otherwise race, and the later",
+		"# run fails pushing its version bump onto a ref that has already moved.",
+		"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
+	},
+	{
+		"# Two pushes to main inside one run's window would otherwise race. Both runs",
+		"# resolve the same version, and the later one fails pushing its tag or its",
+		"# version commit.",
+		"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
+	},
+	{
+		"# Two pushes to main inside one run's window would otherwise race. Both runs",
+		"# resolve the same version, and the later one fails pushing its tag or its",
+		"# version commit.",
+		"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
+		"# queue: max keeps every waiting run, so no push's release replaces another's.",
+	},
+	{
+		"# Two pushes to main inside one run's window would otherwise race. Both runs",
+		"# resolve the same version, and the later one fails pushing its tag or its",
+		"# version commit.",
+		"# Never cancel-in-progress: a canceled release can leave a tag with no release.",
+		"# A newer push replaces a waiting run, so a burst of pushes releases once.",
+	},
 }
 
 type releaseState struct {
@@ -73,6 +108,11 @@ type releaseState struct {
 	parseErr error
 
 	hasConcurrency bool
+	// commentFrom and commentTo bound, 0-based and end exclusive, the comment
+	// lines directly above the concurrency key. earlierComment says they are one
+	// of earlierConcurrencyComments.
+	commentFrom, commentTo int
+	earlierComment         bool
 	// queue is the concurrency block's queue value, "" where it sets none, and
 	// queueIndex its 0-based line. queueInFlow says the block is written on one
 	// line, so removing that line would remove the whole block.
@@ -124,6 +164,7 @@ func (Release) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	if concurrency := mappingValue(root, "concurrency"); concurrency != nil {
 		state.hasConcurrency = true
 		observeQueue(&state, concurrency)
+		observeComment(&state, mappingKey(root, "concurrency").Line-1)
 	}
 	if jobs := mappingKey(root, "jobs"); jobs != nil {
 		state.jobsIndex = jobs.Line - 1
@@ -144,6 +185,37 @@ func observeQueue(state *releaseState, concurrency *yaml.Node) {
 	state.queue = mappingValue(concurrency, "queue").Value
 	state.queueIndex = key.Line - 1
 	state.queueInFlow = concurrency.Style&yaml.FlowStyle != 0
+}
+
+// observeComment reads the comment lines directly above the concurrency key at keyIndex.
+func observeComment(state *releaseState, keyIndex int) {
+	from := keyIndex
+	for from > 0 && strings.HasPrefix(state.lines[from-1], "#") {
+		from--
+	}
+	state.commentFrom, state.commentTo = from, keyIndex
+	comment := state.lines[from:keyIndex]
+	state.earlierComment = slices.ContainsFunc(earlierConcurrencyComments, func(earlier []string) bool {
+		return slices.Equal(earlier, comment)
+	})
+}
+
+// commentChange is the finding for a block under a comment this die wrote earlier.
+func commentChange(state releaseState) reconcile.Change {
+	return reconcile.Change{
+		Item:     "concurrency.comment",
+		Verdict:  reconcile.Stale,
+		Repair:   reconcile.Automatic,
+		Detail:   fmt.Sprintf("%s carries an earlier comment this die wrote above its concurrency block; expected the current one", releaseWorkflowPath),
+		Observed: strings.Join(state.lines[state.commentFrom:state.commentTo], "\n"),
+		Patch:    unifiedDiff(releaseWorkflowPath, joinLines(state.lines), joinLines(withCurrentComment(state))),
+	}
+}
+
+// withCurrentComment returns the file's lines with concurrencyComment in place of
+// the comment above the concurrency key.
+func withCurrentComment(state releaseState) []string {
+	return slices.Replace(slices.Clone(state.lines), state.commentFrom, state.commentTo, concurrencyComment...)
 }
 
 // queueChange is the finding for a concurrency block that sets a queue key.
@@ -211,6 +283,9 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 		}
 		changes = append(changes, change)
 	}
+	if state.earlierComment {
+		changes = append(changes, commentChange(state))
+	}
 	if state.queue != "" {
 		changes = append(changes, queueChange(state))
 	}
@@ -255,6 +330,10 @@ func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile
 			return changed, nil
 		}
 		updated, message = joinLines(withoutQueue(state)), "removed"
+	case change.Item == "concurrency.comment" && !state.earlierComment:
+		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
+	case change.Item == "concurrency.comment":
+		updated, message = joinLines(withCurrentComment(state)), "rewritten"
 	case state.hasConcurrency:
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already present"}, nil
 	case state.jobsIndex < 0:
