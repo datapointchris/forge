@@ -11,6 +11,7 @@ import (
 
 	"github.com/datapointchris/goclikit"
 	"github.com/datapointchris/goselfupdate/autoupdate"
+	"github.com/datapointchris/gotermstyle/cobrahelp"
 	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/config"
@@ -89,6 +90,7 @@ var rootCmd = &cobra.Command{
 // error. Separate from Execute, which exits the process, so a test can run a
 // whole command line with the version check suppressed and read the error.
 func run(config autoupdate.Config) error {
+	cobrahelp.Install(rootCmd)
 	return goclikit.Execute(context.Background(), rootCmd, config)
 }
 
