@@ -44,7 +44,11 @@ func TestGenerateEmitsAJobPerComponent(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 
-	for _, job := range []string{"  go-api:", "  go-cli:", "  vue-web:"} {
+	for _, job := range []string{
+		"  go-api:\n    name: \"Go tests and vulnerabilities in api\"\n",
+		"  go-cli:\n    name: \"Go tests and vulnerabilities in cli\"\n",
+		"  vue-web:\n    name: \"Vue build and tests in web\"\n",
+	} {
 		if !strings.Contains(workflow, job) {
 			t.Errorf("missing job %q:\n%s", job, workflow)
 		}
@@ -367,7 +371,7 @@ func TestGenerateUsesAThirdPartyActionByItsCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if want := "- uses: astral-sh/setup-uv@" + strings.Repeat("a", 40) + " # v0.0.1\n"; !strings.Contains(workflow, want) {
+	if want := "uses: astral-sh/setup-uv@" + strings.Repeat("a", 40) + " # v0.0.1\n"; !strings.Contains(workflow, want) {
 		t.Errorf("setup-uv not used by its declared commit:\n%s", workflow)
 	}
 }

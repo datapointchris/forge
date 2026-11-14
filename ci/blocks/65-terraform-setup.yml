@@ -1,7 +1,8 @@
 # Terraform setup
       # Shared by the terraform job and the hooks job, whose terraform_fmt and
       # terraform_validate hooks call the terraform on PATH.
-      - uses: hashicorp/setup-terraform@{{pin}}
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@{{pin}}
         with:
           terraform_version: "{{pin}}"
           terraform_wrapper: false

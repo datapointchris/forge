@@ -1,7 +1,8 @@
 # Go setup
       # Shared by the go job and the hooks job, whose go-vet, go-build,
       # go-mod-tidy and go-test hooks call the go on PATH.
-      - uses: actions/setup-go@{{pin}}
+      - name: Install the Go {{dir}}/go.mod names
+        uses: actions/setup-go@{{pin}}
         with:
           # Action inputs resolve from the workspace root, not the job's
           # working-directory, so this needs the component path.

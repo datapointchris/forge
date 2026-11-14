@@ -117,7 +117,7 @@ func TestTheHooksJobSetsUpGoForEachModule(t *testing.T) {
 func TestTheHooksJobInstallsEveryNodeComponent(t *testing.T) {
 	hooks := jobSteps(generateFor(t, comps("vue", "web", "node", "server")), HooksJob)
 	for _, dir := range []string{"web", "server"} {
-		if !strings.Contains(hooks, `- working-directory: "`+dir+`"`) {
+		if !strings.Contains(hooks, `working-directory: "`+dir+`"`) {
 			t.Errorf("no install in %s:\n%s", dir, hooks)
 		}
 	}
@@ -138,7 +138,7 @@ func TestTwoComponentsRenderingOneSetupGetItOnce(t *testing.T) {
 // gets.
 func TestAStackWithNoCIBlockStillGetsItsHooksRun(t *testing.T) {
 	workflow := generateFor(t, comps("docker", "."))
-	if !strings.Contains(jobSteps(workflow, HooksJob), "\n            hadolint\n") {
+	if !strings.Contains(jobSteps(workflow, HooksJob), "- name: pre-commit run hadolint\n") {
 		t.Errorf("no hooks job running hadolint:\n%s", workflow)
 	}
 }

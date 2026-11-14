@@ -1,4 +1,4 @@
-# Go
+# Go tests and vulnerabilities
       # The whole suite. The go-test hook runs only what -short leaves in, which
       # is what a commit can afford.
       - run: go test ./...

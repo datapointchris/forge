@@ -396,12 +396,12 @@ func TestTheHooksJobRunsTheHooksTheCommittedConfigHolds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the workflow: %s", err)
 	}
-	listed := regexp.MustCompile(`(?s)hooks=\(\n(.*?)\n\s*\)`).FindStringSubmatch(string(workflow))
-	if listed == nil {
-		t.Fatalf("no hook list:\n%s", workflow)
+	var got []string
+	for _, step := range regexp.MustCompile(`(?m)^\s*- name: pre-commit run (\S+)$`).FindAllStringSubmatch(string(workflow), -1) {
+		got = append(got, step[1])
 	}
-	if got := strings.Fields(listed[1]); !slices.Equal(got, []string{"codespell"}) {
-		t.Errorf("hooks job runs %v, want the committed config's [codespell]", got)
+	if !slices.Equal(got, []string{"codespell"}) {
+		t.Errorf("hooks job runs %v, want the committed config's [codespell]:\n%s", got, workflow)
 	}
 }
 

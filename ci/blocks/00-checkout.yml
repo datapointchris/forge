@@ -1,2 +1,3 @@
 # Checkout
-      - uses: actions/checkout@{{pin}}
+      - name: Check out the commit
+        uses: actions/checkout@{{pin}}

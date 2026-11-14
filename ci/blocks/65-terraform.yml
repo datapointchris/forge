@@ -1,4 +1,4 @@
-# Terraform
+# Terraform tests
       # init without a backend: the tests need the providers resolved, and no
       # PR check should be touching real state.
       - run: terraform init -backend=false

@@ -1,7 +1,8 @@
 # Vue setup
       # Shared by the vue job and the hooks job, whose vue-eslint, vue-prettier
       # and vue-typecheck hooks run npm scripts in the component.
-      - uses: actions/setup-node@{{pin}}
+      - name: Install the Node .nvmrc names
+        uses: actions/setup-node@{{pin}}
         with:
           # The repo's own file, at the workspace root, because the Node major
           # also lives in each Dockerfile's FROM line and a pin here would be a
@@ -26,7 +27,8 @@
       #
       # The directory is named on the step because the hooks job has no
       # working-directory of its own, and installs for every component.
-      - working-directory: "{{dir}}"
+      - name: npm ci in {{dir}}
+        working-directory: "{{dir}}"
         run: |
           if [ -f package-lock.json ]; then
             npm ci

@@ -555,7 +555,7 @@ func Generate(
 		}
 		jobs++
 		jobCategories = append(jobCategories, category)
-		job := workflowJob{name: JobName(component), dir: component.Dir, checkout: shared, block: joinSteps(stripDescription(setup), stripDescription(checks))}
+		job := workflowJob{name: JobName(component), title: jobTitle(blockTitle(checks), component), dir: component.Dir, checkout: shared, block: joinSteps(stripDescription(setup), stripDescription(checks))}
 		if floor, ok := pythonFloors[component.Dir]; ok && category == "python" && floor != highest {
 			job.uvPython = floor
 		}
@@ -575,9 +575,13 @@ func Generate(
 		if block == "" {
 			return "", fmt.Errorf("no %s block to run %s in", HooksJob, strings.Join(hooks, ", "))
 		}
+		hookSteps, err := applyHooks(stripDescription(block), hooks)
+		if err != nil {
+			return "", err
+		}
 		jobs++
-		steps := append(slices.Clone(hookSetups), applyHooks(stripDescription(block), hooks))
-		job := workflowJob{name: HooksJob, checkout: shared, block: joinSteps(steps...)}
+		steps := append(slices.Clone(hookSetups), hookSteps)
+		job := workflowJob{name: HooksJob, title: blockTitle(block), checkout: shared, block: joinSteps(steps...)}
 		lines = append(lines, job.render(manifest, customSections, runners.Hooks, runners)...)
 	}
 
@@ -663,7 +667,9 @@ func OrphanedSections(customSections map[string]string, workflow string) []strin
 // workflowJob is one job's worth of workflow: the shared checkout, then a
 // block's steps, each without the description line its file opens with.
 type workflowJob struct {
-	name     string
+	name string
+	// title is the job's name in the run's listing, where name is its id.
+	title    string
 	dir      string
 	checkout string
 	block    string
@@ -675,7 +681,11 @@ type workflowJob struct {
 // render is the job's lines, custom sections included. runner is the job's own
 // runner, which its placeholders read, and runs-on carries runners.runsOn of it.
 func (j workflowJob) render(manifest *toolchain.Toolchain, customSections map[string]string, runner Runner, runners Runners) []string {
-	lines := []string{"", fmt.Sprintf("  %s:", j.name), fmt.Sprintf("    runs-on: %s", runners.runsOn(runner))}
+	lines := []string{"", fmt.Sprintf("  %s:", j.name)}
+	if j.title != "" {
+		lines = append(lines, fmt.Sprintf("    name: %q", j.title))
+	}
+	lines = append(lines, fmt.Sprintf("    runs-on: %s", runners.runsOn(runner)))
 	if j.dir != "" && j.dir != "." {
 		lines = append(lines, "    defaults:", "      run:", fmt.Sprintf("        working-directory: %s", j.dir))
 	}
@@ -741,14 +751,48 @@ func joinSteps(blocks ...string) string {
 	return strings.Join(slices.DeleteFunc(blocks, func(block string) bool { return block == "" }), "\n\n")
 }
 
-// hooksLineRE is the line in the hooks block that becomes one line per hook.
-var hooksLineRE = regexp.MustCompile(`(?m)^([ \t]*)\{\{hooks\}\}$`)
+// hookPlaceholder marks the hooks block's step that becomes one step per hook.
+const hookPlaceholder = "{{hook}}"
 
-func applyHooks(block string, hooks []string) string {
-	return hooksLineRE.ReplaceAllStringFunc(block, func(line string) string {
-		indent := hooksLineRE.FindStringSubmatch(line)[1]
-		return indent + strings.Join(hooks, "\n"+indent)
-	})
+// applyHooks repeats the hooks block's hook step once per hook, a blank line
+// apart. That step runs from the first line naming hookPlaceholder to the next
+// blank line, so the comments above it are written once.
+func applyHooks(block string, hooks []string) (string, error) {
+	lines := strings.Split(block, "\n")
+	start := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, hookPlaceholder) })
+	if start < 0 {
+		return "", fmt.Errorf("the %s block has no step naming %s to run %s in", HooksJob, hookPlaceholder, strings.Join(hooks, ", "))
+	}
+	end := start
+	for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
+		end++
+	}
+	template := strings.Join(lines[start:end], "\n")
+	steps := make([]string, len(hooks))
+	for i, hook := range hooks {
+		steps[i] = strings.ReplaceAll(template, hookPlaceholder, hook)
+	}
+	return strings.Join(slices.Concat(lines[:start], []string{strings.Join(steps, "\n\n")}, lines[end:]), "\n"), nil
+}
+
+// jobTitle is a component job's name in the run's listing: its block's title,
+// and the directory when the component is not at the root.
+func jobTitle(title string, component config.Component) string {
+	if component.Dir == "" || component.Dir == "." {
+		return title
+	}
+	return title + " in " + component.Dir
+}
+
+// blockTitle is a block's description line, which names its job in the run's
+// listing.
+func blockTitle(content string) string {
+	first, _, _ := strings.Cut(content, "\n")
+	title, found := strings.CutPrefix(strings.TrimSpace(first), "# ")
+	if !found {
+		return ""
+	}
+	return title
 }
 
 // JobName is the workflow job id for a component: the stack, plus the directory

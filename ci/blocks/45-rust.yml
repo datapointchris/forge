@@ -1,4 +1,4 @@
-# Rust
+# Rust build, tests and vulnerabilities
       # No toolchain step. rustup reads the repo's rust-toolchain.toml, and
       # fetches that release on the first cargo call.
       - run: cargo build --all-targets

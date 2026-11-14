@@ -1,4 +1,4 @@
-# Vue
+# Vue build and tests
       - run: npm run build
 
       # test:unit where the component has one, because test is where a

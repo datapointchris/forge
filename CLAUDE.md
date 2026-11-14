@@ -297,6 +297,11 @@ such as shell or lua, gets no job.
 block is skipped rather than emitting an empty job. That is why docker has no block: a Dockerfile is
 built by the deploy, not by validation.
 
+**A job's name in the run's listing is its block's first line**, with the directory below the root,
+so `go-api` lists as `Go tests and vulnerabilities in api`. The id stays the key custom sections and
+`needs:` read. Every `uses:` step a block writes carries a name too, because GitHub lists an unnamed
+one as the action and its commit.
+
 **A stack's setup block opens both its job and the hooks job.** `NN-<category>-setup.yml` puts on
 `PATH` what that stack's hooks call: setup-go for the tekwizely hooks, setup-terraform for
 `terraform_validate`, setup-node and `npm ci` for the vue scripts. The hooks job has no directory of
@@ -312,6 +317,15 @@ repo declaring no components gets a workflow holding this job alone, wherever fo
 pre-commit config. The job runs hooks by id, so a custom alias sharing an id runs with it. It drops a
 hook off the `pre-commit` stage, and every hook in a custom section: several need a workstation, such
 as a running dev stack or a local editor install.
+
+**Each hook is its own step, `pre-commit run <id>`.** The listing then names the hook that failed and
+how long each took, and so do the jobs API and the log archive. `applyHooks` repeats the block's step
+naming `{{hook}}` once per hook. One step before them chooses the files and writes the script each
+hook's step runs. Every hook step runs after a failed one, so a push reports every failing hook, and
+none runs where setup failed. The last step writes each hook's result and seconds to the run's
+summary as one table. *Rejected:* running hooks in parallel. Another job ends most runs, so perfectly
+parallel hooks end the median run no sooner. A matrix repeats the job's setup for every hook inside
+a runner pool capped at a few pods.
 
 **A custom section whose job is gone holds the workflow back.** Custom sections are keyed
 `before:<job>` or `after:<job>`, and `Generate` renders one only beside a job it emits. A section
