@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/datapointchris/goclikit"
 	"github.com/datapointchris/goselfupdate/autoupdate"
+	"github.com/spf13/cobra"
 
 	"github.com/datapointchris/forge/dies"
 )
@@ -151,16 +158,89 @@ func TestResolvesRefusesTheWordsForgeDoesNotHave(t *testing.T) {
 	}
 }
 
-func TestEveryCommandTheRootHelpShowsExists(t *testing.T) {
-	shown := shownCommands(rootCmd.Long + "\n" + rootCmd.Example)
-	if len(shown) < 8 {
-		t.Fatalf("found %d commands in the root help, want the verbs and examples: %v", len(shown), shown)
-	}
-	for _, line := range shown {
-		if err := resolves(line); err != nil {
-			t.Errorf("the root help shows %q: %v", line, err)
+// Every command forge prints for its reader to run has to exist, and every
+// command's help carries an example. A hint is read by someone already stuck,
+// and it names a sibling, so it breaks when the sibling is renamed rather than
+// when its own code changes. The walk reads each command's help in the
+// assembled tree, where the noun factory's examples exist only once built, and
+// every string literal in the module's source, where the error hints live.
+func TestEveryPrintedCommandExistsAndEveryCommandHasAnExample(t *testing.T) {
+	var walk func(*cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		// cobra's own help and completion commands carry cobra's help text.
+		if cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion" {
+			return
+		}
+		if strings.TrimSpace(cmd.Example) == "" {
+			t.Errorf("%s has no example in its help", cmd.CommandPath())
+		}
+		for _, line := range shownCommands(cmd.Long + "\n" + cmd.Example) {
+			if err := resolves(line); err != nil {
+				t.Errorf("%s's help shows %q: %v", cmd.CommandPath(), line, err)
+			}
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
 		}
 	}
+	walk(rootCmd)
+
+	shown := 0
+	for _, lit := range sourceStrings(t, "..") {
+		for _, line := range shownCommands(lit.value) {
+			shown++
+			if err := resolves(line); err != nil {
+				t.Errorf("%s prints %q: %v", lit.at, line, err)
+			}
+		}
+	}
+	// A reader that found no source would pass with every hint broken.
+	if shown < 20 {
+		t.Fatalf("found %d commands printed in the source, want the hints and examples", shown)
+	}
+}
+
+// sourceString is one string literal in the module's source and where it sits.
+type sourceString struct{ at, value string }
+
+// sourceStrings is every string literal in the module's non-test Go source
+// under root. Test files are left out, because they print commands that must
+// not resolve in order to prove the walk refuses them.
+func sourceStrings(t *testing.T, root string) []sourceString {
+	t.Helper()
+	fset := token.NewFileSet()
+	var found []sourceString
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); path != root && (strings.HasPrefix(name, ".") || name == "testdata" || name == "node_modules") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				if value, err := strconv.Unquote(lit.Value); err == nil {
+					found = append(found, sourceString{at: fset.Position(lit.Pos()).String(), value: value})
+				}
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return found
 }
 
 // A die is reached through a verb, so the root help is where its name has to

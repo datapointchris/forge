@@ -37,8 +37,8 @@ func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
 // nothing in a bare list of subcommands says so: `forge precommit`, `forge ci`
 // and `forge dies release` all read as plausible. The help names every die
 // from dies.BuiltinNames, so the list cannot lag a die being added, and
-// TestEveryCommandTheRootHelpShowsExists holds each command line it prints to
-// the real tree.
+// TestEveryPrintedCommandExistsAndEveryCommandHasAnExample holds each command
+// line it prints to the real tree.
 var rootCmd = &cobra.Command{
 	Use:   "forge",
 	Short: "Reconcile each repo in the registry against the standards",

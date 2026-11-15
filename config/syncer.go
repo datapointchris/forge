@@ -224,7 +224,7 @@ var ErrNoSyncBase = errors.New(
 		"a file-sync tool can see them all. Declare where that is, as a top-level key\n" +
 		"beside the repo list:\n\n" +
 		`    "sync_base": "~/somewhere/synced"` + "\n\n" +
-		"`forge config show` prints which registry answered",
+		"The file to edit is the `repos file` row of `forge config show`",
 )
 
 // ResolvedSyncBase returns the sync base as an absolute path.

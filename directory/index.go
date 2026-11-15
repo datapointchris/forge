@@ -251,9 +251,7 @@ func CheckGenerated(workTree string) error {
 // Installing first, somewhere git is ordinary, keeps that env away from the
 // build. The environments land in pre-commit's own store keyed by hook repo and
 // rev, so the real run finds them already there and spawns no backend at all.
-// It is also idempotent and quiet once warm. The same throwaway-repo trick
-// `forge toolchain plan` uses to ask pre-commit a question about a config that
-// is not checked out anywhere.
+// It is also idempotent and quiet once warm.
 func ensureHookEnvironments(workTree string, stderr io.Writer) error {
 	config, err := os.ReadFile(filepath.Join(workTree, precommit.ConfigPath))
 	if err != nil {
