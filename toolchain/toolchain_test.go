@@ -302,6 +302,9 @@ func TestEveryDownloadingActionStepNamesThePinnedRelease(t *testing.T) {
 		"      - uses: astral-sh/setup-uv@v7",
 		"        with:",
 		"          version: 0.9.1",
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          version: ${{ steps.uv.outputs.version }}",
 	}, "\n")
 	want := strings.Join([]string{
 		"      - uses: astral-sh/setup-uv@v7",
@@ -323,6 +326,9 @@ func TestEveryDownloadingActionStepNamesThePinnedRelease(t *testing.T) {
 		"      - uses: astral-sh/setup-uv@v7",
 		"        with:",
 		"          version: 0.9.1",
+		"      - uses: astral-sh/setup-uv@v7",
+		"        with:",
+		"          version: ${{ steps.uv.outputs.version }}",
 	}, "\n")
 
 	got := manifest.ApplyActionReleaseInputs(workflow)

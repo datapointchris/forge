@@ -76,7 +76,7 @@ var (
 	// A workflow step opens with a list item, and its `with:` holds the inputs.
 	stepStartRE = regexp.MustCompile(`^\s*-\s`)
 	withLineRE  = regexp.MustCompile(`^(\s*)with:\s*$`)
-	inputLineRE = regexp.MustCompile(`^(\s*)([A-Za-z0-9_-]+):\s*(\S+)\s*$`)
+	inputLineRE = regexp.MustCompile(`^(\s*)([A-Za-z0-9_-]+):\s*(\S.*?)\s*$`)
 )
 
 // firstPartyOwner owns the actions GitHub publishes. Those stay on tags: a
@@ -625,6 +625,11 @@ func (t *Toolchain) pinStepRelease(step []string) []string {
 		in := inputLineRE.FindStringSubmatch(line)
 		if len(in) < 4 || len(in[1]) != childIndent || in[2] != release.input {
 			continue
+		}
+		// An expression is its author's choice of where the release comes from,
+		// such as a version read from a Dockerfile, so it stays as written.
+		if strings.HasPrefix(in[3], "${{") {
+			return step
 		}
 		// A value already naming the release stays as written, quoted or not.
 		if strings.Trim(in[3], `"'`) != version {
