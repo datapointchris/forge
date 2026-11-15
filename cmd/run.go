@@ -113,7 +113,7 @@ func runDirectories(n *reconcileNoun, cmd *cobra.Command, rebuild bool) error {
 				status = "hooks reported findings"
 			}
 			row(cmd.OutOrStdout(), "%-12s %s (%s)\n", result.Name, status,
-				plural(result.Files, "file", "files"))
+				reconcile.Plural(result.Files, "file", "files"))
 		}
 	}
 

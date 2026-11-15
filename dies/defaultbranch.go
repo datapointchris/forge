@@ -142,7 +142,7 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	case state.unpushed > 0:
 		change.Repair = reconcile.ByHand
 		change.Detail = fmt.Sprintf("branch is master, expected main; %s block the rename",
-			plural(state.unpushed, "unpushed commit", "unpushed commits"))
+			reconcile.Plural(state.unpushed, "unpushed commit", "unpushed commits"))
 		change.Advice = "push them, then run apply"
 	case state.hasMain:
 		change.Repair = reconcile.ByHand

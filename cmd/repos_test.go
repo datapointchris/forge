@@ -106,14 +106,3 @@ func TestPendingSummaryIsZeroWhenConverged(t *testing.T) {
 		t.Errorf("changes = %d repos = %d, want 0 and 0", changes, repos)
 	}
 }
-
-func TestPluralNamesBothForms(t *testing.T) {
-	for _, tc := range []struct {
-		n    int
-		want string
-	}{{1, "1 repo"}, {0, "0 repos"}, {2, "2 repos"}} {
-		if got := plural(tc.n, "repo", "repos"); got != tc.want {
-			t.Errorf("plural(%d) = %q, want %q", tc.n, got, tc.want)
-		}
-	}
-}

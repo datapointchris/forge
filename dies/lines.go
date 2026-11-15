@@ -2,7 +2,6 @@ package dies
 
 import (
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -110,16 +109,4 @@ func removeLine(path, entry string) error {
 		return os.Remove(path)
 	}
 	return os.WriteFile(path, []byte(content), 0o644)
-}
-
-// plural renders a count with its noun, so a summary never reads "1 lines".
-//
-// Both forms are named by the caller. Appending "s" mangled "directory" in the
-// first real run, and every rule that fixes that case breaks another — English
-// inflection is not derivable from the singular.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return strconv.Itoa(n) + " " + many
 }

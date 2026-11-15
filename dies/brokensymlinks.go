@@ -47,7 +47,7 @@ func (s brokenSymlinksState) Summary() string {
 	if s.links == 0 {
 		return "no tracked symlinks"
 	}
-	return fmt.Sprintf("%s tracked, all resolve", plural(s.links, "symlink", "symlinks"))
+	return fmt.Sprintf("%s tracked, all resolve", reconcile.Plural(s.links, "symlink", "symlinks"))
 }
 
 func (BrokenSymlinks) Observe(t reconcile.Target) (reconcile.Observation, error) {

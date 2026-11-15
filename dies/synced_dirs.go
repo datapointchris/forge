@@ -75,7 +75,7 @@ func (s syncedDirsState) Summary() string {
 	if len(s.dirs) == 0 {
 		return "no synced directories declared"
 	}
-	return fmt.Sprintf("%s synced", plural(len(s.dirs), "directory", "directories"))
+	return fmt.Sprintf("%s synced", reconcile.Plural(len(s.dirs), "directory", "directories"))
 }
 
 func (SyncedDirs) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -251,7 +251,7 @@ func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]re
 			changes = append(changes, reconcile.Change{
 				Item: dir.rel, Verdict: reconcile.Stale, Repair: reconcile.Automatic,
 				Detail: fmt.Sprintf("%s is a directory of %s; expected a link to %s, with the entries moved there",
-					dir.rel, plural(len(dir.entries), "entry", "entries"), homeRelative(dir.target)),
+					dir.rel, reconcile.Plural(len(dir.entries), "entry", "entries"), homeRelative(dir.target)),
 			})
 
 		default:
@@ -285,7 +285,7 @@ func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]re
 		changes = append(changes, reconcile.Change{
 			Item: retiredLink, Verdict: reconcile.Stale, Repair: reconcile.ByHand,
 			Detail: fmt.Sprintf("%s holds %s; expected no %s",
-				retiredLink, plural(retired.entries, "entry", "entries"), retiredLink),
+				retiredLink, reconcile.Plural(retired.entries, "entry", "entries"), retiredLink),
 			Advice: fmt.Sprintf("move them into %s and delete %s", home, retiredLink),
 		})
 	}
@@ -358,7 +358,7 @@ func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconc
 	}
 
 	if len(dir.entries) > 0 {
-		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: fmt.Sprintf("migrated %s and linked", plural(len(dir.entries), "entry", "entries"))}, nil
+		return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: fmt.Sprintf("migrated %s and linked", reconcile.Plural(len(dir.entries), "entry", "entries"))}, nil
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "linked"}, nil
 }

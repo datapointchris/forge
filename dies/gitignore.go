@@ -111,7 +111,7 @@ func (s gitignoreState) Summary() string {
 	if !s.exists {
 		return "no .gitignore"
 	}
-	return fmt.Sprintf("gitignore current (%s)", plural(len(s.lines), "line", "lines"))
+	return fmt.Sprintf("gitignore current (%s)", reconcile.Plural(len(s.lines), "line", "lines"))
 }
 
 func (Gitignore) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -171,7 +171,7 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 				Verdict:  reconcile.Stale,
 				Repair:   reconcile.Automatic,
 				Detail:   fmt.Sprintf(".gitignore lists %s, which forge retired; expected no such entry", entry),
-				Observed: plural(count, "occurrence", "occurrences"),
+				Observed: reconcile.Plural(count, "occurrence", "occurrences"),
 			})
 		}
 	}

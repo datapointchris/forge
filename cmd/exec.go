@@ -10,6 +10,7 @@ import (
 	"github.com/datapointchris/goclikit"
 	"github.com/spf13/cobra"
 
+	"github.com/datapointchris/forge/reconcile"
 	"github.com/datapointchris/forge/runner"
 )
 
@@ -91,7 +92,7 @@ func runExec(n *reconcileNoun, cmd *cobra.Command, args []string) error {
 				return err
 			}
 		}
-		_, _ = fmt.Fprintf(stderr, "%d repo(s) would run it; nothing ran.\n", len(repos))
+		_, _ = fmt.Fprintf(stderr, "%s would run it; nothing ran.\n", reconcile.Plural(len(repos), "repo", "repos"))
 		return nil
 	}
 

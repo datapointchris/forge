@@ -111,9 +111,9 @@ func (s gomodState) Summary() string {
 		images += len(module.dockerfiles)
 	}
 	if images == 0 {
-		return fmt.Sprintf("toolchain current (%s)", plural(len(s.modules), "module", "modules"))
+		return fmt.Sprintf("toolchain current (%s)", reconcile.Plural(len(s.modules), "module", "modules"))
 	}
-	return fmt.Sprintf("toolchain current (%s, %s)", plural(len(s.modules), "module", "modules"), plural(images, "Dockerfile", "Dockerfiles"))
+	return fmt.Sprintf("toolchain current (%s, %s)", reconcile.Plural(len(s.modules), "module", "modules"), reconcile.Plural(images, "Dockerfile", "Dockerfiles"))
 }
 
 func (GoMod) Observe(t reconcile.Target) (reconcile.Observation, error) {

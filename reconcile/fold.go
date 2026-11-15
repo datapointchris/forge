@@ -120,21 +120,21 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 	// it would call a pending repair current.
 	case len(kept) == 0 && len(pending) > 0:
 		result.Status = Converged
-		result.Detail = "no findings; plan has " + plural(len(pending), "change", "changes") + gap
+		result.Detail = "no findings; plan has " + Plural(len(pending), "change", "changes") + gap
 	// Under plan the summary would call current a file a by-hand finding holds
 	// back from its write.
 	case len(kept) == 0 && len(attention) > 0:
 		result.Status = Converged
-		result.Detail = "no changes; check has " + plural(len(attention), "finding", "findings") + gap
+		result.Detail = "no changes; check has " + Plural(len(attention), "finding", "findings") + gap
 	case len(kept) == 0:
 		result.Status = Converged
 		result.Detail = summary + gap
 	case lens == LensPlan:
 		result.Status = Drift
-		result.Detail = plural(len(kept), "change", "changes") + " apply would make" + gap
+		result.Detail = Plural(len(kept), "change", "changes") + " apply would make" + gap
 	default:
 		result.Status = Issue
-		result.Detail = plural(len(kept), "finding", "findings") + " to fix by hand" + gap
+		result.Detail = Plural(len(kept), "finding", "findings") + " to fix by hand" + gap
 	}
 	if rowIsItsChange(kept) {
 		result.Detail = kept[0].Detail + gap
@@ -148,8 +148,12 @@ func Fold(repo, die string, changes []Change, summary string, lens Lens) Result 
 // else.
 func rowIsItsChange(kept []Change) bool { return len(kept) == 1 && kept[0].Detail != "" }
 
-// plural is n with whichever noun agrees with it.
-func plural(n int, one, many string) string {
+// Plural renders a count with its noun, so a summary never reads "1 lines".
+//
+// Both forms are named by the caller, because English inflection is not
+// derivable from the singular: appending "s" mangles "directory", and every
+// rule that fixes that case breaks another.
+func Plural(n int, one, many string) string {
 	if n == 1 {
 		return "1 " + one
 	}
@@ -174,11 +178,11 @@ func Applied(r Result, outcomes []Outcome) Result {
 	}
 	if refused > 0 {
 		r.Status = Drift
-		r.Detail = fmt.Sprintf("%s applied, %d refused", plural(applied, "change", "changes"), refused)
+		r.Detail = fmt.Sprintf("%s applied, %d refused", Plural(applied, "change", "changes"), refused)
 		return r
 	}
 	r.Status = Converged
-	r.Detail = plural(applied, "change", "changes") + " applied"
+	r.Detail = Plural(applied, "change", "changes") + " applied"
 	return r
 }
 

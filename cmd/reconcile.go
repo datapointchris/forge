@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/datapointchris/goclikit"
@@ -285,14 +284,14 @@ func (n *reconcileNoun) renderLeftOut(cmd *cobra.Command, args []string, lens re
 	case elsewhere == 0:
 	case lens == reconcile.LensCheck:
 		row(w, "  %s changes apply would make: %s\n",
-			plural(elsewhere, "row has", "rows have"), n.retype(args, "plan"))
+			reconcile.Plural(elsewhere, "row has", "rows have"), n.retype(args, "plan"))
 	default:
 		row(w, "  %s findings apply cannot fix: %s\n",
-			plural(elsewhere, "row has", "rows have"), n.retype(args, "check"))
+			reconcile.Plural(elsewhere, "row has", "rows have"), n.retype(args, "check"))
 	}
 	if converged > 0 && !n.all {
 		row(w, "  %s hidden: %s --all\n",
-			plural(converged, "converged row", "converged rows"), n.retype(args, cmd.Name()))
+			reconcile.Plural(converged, "converged row", "converged rows"), n.retype(args, cmd.Name()))
 	}
 }
 
@@ -380,7 +379,7 @@ func (n *reconcileNoun) confirmApply(cmd *cobra.Command, args []string, planned 
 		return nil
 	}
 	scale := fmt.Sprintf("%s across %s",
-		plural(pending, "change", "changes"), plural(targets, n.one, n.many))
+		reconcile.Plural(pending, "change", "changes"), reconcile.Plural(targets, n.one, n.many))
 
 	// Never block on a closed stdin: a prompt waiting on one deadlocks the
 	// caller with no output and no exit code.
@@ -435,7 +434,7 @@ func (n *reconcileNoun) coverage(results []reconcile.Result) string {
 		targets[result.Repo] = true
 		dies[result.Die] = true
 	}
-	return plural(len(dies), "die", "dies") + " on " + plural(len(targets), n.one, n.many)
+	return reconcile.Plural(len(dies), "die", "dies") + " on " + reconcile.Plural(len(targets), n.one, n.many)
 }
 
 // atMostOneDie constrains the die argument and names both ways out of the
@@ -526,13 +525,4 @@ func pendingSummary(planned []reconcile.Result) (changes, targets int) {
 		}
 	}
 	return changes, len(seen)
-}
-
-// plural renders a count with its noun. Both forms are named by the caller,
-// because English inflection is not derivable from the singular.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return strconv.Itoa(n) + " " + many
 }

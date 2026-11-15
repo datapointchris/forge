@@ -178,3 +178,14 @@ func TestRefusalIsAnIssueUnderBothLenses(t *testing.T) {
 		}
 	}
 }
+
+func TestPluralNamesBothForms(t *testing.T) {
+	for _, tc := range []struct {
+		n    int
+		want string
+	}{{1, "1 repo"}, {0, "0 repos"}, {2, "2 repos"}} {
+		if got := Plural(tc.n, "repo", "repos"); got != tc.want {
+			t.Errorf("Plural(%d) = %q, want %q", tc.n, got, tc.want)
+		}
+	}
+}

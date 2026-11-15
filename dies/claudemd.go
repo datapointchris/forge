@@ -45,7 +45,7 @@ func (s claudeMDState) Summary() string {
 	if !s.exists {
 		return "no CLAUDE.md"
 	}
-	return fmt.Sprintf("CLAUDE.md (%s)", plural(s.lines, "line", "lines"))
+	return fmt.Sprintf("CLAUDE.md (%s)", reconcile.Plural(s.lines, "line", "lines"))
 }
 
 func (ClaudeMD) Observe(t reconcile.Target) (reconcile.Observation, error) {
@@ -75,8 +75,8 @@ func (ClaudeMD) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reco
 	case state.lines < thinEnoughToBePlaceholder:
 		return []reconcile.Change{{
 			Item: "CLAUDE.md", Verdict: reconcile.Stale, Repair: reconcile.ByHand,
-			Detail:   fmt.Sprintf("CLAUDE.md has %s; expected at least %d", plural(state.lines, "line", "lines"), thinEnoughToBePlaceholder),
-			Observed: plural(state.lines, "line", "lines"),
+			Detail:   fmt.Sprintf("CLAUDE.md has %s; expected at least %d", reconcile.Plural(state.lines, "line", "lines"), thinEnoughToBePlaceholder),
+			Observed: reconcile.Plural(state.lines, "line", "lines"),
 		}}, nil
 	}
 

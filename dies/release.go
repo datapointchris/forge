@@ -132,7 +132,7 @@ func (s releaseState) Summary() string {
 	if s.parseErr != nil {
 		return "release workflow unreadable"
 	}
-	return fmt.Sprintf("release workflow current (%s)", plural(len(s.lines), "line", "lines"))
+	return fmt.Sprintf("release workflow current (%s)", reconcile.Plural(len(s.lines), "line", "lines"))
 }
 
 func (Release) Observe(t reconcile.Target) (reconcile.Observation, error) {

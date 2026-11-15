@@ -74,7 +74,7 @@ func reposScope(registry []config.Repo, selected int) []string {
 			reference++
 		}
 	}
-	lines := []string{plural(selected, "repo", "repos") + ": the active ones the registry owns."}
+	lines := []string{reconcile.Plural(selected, "repo", "repos") + ": the active ones the registry owns."}
 	var left []string
 	for _, part := range []struct {
 		count     int
@@ -86,7 +86,7 @@ func reposScope(registry []config.Repo, selected int) []string {
 		{retired, "retired", "retired"},
 	} {
 		if part.count > 0 {
-			left = append(left, plural(part.count, part.one, part.many))
+			left = append(left, reconcile.Plural(part.count, part.one, part.many))
 		}
 	}
 	if len(left) > 0 {

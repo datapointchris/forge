@@ -129,11 +129,11 @@ func (s preCommitState) Summary() string {
 		// converged row that reads as broken.
 		if len(s.blockers) > 0 {
 			return fmt.Sprintf("declares no toolchain, and %s forge deploys sit here with no stamped %s beside them; `check` names them",
-				plural(len(s.blockers), "file", "files"), precommit.ConfigPath)
+				reconcile.Plural(len(s.blockers), "file", "files"), precommit.ConfigPath)
 		}
 		return s.basis.reason()
 	}
-	return fmt.Sprintf("pre-commit current (%s deployed)", plural(len(s.configs)+1, "file", "files"))
+	return fmt.Sprintf("pre-commit current (%s deployed)", reconcile.Plural(len(s.configs)+1, "file", "files"))
 }
 
 // maintenance is why this die has something to say about a repo, or why it has
@@ -462,7 +462,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		if len(unknown) > 0 {
 			state.blockers = append(state.blockers, blocker(precommit.ConfigPath,
 				fmt.Sprintf("%s has %s outside any # > custom: section (%s); expected each inside a marked custom section",
-					precommit.ConfigPath, plural(len(unknown), "unrecognized hook", "unrecognized hooks"), strings.Join(unknown, ", "))))
+					precommit.ConfigPath, reconcile.Plural(len(unknown), "unrecognized hook", "unrecognized hooks"), strings.Join(unknown, ", "))))
 		}
 	}
 
@@ -488,7 +488,7 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 		state.blockers = append(state.blockers, blocker(precommit.ScriptCategory+" block",
 			fmt.Sprintf("%s run Python through uv (%s), and the registry declares no python component; "+
 				"expected a python component in this repo's toolchain.components and a pyproject.toml with ruff and mypy in its dev group",
-				plural(len(scripts), "app", "apps"), strings.Join(scripts, ", "))))
+				reconcile.Plural(len(scripts), "app", "apps"), strings.Join(scripts, ", "))))
 	}
 
 	categories := declaredCategories(declared)

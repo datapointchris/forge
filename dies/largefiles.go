@@ -54,7 +54,7 @@ func (s largeFilesState) Summary() string {
 	if s.unversioned {
 		return "not a git checkout"
 	}
-	return fmt.Sprintf("%s tracked, none over %s", plural(s.scanned, "file", "files"), humanBytes(largeEnoughToQuestion))
+	return fmt.Sprintf("%s tracked, none over %s", reconcile.Plural(s.scanned, "file", "files"), humanBytes(largeEnoughToQuestion))
 }
 
 func (LargeFiles) Observe(t reconcile.Target) (reconcile.Observation, error) {

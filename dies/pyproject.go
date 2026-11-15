@@ -92,7 +92,7 @@ func (s pyprojectState) Summary() string {
 		return s.reason
 	}
 	if len(s.conflicts) > 0 {
-		return fmt.Sprintf("pyproject current, %s the standard disagrees with", plural(len(s.conflicts), "key", "keys"))
+		return fmt.Sprintf("pyproject current, %s the standard disagrees with", reconcile.Plural(len(s.conflicts), "key", "keys"))
 	}
 	return "pyproject current"
 }

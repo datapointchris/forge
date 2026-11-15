@@ -60,7 +60,7 @@ func (s conflictMarkersState) Summary() string {
 	if s.unversioned {
 		return "not a git checkout"
 	}
-	return fmt.Sprintf("%s tracked, no conflict markers", plural(s.scanned, "file", "files"))
+	return fmt.Sprintf("%s tracked, no conflict markers", reconcile.Plural(s.scanned, "file", "files"))
 }
 
 func (ConflictMarkers) Observe(t reconcile.Target) (reconcile.Observation, error) {
