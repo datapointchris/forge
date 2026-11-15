@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -217,6 +218,9 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(args) == 1 && !dieKnown(args[0], records) {
+		return noneMatched("dies", args)
+	}
 
 	bounds, err := timewindow.Parse(diesStatsSince, diesStatsUntil, time.Now())
 	if err != nil {
@@ -258,6 +262,17 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 	}
 	printDieStatsSummary(window, aggregated)
 	return nil
+}
+
+// dieKnown is whether name is a die forge has or one the run log recorded. The
+// log outlives a die that was renamed or removed, so its runs stay reachable by
+// the name they ran under, while a typo matches neither and is refused rather
+// than answered with an empty history that reads as a die never run.
+func dieKnown(name string, records []dies.RunRecord) bool {
+	if slices.Contains(dies.BuiltinNames(), name) {
+		return true
+	}
+	return slices.ContainsFunc(records, func(r dies.RunRecord) bool { return r.Die == name })
 }
 
 // windowPhrase is the clause a heading takes after the die it names: which
