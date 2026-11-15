@@ -310,6 +310,18 @@ def test_a_uv_workspace_tests_under_each_member():
         assert tomlkit.parse(target_path.read_text())['tool']['pytest']['ini_options']['testpaths'] == ['library/tests', 'packages/*/tests']
 
 
+def test_a_workspace_root_that_is_a_project_keeps_its_own_tests():
+    with tempfile.TemporaryDirectory() as tmp:
+        standard_path = Path(tmp) / 'standard.toml'
+        target_path = Path(tmp) / 'pyproject.toml'
+        standard_path.write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+        target_path.write_text('[project]\nname = "cli"\n\n[tool.uv.workspace]\nmembers = ["api"]\n')
+
+        assert main([str(standard_path), str(target_path)]) == 0
+
+        assert tomlkit.parse(target_path.read_text())['tool']['pytest']['ini_options']['testpaths'] == ['tests']
+
+
 def test_a_table_value_is_one_inline_conflict():
     """A table the project set where the standard wants a scalar reads as one value."""
     with tempfile.TemporaryDirectory() as tmp:

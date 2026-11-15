@@ -282,17 +282,20 @@ def pin_dependencies(document, pins):
 
 
 def workspace_testpaths(document):
-    """`<member>/tests` for each uv workspace member as `members` spells it, or None outside a workspace.
+    """`<member>/tests` for each member of a virtual uv workspace as `members` spells it, or None.
 
-    A workspace keeps its tests under each member, where the template's `tests` finds none. pytest
-    globs each entry, so a member with no tests is skipped and a pattern member expands. A `*/tests`
-    glob in the template would also collect the nested suites a flat repo keeps out of its root run.
+    A virtual workspace keeps its tests under each member, where the template's `tests` finds none,
+    and its root environment holds every member. A root that declares a `[project]` syncs only
+    itself, so its run keeps the template's paths and each member's suite runs from the member.
+    pytest globs each entry, so a member with no tests is skipped and a pattern member expands. A
+    `*/tests` glob in the template would also collect the nested suites a flat repo keeps out of
+    its root run.
     """
     tool = document.get('tool')
     uv = tool.get('uv') if isinstance(tool, dict) else None
     workspace = uv.get('workspace') if isinstance(uv, dict) else None
     members = workspace.get('members') if isinstance(workspace, dict) else None
-    if not members:
+    if not members or 'project' in document:
         return None
     return [f'{str(member).rstrip("/")}/tests' for member in members]
 
