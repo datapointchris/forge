@@ -84,6 +84,9 @@ func runToolchainShow(cmd *cobra.Command, _ []string) error {
 	for _, binary := range manifest.Binaries {
 		row(out, "  %s %s\n", cyan.Sprintf("%-52s", binary.Name), binary.Version)
 	}
+	for _, schema := range manifest.Schemas {
+		row(out, "  %s %s %s\n", cyan.Sprintf("%-52s", schema.Name+" schemas"), schema.Version, dim.Sprint(schema.Commit))
+	}
 	row(out, "  %s %s\n", cyan.Sprintf("%-52s", "hosted runner"), manifest.HostedRunner)
 	row(out, "\n")
 	return nil

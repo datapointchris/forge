@@ -131,6 +131,10 @@ type Toolchain struct {
 	// whatever the runner image happens to ship, which is the floating-version
 	// problem the rest of this manifest exists to prevent.
 	Binaries []Binary `yaml:"binaries"`
+	// Schemas pins the schema catalogs a check reads. A catalog read at a branch
+	// moves under the check, so a manifest that passed yesterday fails today with
+	// nothing in the repo changed.
+	Schemas []Schema `yaml:"schemas"`
 	// HostedRunner is the GitHub-hosted image a public repo's workflows run on,
 	// named by the label for one image release. `ubuntu-latest` moves to a new
 	// release on GitHub's schedule, so a job that passed the day before can
@@ -153,6 +157,15 @@ type Binary struct {
 	Sha256 string `yaml:"sha256" json:"sha256"`
 	// Commit is the commit the version's tag points at, for a tool CI clones.
 	Commit string `yaml:"commit" json:"commit"`
+}
+
+// Schema is a catalog of schemas pinned to the commit it is read at. Version is
+// the release it is read for, where the catalog holds one set per release, as
+// kubeconform's catalog of core kinds holds one per Kubernetes release.
+type Schema struct {
+	Name    string `yaml:"name" json:"name"`
+	Version string `yaml:"version" json:"version"`
+	Commit  string `yaml:"commit" json:"commit"`
 }
 
 // Runtime is a language runtime pinned to a version.
@@ -239,6 +252,9 @@ func Load(assetsFS fs.FS) (*Toolchain, error) {
 	if err := manifest.refuseDerivedBinaries(); err != nil {
 		return nil, fmt.Errorf("%s: %w", File, err)
 	}
+	if err := manifest.refuseFloatingSchemas(); err != nil {
+		return nil, fmt.Errorf("%s: %w", File, err)
+	}
 	if err := manifest.refuseFloatingRunner(); err != nil {
 		return nil, fmt.Errorf("%s: hosted_runner: %w", File, err)
 	}
@@ -272,6 +288,17 @@ func (t *Toolchain) refuseDerivedBinaries() error {
 		}
 		if binary.Commit != "" && !commitRE.MatchString(binary.Commit) {
 			return fmt.Errorf("binaries pins %s to commit %q, which is not a full 40-character commit id", binary.Name, binary.Commit)
+		}
+	}
+	return nil
+}
+
+// refuseFloatingSchemas rejects a schema catalog not fixed to one commit, since
+// a branch or a short id is not a pin a check can be held to.
+func (t *Toolchain) refuseFloatingSchemas() error {
+	for _, schema := range t.Schemas {
+		if !commitRE.MatchString(schema.Commit) {
+			return fmt.Errorf("schemas pins %s to commit %q, which is not a full 40-character commit id", schema.Name, schema.Commit)
 		}
 	}
 	return nil
@@ -439,9 +466,45 @@ func (t *Toolchain) ApplyDependencyVersions(content string) string {
 }
 
 // ApplyPreCommitPins runs every substitution a pre-commit config takes: hook
-// revs, and the modules a local Go hook installs.
+// revs, the modules a local Go hook installs, and the schema catalogs it reads.
 func (t *Toolchain) ApplyPreCommitPins(content string) string {
-	return t.ApplyDependencyVersions(t.ApplyRevs(content))
+	return t.ApplySchemaPins(t.ApplyDependencyVersions(t.ApplyRevs(content)))
+}
+
+// ApplySchemaPins rewrites `<name>_version="X"` and `<name>_commit="X"` shell
+// assignments to what the manifest pins for that schema catalog. A name the
+// manifest does not pin as a schema is left alone.
+func (t *Toolchain) ApplySchemaPins(content string) string {
+	lines := strings.Split(content, "\n")
+
+	for i, line := range lines {
+		m := binaryLineRE.FindStringSubmatch(line)
+		if len(m) < 4 {
+			continue
+		}
+		if value, managed := t.schemaField(m[2], m[3]); managed {
+			lines[i] = fmt.Sprintf("%s%s_%s=%q", m[1], m[2], m[3], value)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// schemaField is a schema catalog's version or commit, and whether the manifest
+// pins it. A catalog holding no per-release sets declares no version, so a line
+// asking for one keeps its placeholder and Unpinned refuses the file.
+func (t *Toolchain) schemaField(name, field string) (string, bool) {
+	for _, schema := range t.Schemas {
+		if schema.Name != name {
+			continue
+		}
+		switch field {
+		case "version":
+			return schema.Version, schema.Version != ""
+		case "commit":
+			return schema.Commit, true
+		}
+	}
+	return "", false
 }
 
 // ApplyRuntimeVersions rewrites `<name>-version: X` inputs to the manifest's

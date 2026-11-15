@@ -76,6 +76,21 @@ tools:
     version: fixture-tflint
   - module: github.com/terraform-docs/terraform-docs
     version: fixture-terraform-docs
+  - module: sigs.k8s.io/kustomize/kustomize/v5
+    version: fixture-kustomize
+  - module: github.com/yannh/kubeconform/cmd/kubeconform
+    version: fixture-kubeconform
+  - module: golang.stackrox.io/kube-linter/cmd/kube-linter
+    version: fixture-kube-linter
+
+# A commit must have its real shape, so each is a placeholder of one repeated
+# digit.
+schemas:
+  - name: kubernetes
+    version: fixture-kubernetes
+    commit: "8888888888888888888888888888888888888888"
+  - name: kubernetes_crds
+    commit: "9999999999999999999999999999999999999999"
 
 # Every tool in hookPinnedTools is absent on purpose: it takes its release from
 # its hook, and Load refuses a binaries entry for one.

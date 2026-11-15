@@ -86,6 +86,7 @@ var categoryMap = map[string]string{
 	"github-actions":          "actions",
 	"terraform":               "terraform",
 	"terraform-lint-and-docs": "terraform",
+	"kubernetes":              "kubernetes",
 }
 
 // genericBlocks apply to every target regardless of stack. Membership is

@@ -843,6 +843,7 @@ var integrationStacks = []struct {
 	{"go", detected("go")},
 	{"full", detected("python", "go", "vue", "rust", "lua", "docker", "actions", "terraform")},
 	{"multi-vue", at("vue", "client", "node", "server")},
+	{"nested-kubernetes", at("kubernetes", "deploy", "kubernetes", "deploy/runs")},
 	{"empty", detected()},
 }
 

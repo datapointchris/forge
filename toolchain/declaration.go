@@ -43,6 +43,9 @@ type declaration struct {
 	Binaries struct {
 		Pins []Binary `json:"pins"`
 	} `json:"binaries"`
+	Schemas struct {
+		Pins []Schema `json:"pins"`
+	} `json:"schemas"`
 	Runners struct {
 		Hosted string `json:"hosted"`
 	} `json:"runners"`
@@ -70,6 +73,7 @@ func LoadFile(path string) (*Toolchain, error) {
 		Actions:      d.Actions.Pins,
 		Tools:        d.Tools.Pins,
 		Binaries:     d.Binaries.Pins,
+		Schemas:      d.Schemas.Pins,
 		HostedRunner: d.Runners.Hosted,
 		Languages:    map[string]Language{},
 	}
@@ -101,6 +105,9 @@ func LoadFile(path string) (*Toolchain, error) {
 	}
 	sortRuntimes(manifest.Runtimes)
 	if err := manifest.refuseDerivedBinaries(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := manifest.refuseFloatingSchemas(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := manifest.refuseFloatingRunner(); err != nil {

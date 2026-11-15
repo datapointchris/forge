@@ -1,0 +1,65 @@
+  # Kubernetes manifests
+  #
+  # Renders each declared directory as a cluster would be given it, then checks
+  # what it rendered. kubeconform -strict refuses a field that does not exist,
+  # has the wrong type or is unknown. kube-linter refuses what admission accepts
+  # and the kubernetes standard does not, such as a writable root filesystem or
+  # a missing limit. pre-commit installs all three tools from their modules at
+  # the releases the declaration pins, with a Go of its own where the machine
+  # has none, so neither a desk nor a runner installs them.
+  #
+  # A directory holding a kustomization.yaml is one root. One holding none is a
+  # root per child directory that holds one, which is how an app keeps its
+  # migration apart from the workload that waits on it. A root a cluster
+  # applies apart from its parent's, such as one in another namespace, is
+  # declared as a directory of its own.
+  #
+  # kubeconform reads core kinds from its own catalog, for the Kubernetes
+  # release declared, and custom resources such as Flux's from the datreeio
+  # catalog. Each catalog is read at a pinned commit, and each schema is
+  # fetched once into the cache. Neither publishes a schema for
+  # CustomResourceDefinition itself, so those are skipped.
+  #
+  # The whole check is inline because the hook has to run on any clone.
+  # pre-commit execs entry without a shell, hence `bash -c … --`.
+  - repo: local
+    hooks:
+      - id: kubernetes-manifests
+        name: kubeconform and kube-linter on rendered manifests
+        entry: |
+          bash -c '
+          kubernetes_version="{{pin}}"
+          kubernetes_commit="{{pin}}"
+          kubernetes_crds_commit="{{pin}}"
+          cache="${XDG_CACHE_HOME:-$HOME/.cache}/kubeconform"
+          mkdir -p "$cache"
+          if [ -f "{{dir}}/kustomization.yaml" ]; then
+            roots=("{{dir}}")
+          else
+            shopt -s nullglob
+            roots=("{{dir}}"/*/kustomization.yaml)
+            roots=("${roots[@]%/kustomization.yaml}")
+          fi
+          if [ "${#roots[@]}" -eq 0 ]; then
+            echo "{{dir}} holds no kustomization.yaml, at its top or in a directory below it"
+            exit 1
+          fi
+          status=0
+          for root in "${roots[@]}"; do
+            echo "$root:"
+            rendered=$(kustomize build "$root") || { status=1; continue; }
+            kubeconform -strict -summary -cache "$cache" -kubernetes-version "$kubernetes_version" \
+              -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$kubernetes_commit/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
+              -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$kubernetes_crds_commit/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+              -skip CustomResourceDefinition - <<<"$rendered" || status=1
+            kube-linter lint - <<<"$rendered" || status=1
+          done
+          exit "$status"
+          ' --
+        language: golang
+        additional_dependencies:
+          - sigs.k8s.io/kustomize/kustomize/v5@{{pin}}
+          - github.com/yannh/kubeconform/cmd/kubeconform@{{pin}}
+          - golang.stackrox.io/kube-linter/cmd/kube-linter@{{pin}}
+        pass_filenames: false
+        files: '^{{dirprefix}}'
