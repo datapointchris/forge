@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # forge-managed
 #
+# Deployed whole as release/with-openbao-login, so an edit made here is overwritten.
+#
 # Runs one command logged in to OpenBao as this GitHub Actions job, then revokes the token.
-# forge writes this file whole, and `forge repos apply` replaces an edit made here.
 set -euo pipefail
 
 usage() {
