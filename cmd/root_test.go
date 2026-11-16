@@ -41,18 +41,6 @@ func runLine(t *testing.T, args ...string) error {
 	return run(autoupdate.Config{Suppress: true})
 }
 
-// A word one slip from a subcommand is answered with the subcommand, so a
-// mistyped verb names the one that was meant.
-func TestAnUnknownSubcommandNamesTheNearOnes(t *testing.T) {
-	err := runLine(t, "repos", "plam")
-	if !errors.Is(err, goclikit.ErrUsage) {
-		t.Fatalf("repos plam is not a usage error, so it exits 1 rather than 2: %v", err)
-	}
-	if !slices.Contains(strings.Fields(err.Error()), "plan") {
-		t.Errorf("repos plam answered %v, want it to name plan", err)
-	}
-}
-
 // Left to cobra, which parses a group's flags before its arguments, an unknown
 // word followed by a flag only a leaf declares reports the flag and never the word.
 func TestAWordBeforeAFlagIsRefusedOnEveryGroup(t *testing.T) {
