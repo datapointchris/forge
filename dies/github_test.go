@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/datapointchris/forge/reconcile"
@@ -96,7 +98,7 @@ func TestMergeSettingsATokenCannotSeeAreUnmeasuredRatherThanDrift(t *testing.T) 
 		t.Fatal(err)
 	}
 	linkTool(t, bin, "git")
-	script := "#!/bin/sh\ncase \"$1\" in\nrepo) echo 'datapointchris/thing main' ;;\napi) echo 'null null null null null' ;;\nesac\n"
+	script := "#!/bin/sh\ncase \"$1\" in\nrepo) echo 'datapointchris/thing main' ;;\napi) echo 'null null null null null null' ;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +113,46 @@ func TestMergeSettingsATokenCannotSeeAreUnmeasuredRatherThanDrift(t *testing.T) 
 	}
 	if reconcile.CodeFor([]reconcile.Result{measured.Fold(reconcile.LensPlan)}) != reconcile.ExitConverged {
 		t.Error("settings the token cannot see moved the exit code")
+	}
+}
+
+// A rebase merge lands every commit under a new sha, so an enabled rebase
+// button is drift apply turns off.
+func TestMergeSettingsTurnsTheRebaseButtonOff(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkTool(t, bin, "git")
+	writes := filepath.Join(dir, "writes")
+	script := "#!/bin/sh\ncase \"$1\" in\n" +
+		"repo) echo 'datapointchris/thing main' ;;\n" +
+		"api) if [ \"$2\" = -X ]; then printf '%s\\n' \"$@\" >> '" + writes + "'; " +
+		"else echo 'PR_TITLE PR_BODY true true false true'; fi ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	target := fixture(t, stacks("go"), nil)
+	withRemote(t, target, "git@github.com:datapointchris/thing.git")
+
+	measured := reconcile.Assess(target, MergeSettings{})
+
+	if len(measured.Changes) != 1 || measured.Changes[0].Item != "allow_rebase_merge" {
+		t.Fatalf("changes = %v, want allow_rebase_merge alone", measured.Changes)
+	}
+	outcome, err := MergeSettings{}.Perform(target, measured.Changes[0])
+	if err != nil || outcome.Status != reconcile.Done {
+		t.Fatalf("outcome = %v, %v; want done", outcome, err)
+	}
+	sent, err := os.ReadFile(writes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(strings.Split(string(sent), "\n"), "allow_rebase_merge=false") {
+		t.Errorf("PATCH sent %q, want allow_rebase_merge=false", sent)
 	}
 }
 
