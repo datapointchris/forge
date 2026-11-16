@@ -1,6 +1,7 @@
 package precommit
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/datapointchris/forge/config"
@@ -55,11 +57,11 @@ const wholeScope = "after:all"
 
 // categoryMap maps a block to the declared stack category that pulls it in.
 //
-// Four categories are gated by something other than a component, and Generate
-// seeds each one itself: sql by a declared dialect, git by the target being
-// versioned, python-scripts by the scan finding a file identify cannot tag in a
-// repo declaring Python, and go-release by a Go component whose releases
-// go-semantic-release cuts.
+// Five categories are gated by something other than a component, and Generate
+// seeds each one itself: sql by a declared dialect, compose-projects by a
+// declared compose project, git by the target being versioned, python-scripts
+// by the scan finding a file identify cannot tag in a repo declaring Python,
+// and go-release by a Go component whose releases go-semantic-release cuts.
 //
 // git is gated that way because its blocks hook commit-msg, which only fires on
 // a commit. A target git does not version would carry hooks that can never run,
@@ -82,6 +84,7 @@ var categoryMap = map[string]string{
 	"rust":                    "rust",
 	"lua":                     "lua",
 	"docker":                  "docker",
+	"docker-compose-projects": composeCategory,
 	"sql":                     "sql",
 	"github-actions":          "actions",
 	"terraform":               "terraform",
@@ -460,6 +463,13 @@ func Generate(
 	if declared.SQLDialect != "" {
 		dirs["sql"] = []string{"."}
 	}
+	composeArgs, composeFiles, err := composeProjects(declared)
+	if err != nil {
+		return "", err
+	}
+	if composeArgs != "" {
+		dirs[composeCategory] = []string{"."}
+	}
 	// The commit-stage blocks are gated by git being present, for the reason in
 	// categoryMap. Seeded exactly as sql is: neither has a build directory of
 	// its own, so both take the root.
@@ -498,6 +508,8 @@ func Generate(
 		rendered := strings.NewReplacer(
 			"{{dialect}}", declared.SQLDialect,
 			"{{scripts}}", scriptsPattern,
+			"{{compose_projects}}", composeArgs,
+			"{{compose_project_files}}", composeFiles,
 		).Replace(renderForDirs(b, dirs[categoryMap[b.Name]]))
 		content := manifest.ApplyPreCommitPins(StripHooksFromBlock(rendered, customIDs))
 		content = dropEmptyRepoEntries(content)
@@ -547,6 +559,47 @@ func Generate(
 		return "", fmt.Errorf("the versions file pins nothing for %s", strings.Join(missing, ", "))
 	}
 	return config, nil
+}
+
+// composeCategory gates the docker-compose-projects block. A declared project
+// seeds it, as a dialect seeds sql.
+const composeCategory = "compose-projects"
+
+// composeProjects renders the declared compose projects as the
+// docker-compose-projects hook's args, one string of flags per project, and as
+// the files pattern matching every file they read.
+//
+// A project needs an env file, because without one the docker block's per-file
+// parse already checks its files. It needs a docker component, because CI
+// installs docker compose only where one is declared. The hook splits each
+// project's flags on whitespace, so a path holding any is refused here.
+func composeProjects(declared *config.Toolchain) (args, files string, err error) {
+	if len(declared.ComposeProjects) == 0 {
+		return "", "", nil
+	}
+	if !slices.ContainsFunc(declared.Components, func(c config.Component) bool { return c.Stack == "docker" }) {
+		return "", "", errors.New("compose_projects needs a docker component, whose CI setup installs docker compose")
+	}
+	var projects, paths []string
+	for i, project := range declared.ComposeProjects {
+		if len(project.Files) == 0 || project.EnvFile == "" {
+			return "", "", fmt.Errorf("compose project %d needs files and an env_file: without an env file, the docker block's per-file parse already checks it", i+1)
+		}
+		flags := []string{"--env-file", project.EnvFile}
+		for _, file := range project.Files {
+			flags = append(flags, "-f", file)
+		}
+		for _, path := range append([]string{project.EnvFile}, project.Files...) {
+			if strings.ContainsAny(path, " \t") {
+				return "", "", fmt.Errorf("compose project %d names %q, and the hook splits a project's flags on whitespace", i+1, path)
+			}
+			if quoted := regexp.QuoteMeta(path); !slices.Contains(paths, quoted) {
+				paths = append(paths, quoted)
+			}
+		}
+		projects = append(projects, strconv.Quote(strings.Join(flags, " ")))
+	}
+	return "[" + strings.Join(projects, ", ") + "]", "^(" + strings.Join(paths, "|") + ")$", nil
 }
 
 // GetExistingHookIDs extracts all hook IDs from an existing config.

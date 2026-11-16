@@ -844,6 +844,10 @@ var integrationStacks = []struct {
 	{"full", detected("python", "go", "vue", "rust", "lua", "docker", "actions", "terraform")},
 	{"multi-vue", at("vue", "client", "node", "server")},
 	{"nested-kubernetes", at("kubernetes", "deploy", "kubernetes", "deploy/runs")},
+	{"compose-projects", &config.Toolchain{
+		Components:      []config.Component{{Stack: "docker", Dir: "."}},
+		ComposeProjects: []config.ComposeProject{{Files: []string{"docker-compose.yml", "docker-compose.dev.yml"}, EnvFile: "tests/testing.env"}},
+	}},
 	{"empty", detected()},
 }
 

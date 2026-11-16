@@ -385,7 +385,8 @@ top-level `owner`, and `sync_base`, where the `synced-dirs` die keeps each repo'
   clone.
 - `visibility` picks the runner a generated workflow names.
 - `toolchain.components` is what the generators and `forge test` read. `toolchain` also takes
-  `sql_dialect`, `shellcheck_disable` and `exclude`.
+  `sql_dialect`, `shellcheck_disable`, `exclude`, and `compose_projects`: the compose files a
+  repo's env file interpolates, merged as Compose merges them.
 - `synced_dirs` lists repo-relative directories the `synced-dirs` die links into the sync base.
 - `binary` names the command a repo installs, where `forge cli` cannot read it out of the repo.
 - `description` is what `fleet status` shows.

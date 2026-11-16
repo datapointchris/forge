@@ -1,0 +1,28 @@
+# Docker setup
+      # The docker block's compose hooks call `docker compose`. The image a
+      # self-hosted runner starts from ships the Docker CLI without the compose
+      # plugin, and a hosted image ships whichever release it was built with. So
+      # the job installs the pinned release as a plugin under a DOCKER_CONFIG of
+      # its own, which the CLI searches before its system directories. Every
+      # runner then parses with the same release, and parsing needs no daemon.
+      #
+      # A repo with no compose file has nothing for those hooks to read, so the
+      # step downloads nothing there. The pattern is the hook's files pattern.
+      - name: Install Docker Compose
+        run: |
+          docker_compose_version="{{pin}}"
+          docker_compose_sha256="{{pin}}"
+
+          if ! git ls-files | grep -qE '(^|/)(docker-)?compose([.-][^/]*)?\.ya?ml$'; then
+            echo "No compose file is tracked, so the compose hooks have nothing to parse."
+            exit 0
+          fi
+
+          config="$RUNNER_TEMP/docker-config"
+          mkdir -p "$config/cli-plugins"
+          curl -fsSL --retry 3 -o "$config/cli-plugins/docker-compose" \
+            "https://github.com/docker/compose/releases/download/v${docker_compose_version}/docker-compose-linux-x86_64"
+          echo "${docker_compose_sha256}  $config/cli-plugins/docker-compose" | sha256sum -c -
+          chmod +x "$config/cli-plugins/docker-compose"
+          echo "DOCKER_CONFIG=$config" >> "$GITHUB_ENV"
+          DOCKER_CONFIG="$config" docker compose version

@@ -153,6 +153,19 @@ type Toolchain struct {
 	// generated blocks, and the repo is the only thing that knows the tree is
 	// fixtures rather than source.
 	Exclude string `json:"exclude,omitempty" yaml:"exclude,omitempty"`
+	// ComposeProjects are compose files Docker Compose merges into one project
+	// and interpolates from a committed env file. The docker block parses each
+	// compose file alone with interpolation off, because the .env a file reads
+	// is gitignored. That parse cannot see a malformed ${VARIABLE} or a
+	// required one the env file leaves unset, and a declared project can.
+	ComposeProjects []ComposeProject `json:"compose_projects,omitempty" yaml:"compose_projects,omitempty"`
+}
+
+// ComposeProject is one `docker compose --env-file <EnvFile> -f <file>...`,
+// with Files in the order Compose merges them.
+type ComposeProject struct {
+	Files   []string `json:"files"    yaml:"files"`
+	EnvFile string   `json:"env_file" yaml:"env_file"`
 }
 
 // SyncedDir is one repo-relative directory kept in the sync base, and the name

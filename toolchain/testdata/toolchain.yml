@@ -121,6 +121,9 @@ binaries:
     sha256: "7777777777777777777777777777777777777777777777777777777777777777"
   - name: terraform
     version: fixture-terraform
+  - name: docker_compose
+    version: fixture-docker-compose
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 runtimes:
   - name: node

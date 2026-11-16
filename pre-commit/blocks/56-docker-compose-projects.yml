@@ -1,0 +1,16 @@
+  # Docker Compose projects
+  #
+  # Each project the registry's compose_projects declares, merged in its order
+  # and interpolated from its committed env file. That catches what the docker
+  # block's per-file parse cannot: a malformed ${VARIABLE}, a required one the
+  # env file leaves unset, and an override the base refuses. Each argument is
+  # one project's flags, so a project reads here as the command that checks it.
+  - repo: local
+    hooks:
+      - id: docker-compose-projects
+        name: docker compose config on each declared project
+        entry: bash -c 'docker compose version > /dev/null 2>&1 || { echo "docker compose is not on this machine, and the hook parses compose projects with it" >&2; exit 1; }; for project in "$@"; do read -ra flags <<< "$project"; docker compose "${flags[@]}" config --quiet --no-env-resolution || { echo "docker compose $project config failed" >&2; exit 1; }; done' --
+        language: system
+        args: {{compose_projects}}
+        files: '{{compose_project_files}}'
+        pass_filenames: false
