@@ -52,6 +52,9 @@ type ghRepo struct {
 // resolveGitHubRepo asks gh for the slug rather than parsing the remote URL: gh
 // handles ssh, https and the .git suffix, and it is already the thing that has
 // to agree with the API.
+//
+// gh is handed origin's URL. Left to choose, gh ranks a remote named
+// `upstream` above `origin`, so a fork would be measured as its parent.
 func resolveGitHubRepo(dir string) (ghRepo, error) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return ghRepo{}, unmeasurable{"gh is not installed"}
@@ -65,7 +68,7 @@ func resolveGitHubRepo(dir string) (ghRepo, error) {
 		return ghRepo{}, errNotGitHub
 	}
 
-	out, err := runIn(dir, "gh", "repo", "view", "--json", "nameWithOwner,defaultBranchRef",
+	out, err := runIn(dir, "gh", "repo", "view", remote, "--json", "nameWithOwner,defaultBranchRef",
 		"-q", `"\(.nameWithOwner) \(.defaultBranchRef.name)"`)
 	if err != nil {
 		return ghRepo{}, unmeasurable{"gh could not identify this repo (check `gh auth status`)"}
