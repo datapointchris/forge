@@ -239,9 +239,9 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 		}
 		switch {
 		case len(args) == 1:
-			fmt.Printf("No execution history for %s%s\n", args[0], window)
+			row(cmd.OutOrStdout(), "No execution history for %s%s\n", args[0], window)
 		default:
-			fmt.Printf("No execution history found%s.\n", window)
+			row(cmd.OutOrStdout(), "No execution history found%s.\n", window)
 		}
 		return nil
 	}
@@ -252,7 +252,7 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 		if diesStatsJSON {
 			return emitDiesStatsJSON(cmd, args, records, nil)
 		}
-		printDieRunHistory(args[0], window, records)
+		printDieRunHistory(cmd.OutOrStdout(), args[0], window, records)
 		return nil
 	}
 
@@ -260,7 +260,7 @@ func runDiesStats(cmd *cobra.Command, args []string) error {
 	if diesStatsJSON {
 		return emitDiesStatsJSON(cmd, args, nil, aggregated)
 	}
-	printDieStatsSummary(window, aggregated)
+	printDieStatsSummary(cmd.OutOrStdout(), window, aggregated)
 	return nil
 }
 
@@ -307,7 +307,7 @@ func emitDiesStatsJSON(cmd *cobra.Command, args []string, records []dies.RunReco
 	return enc.Encode(aggregated)
 }
 
-func printDieStatsSummary(window string, aggregated []dies.DieStats) {
+func printDieStatsSummary(w io.Writer, window string, aggregated []dies.DieStats) {
 	bold := color.New(color.Bold)
 	cyan := color.New(color.FgHiCyan)
 	dim := color.New(color.Faint)
@@ -316,13 +316,13 @@ func printDieStatsSummary(window string, aggregated []dies.DieStats) {
 	red := color.New(color.FgHiRed)
 
 	if window != "" {
-		fmt.Printf("\nRuns%s\n", window)
+		row(w, "\nRuns%s\n", window)
 	}
-	bold.Printf("\n%-50s %5s %-16s %5s %5s %5s\n", "Die", "Runs", "Last run", "OK", "Skip", "Fail")
-	dim.Printf("%s\n", strings.Repeat("─", 92))
+	row(w, "\n%s\n", bold.Sprintf("%-50s %5s %-16s %5s %5s %5s", "Die", "Runs", "Last run", "OK", "Skip", "Fail"))
+	row(w, "%s\n", dim.Sprint(strings.Repeat("─", 92)))
 
 	for _, s := range aggregated {
-		fmt.Printf("%s %s %s %s %s %s\n",
+		row(w, "%s %s %s %s %s %s\n",
 			cyan.Sprintf("%-50s", s.Die),
 			bold.Sprintf("%5d", s.Runs),
 			s.LastRun.Format("2006-01-02 15:04"),
@@ -331,10 +331,10 @@ func printDieStatsSummary(window string, aggregated []dies.DieStats) {
 			red.Sprintf("%5d", s.Fail))
 	}
 
-	dim.Printf("\nPer-run history: forge dies stats <die>\n\n")
+	row(w, "\n%s\n\n", dim.Sprint("Per-run history: forge dies stats <die>"))
 }
 
-func printDieRunHistory(name, window string, records []dies.RunRecord) {
+func printDieRunHistory(w io.Writer, name, window string, records []dies.RunRecord) {
 	bold := color.New(color.Bold)
 	cyan := color.New(color.FgHiCyan)
 	dim := color.New(color.Faint)
@@ -342,16 +342,16 @@ func printDieRunHistory(name, window string, records []dies.RunRecord) {
 	yellow := color.New(color.FgHiYellow)
 	red := color.New(color.FgHiRed)
 
-	cyan.Printf("\n%s%s\n", name, window)
-	bold.Printf("%-16s %5s %5s %5s\n", "Run", "OK", "Skip", "Fail")
-	dim.Printf("%s\n", strings.Repeat("─", 34))
+	row(w, "\n%s\n", cyan.Sprint(name+window))
+	row(w, "%s\n", bold.Sprintf("%-16s %5s %5s %5s", "Run", "OK", "Skip", "Fail"))
+	row(w, "%s\n", dim.Sprint(strings.Repeat("─", 34)))
 
 	for _, r := range records {
-		fmt.Printf("%s %s %s %s\n",
+		row(w, "%s %s %s %s\n",
 			r.Timestamp.Format("2006-01-02 15:04"),
 			green.Sprintf("%5d", r.OK),
 			yellow.Sprintf("%5d", r.Skip),
 			red.Sprintf("%5d", r.Fail))
 	}
-	fmt.Println()
+	row(w, "\n")
 }

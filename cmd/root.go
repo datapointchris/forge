@@ -96,7 +96,7 @@ func run(config autoupdate.Config) error {
 
 func Execute() {
 	if err := run(autoupdate.Config{Update: updateConfig()}); err != nil {
-		os.Exit(exitCode(os.Stderr, err))
+		os.Exit(exitCode(rootCmd.ErrOrStderr(), err))
 	}
 }
 

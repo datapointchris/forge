@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"runtime/debug"
 	"strings"
 
@@ -53,12 +52,13 @@ var versionCmd = &cobra.Command{
   forge --version`,
 	Run: func(cmd *cobra.Command, args []string) {
 		current := buildVersion()
-		fmt.Printf("forge %s\n", current)
-		fmt.Printf("  commit: %s\n", commit)
-		fmt.Printf("  built:  %s\n", date)
+		w := cmd.OutOrStdout()
+		row(w, "forge %s\n", current)
+		row(w, "  commit: %s\n", commit)
+		row(w, "  built:  %s\n", date)
 		if current == "dev" {
 			if info, ok := debug.ReadBuildInfo(); ok {
-				fmt.Printf("  go:     %s\n", info.GoVersion)
+				row(w, "  go:     %s\n", info.GoVersion)
 			}
 		}
 	},
