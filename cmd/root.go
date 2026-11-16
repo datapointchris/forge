@@ -28,9 +28,9 @@ var (
 )
 
 // SetEmbeddedAssets stores the embedded filesystems for use by subcommands.
-func SetEmbeddedAssets(preCommit, ciBlocks fs.FS) {
+func SetEmbeddedAssets(preCommit, ci fs.FS) {
 	embeddedPreCommit = preCommit
-	embeddedCI = ciBlocks
+	embeddedCI = ci
 }
 
 // A die is an argument to a reconcile verb, never a command of its own, and

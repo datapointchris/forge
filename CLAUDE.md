@@ -477,6 +477,13 @@ the stamp alone, the same stages are measured and reported `ByHand` rather than 
 parsed from the `stages:` lists, never substring-matched, because `commit-msg` is a substring of
 `prepare-commit-msg`.
 
+**The `openbao-login` die writes `release/with-openbao-login` whole, from `ci/scripts/`, into every
+repo declaring `toolchain.openbao_login`.** A CI job logs in to OpenBao before it installs anything,
+so no package can carry the login, and a pasted copy drifts. The script's first line is its
+interpreter, so `# forge-managed` sits on the second, and `handWritten` reads it there. A copy at
+the path without the marker is reported `ByHand`, because forge cannot tell a local fix from a stale
+paste. Deleting it lets `apply` write forge's.
+
 ## Release
 
 `release.yml` triggers on push to `main` and go-semantic-release creates the tag, because a tag pushed

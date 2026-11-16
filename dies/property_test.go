@@ -26,10 +26,12 @@ func driftedDirectory(t *testing.T) reconcile.Target {
 }
 
 // driftedStacks puts a Go module beside the Python project, with a Dockerfile
-// on a floating golang tag, so gomod reads both files it can write.
+// on a floating golang tag, so gomod reads both files it can write. It declares
+// the OpenBao login, so openbao-login has a missing script to find.
 func driftedStacks() *config.Toolchain {
 	declared := stacks("python")
 	declared.Components = append(declared.Components, config.Component{Stack: "go", Dir: "api"})
+	declared.OpenBaoLogin = true
 	return declared
 }
 

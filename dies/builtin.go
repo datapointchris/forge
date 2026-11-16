@@ -34,6 +34,7 @@ func Builtin() []reconcile.Die {
 		PreCommit{},
 		CI{},
 		Release{},
+		OpenBaoLogin{},
 	}
 }
 

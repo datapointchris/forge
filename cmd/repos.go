@@ -136,7 +136,12 @@ func loadAssets() (reconcile.Assets, error) {
 		return reconcile.Assets{}, err
 	}
 
-	return reconcile.Assets{PreCommit: preCommitFS, CI: ciFS, Manifest: manifest}, nil
+	scriptsFS, err := fs.Sub(embeddedCI, "ci/scripts")
+	if err != nil {
+		return reconcile.Assets{}, fmt.Errorf("accessing embedded CI scripts: %w", err)
+	}
+
+	return reconcile.Assets{PreCommit: preCommitFS, CI: ciFS, CIScripts: scriptsFS, Manifest: manifest}, nil
 }
 
 // loadVersions reads the declaration this machine names.

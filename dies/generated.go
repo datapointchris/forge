@@ -161,6 +161,9 @@ func removeGenerated(root string, file generatedFile) error {
 // handWritten reports whether a file exists carrying none of forge's markers,
 // which is the one state the generators must never overwrite.
 //
+// The marker is the first line, or the second in a script, whose first line
+// has to be its interpreter.
+//
 // An absent file is not hand-written. First deployment writes it, and a repo
 // forge has never touched is reached only by a declaration.
 func handWritten(root, rel string) bool {
@@ -168,8 +171,12 @@ func handWritten(root, rel string) bool {
 	if err != nil {
 		return false
 	}
+	body := string(data)
+	if strings.HasPrefix(body, "#!") {
+		_, body, _ = strings.Cut(body, "\n")
+	}
 	for _, mark := range forgeMarks {
-		if strings.HasPrefix(string(data), mark) {
+		if strings.HasPrefix(body, mark) {
 			return false
 		}
 	}

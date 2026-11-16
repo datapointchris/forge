@@ -77,6 +77,7 @@ func testAssets(t *testing.T) reconcile.Assets {
 	return reconcile.Assets{
 		PreCommit: preCommit,
 		CI:        os.DirFS(filepath.Join(root, "ci", "blocks")),
+		CIScripts: os.DirFS(filepath.Join(root, "ci", "scripts")),
 		Manifest:  manifest,
 	}
 }

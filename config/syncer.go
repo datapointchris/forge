@@ -145,6 +145,10 @@ type Toolchain struct {
 	// release passes it, and actionlint.yaml declares the label. Declared on a
 	// private repo only.
 	ReleaseRunnerLabel string `json:"release_runner_label,omitempty" yaml:"release_runner_label,omitempty"`
+	// OpenBaoLogin says a job in this repo logs in to OpenBao, so the
+	// openbao-login die writes release/with-openbao-login into it. Nothing in a
+	// workflow reliably says so: the login may sit in a script it calls.
+	OpenBaoLogin bool `json:"openbao_login,omitempty" yaml:"openbao_login,omitempty"`
 	// Exclude is a regex emitted as pre-commit's top-level exclude, for paths
 	// whose content is invalid on purpose. logsift keeps a tree of deliberately
 	// broken files to generate real hook output for its pattern tests; every

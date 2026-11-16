@@ -18,6 +18,8 @@ type Assets struct {
 	PreCommit fs.FS
 	// CI is the ci/blocks tree.
 	CI fs.FS
+	// CIScripts is the ci/scripts tree: scripts a CI job runs, deployed whole.
+	CIScripts fs.FS
 	// Manifest is the single source of truth for every pinned tool version.
 	Manifest *toolchain.Toolchain
 }

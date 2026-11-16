@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# forge-managed
+#
+# Runs one command logged in to OpenBao as this GitHub Actions job, then revokes the token.
+# forge writes this file whole, and `forge repos apply` replaces an edit made here.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: with-openbao-login --role <role> [--secret <VAR>=<path>#<field>]...
+         -- <command> [<arg>...]
+
+Logs in to OpenBao at BAO_ADDR on auth/github-actions as <role>, with the OIDC
+token GitHub mints for this job under audience openbao. Reads each --secret
+field into <VAR>, then runs <command> with VAULT_ADDR, VAULT_TOKEN and each
+<VAR> in its environment. <path> is the API path, such as
+github/data/my-repo/registry-account. The token is revoked when the command ends,
+and the exit status is the command's.
+
+Where BAO_CACERT names a CA bundle, every call to OpenBao trusts it, and the
+command gets it as VAULT_CACERT. GitHub's token endpoint keeps the system trust.
+
+The job needs id-token: write. Each value is masked in the job's log, one line
+at a time, before anything could print it. The request token and the OpenBao
+token reach curl through a header file only this user reads, and the JWT
+through stdin. None reaches an argv.
+EOF
+}
+
+die() {
+  printf 'with-openbao-login: %s\n' "$*" >&2
+  exit 1
+}
+
+usage_error() {
+  printf 'with-openbao-login: %s\n\n' "$1" >&2
+  usage >&2
+  exit 2
+}
+
+if [ $# -eq 0 ]; then
+  usage
+  exit 0
+fi
+
+role=''
+secrets=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    --role | --secret)
+      [ $# -ge 2 ] || usage_error "$1 needs a value"
+      if [ "$1" = --role ]; then
+        role=$2
+      else
+        [[ $2 =~ ^[A-Za-z_][A-Za-z0-9_]*=[^#]+#.+$ ]] || usage_error "--secret $2 is not <VAR>=<path>#<field>"
+        secrets+=("$2")
+      fi
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *) usage_error "unknown argument $1" ;;
+  esac
+done
+[ -n "$role" ] || usage_error "--role is required"
+[ $# -gt 0 ] || usage_error "a command after -- is required"
+[ -n "${BAO_ADDR:-}" ] || die "BAO_ADDR is unset, so there is no OpenBao to log in to"
+[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || die "ACTIONS_ID_TOKEN_REQUEST_URL is unset, so the job lacks id-token: write"
+
+# A host that drops packets fails the call here rather than at the step's limit. An HTTP error
+# keeps its body, which says whether the role or the policy refused.
+bounded_curl() {
+  curl -sS --connect-timeout 10 --max-time 30 --fail-with-body "$@"
+}
+
+# A runner whose system trust lacks OpenBao's CA names it in BAO_CACERT. Only OpenBao's calls
+# take it, because --cacert replaces the system trust that GitHub's token endpoint needs.
+bao_trust=()
+[ -z "${BAO_CACERT:-}" ] || bao_trust=(--cacert "$BAO_CACERT")
+bao_curl() {
+  bounded_curl "${bao_trust[@]}" "$@"
+}
+
+# A workflow command ends at its line, so ::add-mask:: with a multi-line value such as a PEM
+# masks its first line and prints the rest. Each line is masked alone, without the CR a CRLF
+# value carries. % is escaped because the runner unescapes a command's data.
+mask() {
+  local line
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    [ -n "$line" ] || continue
+    printf '::add-mask::%s\n' "${line//%/%25}"
+  done <<<"$1"
+}
+
+umask 077
+headers=$(mktemp)
+token=''
+revoke() {
+  if [ -n "$token" ] && ! bao_curl -o /dev/null -X POST -H @"$headers" "$BAO_ADDR/v1/auth/token/revoke-self"; then
+    echo "::warning::with-openbao-login: the OpenBao token for role $role was not revoked, and lives until its TTL"
+  fi
+  rm -f "$headers"
+}
+trap revoke EXIT
+
+printf 'Authorization: bearer %s\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" >"$headers"
+answer=$(bounded_curl -H @"$headers" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=openbao") \
+  || die "GitHub minted no OIDC token for audience openbao: $answer"
+jwt=$(jq -er .value <<<"$answer") || die "GitHub's OIDC answer holds no token"
+mask "$jwt"
+
+answer=$(JWT=$jwt ROLE=$role jq -n '{role: env.ROLE, jwt: env.JWT}' \
+  | bao_curl --data @- "$BAO_ADDR/v1/auth/github-actions/login") \
+  || die "OpenBao refused role $role on auth/github-actions: $answer"
+token=$(jq -er .auth.client_token <<<"$answer") || die "OpenBao's login answer holds no token"
+mask "$token"
+printf 'X-Vault-Token: %s\n' "$token" >"$headers"
+
+for spec in "${secrets[@]}"; do
+  var=${spec%%=*}
+  location=${spec#*=}
+  path=${location%%#*}
+  field=${location#*#}
+  answer=$(bao_curl -H @"$headers" "$BAO_ADDR/v1/$path") || die "OpenBao did not read $path as role $role: $answer"
+  value=$(FIELD=$field jq -er '.data.data[env.FIELD]' <<<"$answer") || die "$path holds no field $field"
+  mask "$value"
+  export "$var=$value"
+done
+
+export VAULT_ADDR=$BAO_ADDR VAULT_TOKEN=$token
+# The Vault client cosign signs through reads its CA from VAULT_CACERT, and reads no BAO_ variable.
+[ -z "${BAO_CACERT:-}" ] || export VAULT_CACERT=$BAO_CACERT
+"$@"
