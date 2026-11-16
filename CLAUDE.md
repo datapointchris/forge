@@ -87,11 +87,11 @@ own git — check-json5 builds with poetry — and trips on the inherited variab
 
 **Repo selection** — every command resolves its repos through `runner.SelectRepos(repos, names)`. With no `-F` it returns `status: active` only, and **excludes reference clones**: no implicit operation should ever write to a repo we don't own. Naming repos explicitly with `-F` overrides both, so a clone or a dormant repo stays reachable on purpose. Retired repos are the one status `-F` cannot reach. A name that matches nothing is a usage error, exit 2, on every command that takes names, because a run that dropped it would report the rest and a caller would read the dropped name as passing.
 
-**Selection is not the only gate, and the second one decides what a die may do.** Reaching a repo is `SelectRepos`; acting on it is each die's own applicability test, and for `precommit` that test is `maintained`. A declaration answers for a repo somebody works in. Forge's own `# forge-toolchain:` stamp answers for one nobody does: forge wrote those files, so it owns keeping them right, and a registry silent about the repo's stacks has not unwritten them. A stamped repo with no declaration generates as if it declared no components, which is the spelling a declaration of no components already has. That is not the same as "the generic blocks only": `Generate` adds the `git` block whenever the target is a git repo, whatever components it declares. **The stamp authorizes correcting what forge wrote and nothing else**: first deployment still needs a declaration, and git hooks forge never installed are not installed by it. Those hooks are still *measured* there and reported `ByHand`, because a stage the config names with no hook installed is broken whether or not forge may fix it. Without both gates, every repo forge has written to but does not track holds whatever it last generated, and every verb reports converged because nothing looked.
+**Selection is not the only gate, and the second one decides what a die may do.** Reaching a repo is `SelectRepos`; acting on it is each die's own applicability test, and for `precommit` that test is `maintained` in `dies/precommit.go`. A declaration answers for a repo somebody works in, and forge's own `# forge-toolchain:` stamp answers for one nobody does. The doc comments on `maintained` and the `byStamp` constant say why the stamp is enough, and what a stamped repo with no declaration generates. **The stamp authorizes correcting what forge wrote and nothing else**: first deployment still needs a declaration, and git hooks forge never installed are not installed by it. Those hooks are still *measured* there and reported `ByHand`, because a stage the config names with no hook installed is broken whether or not forge may fix it.
 
 **The stamp that authorizes those four files lives in only one of them**, so deleting `.pre-commit-config.yaml` returns the other three to exactly that unreachable state. `strandedToolConfigs` is what closes it: with no declaration and no config at all, the three generic tool configs are reported `ByHand` when **all three** are present. Forge deploys them together, so the full set is evidence forge wrote there and a lone `.editorconfig` is not. That evidence is weaker than a stamp and can afford to be, because what it authorizes is a report — nothing is written, overwritten or removed, and a stamp is still what would be needed to touch them.
 
-**Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' "$(repos-registry)" | sort | uniq -c`). None of it takes another release, so a maintenance die run across it is churn: a config every repo "should" have is worth nothing in one that will never run the tool. **Status is required, and forge supplies no meaning for an absent one.** The registry's own suite refuses an entry without it at commit time, so `ActiveRepos` and `cliaudit.Discover` match `active` plainly and an entry with no status is swept by nothing. The loader does not refuse one, because it also reads `exemplar-repos.json`, whose entries have no lifecycle and declare none.
+**Dormant is excluded from implicit sweeps, and that is most of the portfolio** (`jq -r '.repos[].status' "$(repos-registry)" | sort | uniq -c`). `runner.ActiveRepos` says why a sweep leaves it out. **Status is required, and forge supplies no meaning for an absent one.** The registry's own suite refuses an entry without it at commit time, so `ActiveRepos` and `cliaudit.Discover` match `active` plainly and an entry with no status is swept by nothing. The loader does not refuse one, because it also reads `exemplar-repos.json`, whose entries have no lifecycle and declare none.
 
 **Data flow for a reconcile verb:** load the registry → `SelectRepos` (retired, dormant and reference clones dropped unless named) → build one `Assets` (embedded trees + manifest) shared by the walk → `AssessAll` (Observe then Diff per repo per die, refusals isolated) → fold each repo through the verb's lens and render its rows → for `apply`, perform and render outcomes → record the run → exit 0/1/3.
 
@@ -234,11 +234,7 @@ config has learned:
   `languages.rust.toolchain`, named by the entry's `toolchainOf`. A declaration without one refuses
   every Rust repo, because a channel rustup cannot resolve fails every cargo call there.
 
-**`merge_pyproject_tools.py`** merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing). **The standard owns exactly the keys it writes**, recorded as `[tool.forge] managed` in each repo's pyproject. That record is what makes retraction possible: a key dropped from the template is removed everywhere on the next sync, because the record proves forge put it there, and the retraction is printed rather than silent. A key absent from the record is the project's and is unreachable from the delete path.
-
-It gates adoption on the same terms, so forcing a key is conditional rather than unconditional. A key the project already sets, to a value the standard disagrees with and the record does not claim, is reported as a conflict and left alone — `Stale` + `ByHand`, so `check` surfaces it and `apply` cannot reach it. A path whose intermediate segment is not a table is the same answer, because reading it as absent would have adoption replace the segment. Agreement is recorded without writing, which is what lets a repo converge; refusing to record it would leave the key outside the standard permanently. The comment above a key is why this matters: forge cannot see prose, so inverting a value it did not write leaves the explanation arguing for a value that is gone.
-
-Per-key ownership recorded at write time replaced whole-section overwrites, which deleted project config three times — a ruff `exclude`, bugbear exemptions, a pydantic mypy plugin, an alembic per-file-ignore. Paths are stored as arrays, not dotted strings, because a segment can contain a dot (`per-file-ignores."__init__.py"`) and the record that authorizes deletion does not get to depend on quoting being right. The record table is rebuilt from scratch on every write, so a resync is byte-identical — the die reporting converged depends on that idempotence.
+**`merge_pyproject_tools.py`** merges standard tool sections into pyproject.toml using tomlkit (no Go equivalent for lossless TOML editing). **The standard owns exactly the keys it writes**, recorded as `[tool.forge] managed` in each repo's pyproject, and deletes or forces nothing outside that record. The script's module docstring says why: how the record makes retraction possible, why a key the project set to another value is a conflict rather than overwritten, and why paths are stored as arrays. `write_managed_paths` and `apply_standard` hold the idempotence and convergence reasoning. A conflict comes back `Stale` + `ByHand`, so `check` surfaces it and `apply` cannot reach it. A path whose intermediate segment is not a table is the same answer, because reading it as absent would have adoption replace the segment.
 
 **The one thing the merge owns outside `[tool]` is a dev pin.** `devPinnedTools` in `dies/pyproject.go`
 lists the tools held at the release their pre-commit hook pins — `HookPinnedVersion`, the same
@@ -425,19 +421,11 @@ repo. A hand-written step without the input gains it, with a `with:` block where
 out, the release job builds with a newer tool than the validation it gates on ran. A `with:` written
 as a flow mapping is left alone, because a second `with:` key would make the step invalid.
 
-**The `gomod` die writes both Go directives, from that declaration.** The two look like one setting
-and are not: `go` is a floor a consumer must clear, `toolchain` is what this build switches
-up to. Taking a fixed standard library by raising the floor has a measured cost — `go install
-<tool>@latest` prefers a release the *installing* machine can build, so a module floored above the
-Go on a machine is skipped there silently, returning 0 and leaving the old binary while the
-installer reports the machine converged.
-
-Measured against a system Go one patch below the pin. A module floored above it to clear five
-standard-library advisories was skipped: `go install @latest` returned 0 in a quarter of a second
-and left the old binary in place. A module taking a toolchain directive against the same advisories
-worked — govulncheck clean, `go list` still reporting the lower version, `GOTOOLCHAIN=local go
-build` still working, and the release installing on that machine. So a fixed standard library
-arrives through the toolchain line, and a floor rises only when the declaration's does.
+**The `gomod` die writes both Go directives, from that declaration.** `go` is a floor a consumer
+must clear, and `toolchain` is what this build switches up to. A fixed standard library arrives
+through the toolchain line, and a floor rises only when the declaration's does, because a raised
+floor makes `go install <tool>@latest` skip the module silently on an older Go. The `GoMod` doc
+comment in `dies/gomod.go` holds the measurement behind that.
 
 Both numbers come from the declaration's `languages.go`. Bump the toolchain on a standard-library
 advisory; `govulncheck` in generated CI is what reports one.
