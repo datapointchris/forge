@@ -90,6 +90,7 @@ func TestAPublicRepoDeclaresItsImageToActionlintAndNeverThePool(t *testing.T) {
 // The pool is never on jactionlint's list, and an image newer than the pinned
 // jactionlint is not on it either.
 func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWithOne(t *testing.T) {
+	ctx := t.Context()
 	requireActionlint(t)
 
 	assets := testAssets(t)
@@ -108,12 +109,12 @@ func TestTheDiesOwnLintRejectsAnUndiscoveredLabelWithoutTheConfigAndAcceptsItWit
 			t.Fatalf("Generate: %s", err)
 		}
 
-		bare := lintWorkflow(workflow, "")
+		bare := lintWorkflow(ctx, workflow, "")
 		if !strings.Contains(bare, label) {
 			t.Fatalf("jactionlint accepted an undeclared %s, so this test measures nothing: %q", label, bare)
 		}
 
-		if finding := lintWorkflow(workflow, ci.ActionlintConfig(assets.Manifest, runner, "")); finding != "" {
+		if finding := lintWorkflow(ctx, workflow, ci.ActionlintConfig(assets.Manifest, runner, "")); finding != "" {
 			t.Errorf("%s: the generated workflow does not lint against its own config: %s", runner, finding)
 		}
 	}
@@ -157,9 +158,10 @@ func TestAHandWrittenWorkflowIsRefusedRatherThanOverwritten(t *testing.T) {
 func TestANodeRepoWithoutANodeVersionFileIsRefusedRatherThanGivenAJobThatCannotStart(t *testing.T) {
 	for _, stack := range []string{"vue", "node"} {
 		t.Run(stack, func(t *testing.T) {
+			ctx := t.Context()
 			target := fixture(t, stacks(stack), nil)
 
-			changes := reconcile.Assess(target, CI{}).Changes
+			changes := reconcile.Assess(ctx, target, CI{}).Changes
 			if !slices.ContainsFunc(changes, func(c reconcile.Change) bool {
 				return c.Item == ci.WorkflowPath && c.Repair == reconcile.ByHand && strings.Contains(c.Detail, ci.NodeVersionFile)
 			}) {
@@ -184,6 +186,7 @@ func TestANodeRepoWithoutANodeVersionFileIsRefusedRatherThanGivenAJobThatCannotS
 // The shell job is gone, so a section set up for its suites has nowhere to go.
 // Regenerating anyway would delete the repo's own steps.
 func TestACustomSectionWhoseJobIsGoneHoldsTheWorkflowBack(t *testing.T) {
+	ctx := t.Context()
 	existing := "# forge-toolchain: 1\nname: CI\n\njobs:\n\n  shell:\n    runs-on: ubuntu-latest\n    steps:\n\n" +
 		"      - uses: actions/checkout@v1\n\n" +
 		"      # > custom:before:shell - yq, which the suites read frontmatter with\n" +
@@ -193,7 +196,7 @@ func TestACustomSectionWhoseJobIsGoneHoldsTheWorkflowBack(t *testing.T) {
 		"  - repo: https://github.com/shellcheck-py/shellcheck-py\n    rev: v0.10.0.1\n    hooks:\n      - id: shellcheck\n"
 	target := fixture(t, stacks("shell"), map[string]string{ci.WorkflowPath: existing, ".pre-commit-config.yaml": committed})
 
-	changes := reconcile.Assess(target, CI{}).Changes
+	changes := reconcile.Assess(ctx, target, CI{}).Changes
 	if !slices.ContainsFunc(changes, func(c reconcile.Change) bool {
 		return c.Item == ci.WorkflowPath && c.Repair == reconcile.ByHand && strings.Contains(c.Detail, "before:shell")
 	}) {
@@ -230,11 +233,12 @@ func TestAHandWrittenLintConfigStillLetsTheWorkflowRegenerate(t *testing.T) {
 // generator writes a file every run, which shows up as drift in every repo on
 // every sweep and trains the reader to ignore it.
 func TestASecondApplyFindsNothingToDo(t *testing.T) {
+	ctx := t.Context()
 	target := privateFixture(t, stacks("go"), nil)
 
 	applyAll(t, target, CI{})
 
-	measured := reconcile.Assess(target, CI{})
+	measured := reconcile.Assess(ctx, target, CI{})
 	if len(measured.Changes) != 0 {
 		t.Fatalf("changes = %v, want none — generation is not stable", changedItems(measured.Changes))
 	}
@@ -243,9 +247,10 @@ func TestASecondApplyFindsNothingToDo(t *testing.T) {
 // Perform is handed one change at a time and re-observes before writing. It has
 // to write the file that change names, not whichever the die holds first.
 func TestPerformWritesTheFileTheChangeNames(t *testing.T) {
+	ctx := t.Context()
 	target := privateFixture(t, stacks("go"), nil)
 
-	measured := reconcile.Assess(target, CI{})
+	measured := reconcile.Assess(ctx, target, CI{})
 	var lintChange reconcile.Change
 	for _, change := range measured.Changes {
 		if change.Item == ci.ActionlintConfigPath {
@@ -256,7 +261,7 @@ func TestPerformWritesTheFileTheChangeNames(t *testing.T) {
 		t.Fatalf("no change for %s: %v", ci.ActionlintConfigPath, changedItems(measured.Changes))
 	}
 
-	if _, err := (CI{}).Perform(target, lintChange); err != nil {
+	if _, err := (CI{}).Perform(ctx, target, lintChange); err != nil {
 		t.Fatalf("Perform: %s", err)
 	}
 
@@ -272,6 +277,7 @@ func TestPerformWritesTheFileTheChangeNames(t *testing.T) {
 // A self-hosted declaration left on disk there is the drift, and check, plan
 // and apply all have to see it.
 func TestARepoThatTurnsPublicHasThePoolTakenOutOfItsLintConfig(t *testing.T) {
+	ctx := t.Context()
 	target := privateFixture(t, stacks("go"), nil)
 	applyAll(t, target, CI{})
 
@@ -281,7 +287,7 @@ func TestARepoThatTurnsPublicHasThePoolTakenOutOfItsLintConfig(t *testing.T) {
 
 	target.Repo.Visibility = "public"
 
-	if measured := reconcile.Assess(target, CI{}); len(measured.Changes) == 0 {
+	if measured := reconcile.Assess(ctx, target, CI{}); len(measured.Changes) == 0 {
 		t.Fatal("a public repo still carrying a self-hosted declaration reported converged")
 	}
 
@@ -294,7 +300,7 @@ func TestARepoThatTurnsPublicHasThePoolTakenOutOfItsLintConfig(t *testing.T) {
 	if strings.Contains(string(config), ci.RunnerLabel) {
 		t.Errorf("the pool survived the repo going public:\n%s", config)
 	}
-	if again := reconcile.Assess(target, CI{}); len(again.Changes) != 0 {
+	if again := reconcile.Assess(ctx, target, CI{}); len(again.Changes) != 0 {
 		t.Errorf("changes after the rewrite = %v, want none", changedItems(again.Changes))
 	}
 }
@@ -341,9 +347,10 @@ func TestAHandWrittenLintConfigAtTheOtherSpellingIsRefused(t *testing.T) {
 // builds. A declaration for a label nothing uses is inert; a workflow naming a
 // label nothing declares fails that repo's jactionlint hook on every commit.
 func TestTheLintDeclarationIsWrittenBeforeTheWorkflowThatNamesIt(t *testing.T) {
+	ctx := t.Context()
 	target := privateFixture(t, stacks("go"), nil)
 
-	items := changedItems(reconcile.Assess(target, CI{}).Changes)
+	items := changedItems(reconcile.Assess(ctx, target, CI{}).Changes)
 	lint, workflow := -1, -1
 	for i, item := range items {
 		switch item {
@@ -463,8 +470,9 @@ func TestAHandWrittenPipelineBesideTheGeneratedOneIsStillRepinned(t *testing.T) 
 }
 
 func mustObserve(t *testing.T, target reconcile.Target) reconcile.Observation {
+	ctx := t.Context()
 	t.Helper()
-	observed, err := CI{}.Observe(target)
+	observed, err := CI{}.Observe(ctx, target)
 	if err != nil {
 		t.Fatalf("Observe: %s", err)
 	}

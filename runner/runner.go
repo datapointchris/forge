@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -118,7 +119,7 @@ func FilterRepos(repos []config.Repo, names []string) []config.Repo {
 // matching stream behind the repo's registry name and a tab, so many repos'
 // output in one stream still says which repo each line came from, the way
 // `grep -H` names the file.
-func ExecuteInRepo(repo config.Repo, opts Opts, stdout, stderr io.Writer) Result {
+func ExecuteInRepo(ctx context.Context, repo config.Repo, opts Opts, stdout, stderr io.Writer) Result {
 	info, err := os.Stat(repo.Path)
 	if err != nil || !info.IsDir() {
 		return Result{Name: repo.Name, Status: "SKIP (not found)"}
@@ -131,9 +132,9 @@ func ExecuteInRepo(repo config.Repo, opts Opts, stdout, stderr io.Writer) Result
 
 	var c *exec.Cmd
 	if opts.ScriptFile != "" {
-		c = exec.Command("bash", opts.ScriptFile)
+		c = exec.CommandContext(ctx, "bash", opts.ScriptFile)
 	} else {
-		c = exec.Command(opts.InlineArgs[0], opts.InlineArgs[1:]...)
+		c = exec.CommandContext(ctx, opts.InlineArgs[0], opts.InlineArgs[1:]...)
 	}
 	c.Dir = repo.Path
 	// FORGE_REPO_NAME is the registry name, which a script cannot derive from its

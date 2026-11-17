@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"context"
 	"fmt"
 	"sync"
 )
@@ -32,7 +33,7 @@ func (m Measurement) Fold(lens Lens) Result {
 // The whole of plan and check, and the first half of apply. A die that cannot
 // answer produces a Refusal and the caller carries on, because "one die
 // crashed" and "nothing to do" must not look the same to whatever folds this.
-func Assess(t Target, d Die) (m Measurement) {
+func Assess(ctx context.Context, t Target, d Die) (m Measurement) {
 	m = Measurement{Target: t, Die: d}
 
 	// Recovering is the Go spelling of catching an exception around each
@@ -47,7 +48,7 @@ func Assess(t Target, d Die) (m Measurement) {
 		}
 	}()
 
-	observed, err := d.Observe(t)
+	observed, err := d.Observe(ctx, t)
 	if err != nil {
 		m.Refusal = fmt.Sprintf("could not measure: %v", err)
 		return m
@@ -87,7 +88,7 @@ type Watch struct {
 //
 // Up to workers targets are measured at once, because the dies spend most of a
 // walk waiting on gh, pre-commit and uv. One target's dies still run in turn.
-func AssessAll(targets []Target, dies []Die, workers int, watch Watch) []Measurement {
+func AssessAll(ctx context.Context, targets []Target, dies []Die, workers int, watch Watch) []Measurement {
 	type event struct {
 		index    int
 		finished bool
@@ -103,7 +104,7 @@ func AssessAll(targets []Target, dies []Die, workers int, watch Watch) []Measure
 				events <- event{index: i}
 				measured := make([]Measurement, 0, len(dies))
 				for _, d := range dies {
-					measured = append(measured, Assess(targets[i], d))
+					measured = append(measured, Assess(ctx, targets[i], d))
 				}
 				events <- event{index: i, finished: true, measured: measured}
 			}
@@ -153,7 +154,7 @@ func AssessAll(targets []Target, dies []Die, workers int, watch Watch) []Measure
 // Isolation is the same as Assess's and for the same reason: one item failing
 // must not abandon the rest, or a run stops silently part-way through and
 // nothing says anything about the half that never ran.
-func Apply(m Measurement) []Outcome {
+func Apply(ctx context.Context, m Measurement) []Outcome {
 	if m.Refusal != "" {
 		return nil
 	}
@@ -163,19 +164,19 @@ func Apply(m Measurement) []Outcome {
 		if !change.Actionable() {
 			continue
 		}
-		outcomes = append(outcomes, perform(m.Target, m.Die, change))
+		outcomes = append(outcomes, perform(ctx, m.Target, m.Die, change))
 	}
 	return outcomes
 }
 
-func perform(t Target, d Die, change Change) (out Outcome) {
+func perform(ctx context.Context, t Target, d Die, change Change) (out Outcome) {
 	defer func() {
 		if r := recover(); r != nil {
 			out = Outcome{Change: change, Status: Failed, Message: fmt.Sprintf("panic: %v", r)}
 		}
 	}()
 
-	outcome, err := d.Perform(t, change)
+	outcome, err := d.Perform(ctx, t, change)
 	if err != nil {
 		return Outcome{Change: change, Status: Failed, Message: err.Error()}
 	}

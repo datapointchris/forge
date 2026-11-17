@@ -120,6 +120,7 @@ func TestSelectRepos(t *testing.T) {
 }
 
 func TestExecuteInRepoExportsRepoName(t *testing.T) {
+	ctx := t.Context()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -132,54 +133,59 @@ func TestExecuteInRepoExportsRepoName(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := config.Repo{Name: "widget-config-alpha", Path: dir}
-	if r := ExecuteInRepo(repo, Opts{ScriptFile: script}, io.Discard, io.Discard); r.Status != "OK" {
+	if r := ExecuteInRepo(ctx, repo, Opts{ScriptFile: script}, io.Discard, io.Discard); r.Status != "OK" {
 		t.Errorf("status = %q, want OK (FORGE_REPO_NAME not exported)", r.Status)
 	}
 }
 
 func TestExecuteInRepo(t *testing.T) {
 	t.Run("missing directory", func(t *testing.T) {
+		ctx := t.Context()
 		repo := config.Repo{Name: "ghost", Path: "/nonexistent/path"}
-		r := ExecuteInRepo(repo, Opts{InlineArgs: []string{"echo", "hi"}}, io.Discard, io.Discard)
+		r := ExecuteInRepo(ctx, repo, Opts{InlineArgs: []string{"echo", "hi"}}, io.Discard, io.Discard)
 		if r.Status != "SKIP (not found)" {
 			t.Errorf("status = %q, want SKIP (not found)", r.Status)
 		}
 	})
 
 	t.Run("not a git repo", func(t *testing.T) {
+		ctx := t.Context()
 		dir := t.TempDir()
 		repo := config.Repo{Name: "no-git", Path: dir}
-		r := ExecuteInRepo(repo, Opts{InlineArgs: []string{"echo", "hi"}}, io.Discard, io.Discard)
+		r := ExecuteInRepo(ctx, repo, Opts{InlineArgs: []string{"echo", "hi"}}, io.Discard, io.Discard)
 		if r.Status != "SKIP (not a git repo)" {
 			t.Errorf("status = %q, want SKIP (not a git repo)", r.Status)
 		}
 	})
 
 	t.Run("successful inline command", func(t *testing.T) {
+		ctx := t.Context()
 		dir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		repo := config.Repo{Name: "good", Path: dir}
-		r := ExecuteInRepo(repo, Opts{InlineArgs: []string{"echo", "hello"}}, io.Discard, io.Discard)
+		r := ExecuteInRepo(ctx, repo, Opts{InlineArgs: []string{"echo", "hello"}}, io.Discard, io.Discard)
 		if r.Status != "OK" {
 			t.Errorf("status = %q, want OK", r.Status)
 		}
 	})
 
 	t.Run("failing command", func(t *testing.T) {
+		ctx := t.Context()
 		dir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		repo := config.Repo{Name: "bad", Path: dir}
-		r := ExecuteInRepo(repo, Opts{InlineArgs: []string{"false"}}, io.Discard, io.Discard)
+		r := ExecuteInRepo(ctx, repo, Opts{InlineArgs: []string{"false"}}, io.Discard, io.Discard)
 		if r.Status != "FAIL (exit 1)" {
 			t.Errorf("status = %q, want FAIL (exit 1)", r.Status)
 		}
 	})
 
 	t.Run("exit 2 is skip", func(t *testing.T) {
+		ctx := t.Context()
 		dir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 			t.Fatal(err)
@@ -189,13 +195,14 @@ func TestExecuteInRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 		repo := config.Repo{Name: "skipped", Path: dir}
-		r := ExecuteInRepo(repo, Opts{ScriptFile: script}, io.Discard, io.Discard)
+		r := ExecuteInRepo(ctx, repo, Opts{ScriptFile: script}, io.Discard, io.Discard)
 		if r.Status != "SKIP (nothing to do)" {
 			t.Errorf("status = %q, want SKIP (nothing to do)", r.Status)
 		}
 	})
 
 	t.Run("successful script", func(t *testing.T) {
+		ctx := t.Context()
 		dir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 			t.Fatal(err)
@@ -205,7 +212,7 @@ func TestExecuteInRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 		repo := config.Repo{Name: "scripted", Path: dir}
-		r := ExecuteInRepo(repo, Opts{ScriptFile: script}, io.Discard, io.Discard)
+		r := ExecuteInRepo(ctx, repo, Opts{ScriptFile: script}, io.Discard, io.Discard)
 		if r.Status != "OK" {
 			t.Errorf("status = %q, want OK", r.Status)
 		}
@@ -224,6 +231,7 @@ func gitDir(t *testing.T) string {
 // A reader of many repos' output in one stream needs each line to say which
 // repo it came from, on the stream the command wrote it to.
 func TestEveryOutputLineCarriesTheRepoName(t *testing.T) {
+	ctx := t.Context()
 	repo := config.Repo{Name: "alpha", Path: gitDir(t)}
 	script := filepath.Join(t.TempDir(), "speak.sh")
 	body := "#!/bin/bash\necho one\necho two\necho oops >&2\nprintf 'no newline'\n"
@@ -232,7 +240,7 @@ func TestEveryOutputLineCarriesTheRepoName(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if r := ExecuteInRepo(repo, Opts{ScriptFile: script}, &stdout, &stderr); r.Status != "OK" {
+	if r := ExecuteInRepo(ctx, repo, Opts{ScriptFile: script}, &stdout, &stderr); r.Status != "OK" {
 		t.Fatalf("status = %q, want OK", r.Status)
 	}
 	if want := "alpha\tone\nalpha\ttwo\nalpha\tno newline\n"; stdout.String() != want {
@@ -259,9 +267,10 @@ func TestALineSplitAcrossWritesCarriesOneTag(t *testing.T) {
 // A command that cannot start has no exit code. Reading one gives -1, and the
 // start error that says why is the only account of the failure.
 func TestACommandThatCannotStartSaysWhy(t *testing.T) {
+	ctx := t.Context()
 	repo := config.Repo{Name: "alpha", Path: gitDir(t)}
 	var stderr bytes.Buffer
-	r := ExecuteInRepo(repo, Opts{InlineArgs: []string{"forge-no-such-command"}}, io.Discard, &stderr)
+	r := ExecuteInRepo(ctx, repo, Opts{InlineArgs: []string{"forge-no-such-command"}}, io.Discard, &stderr)
 	if r.Status != "FAIL (did not start)" {
 		t.Errorf("status = %q, want FAIL (did not start)", r.Status)
 	}

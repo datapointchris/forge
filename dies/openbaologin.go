@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -50,7 +51,7 @@ func (s openBaoLoginState) Summary() string {
 	return openBaoLoginPath + " current"
 }
 
-func (OpenBaoLogin) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (OpenBaoLogin) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	state := openBaoLoginState{declared: t.Repo.Toolchain != nil && t.Repo.Toolchain.OpenBaoLogin}
 	if handWritten(t.Repo.Path, openBaoLoginPath) {
 		state.handWritten = true
@@ -88,8 +89,8 @@ func (OpenBaoLogin) Diff(_ reconcile.Target, observed reconcile.Observation) ([]
 	return nil, nil
 }
 
-func (d OpenBaoLogin) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	observed, err := d.Observe(t)
+func (d OpenBaoLogin) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	observed, err := d.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}

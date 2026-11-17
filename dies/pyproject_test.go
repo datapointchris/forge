@@ -27,9 +27,10 @@ func requireUV(t *testing.T) {
 }
 
 func TestPyprojectIgnoresARepoDeclaringNoPython(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{"pyproject.toml": "[project]\nname = \"x\"\n"})
 
-	measured := reconcile.Assess(target, Pyproject{})
+	measured := reconcile.Assess(ctx, target, Pyproject{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none", measured.Changes)
@@ -40,9 +41,10 @@ func TestPyprojectIgnoresARepoDeclaringNoPython(t *testing.T) {
 }
 
 func TestPyprojectIgnoresAPythonRepoWithNoPyproject(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("python"), nil)
 
-	if measured := reconcile.Assess(target, Pyproject{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, Pyproject{}); len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none", measured.Changes)
 	}
 }
@@ -52,12 +54,13 @@ func TestPyprojectIgnoresAPythonRepoWithNoPyproject(t *testing.T) {
 // once, and seeing it before it lands is the difference between reviewing a
 // change and reconstructing one.
 func TestPyprojectCarriesTheDiffIntoThePlan(t *testing.T) {
+	ctx := t.Context()
 	requireUV(t)
 	target := fixture(t, stacks("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
 	})
 
-	measured := reconcile.Assess(target, Pyproject{})
+	measured := reconcile.Assess(ctx, target, Pyproject{})
 
 	if len(measured.Changes) != 1 {
 		t.Fatalf("changes = %v, want 1", measured.Changes)
@@ -71,6 +74,7 @@ func TestPyprojectCarriesTheDiffIntoThePlan(t *testing.T) {
 }
 
 func TestPyprojectApplyThenPlanIsClean(t *testing.T) {
+	ctx := t.Context()
 	requireUV(t)
 	target := fixture(t, stacks("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
@@ -81,7 +85,7 @@ func TestPyprojectApplyThenPlanIsClean(t *testing.T) {
 		t.Fatalf("outcomes = %v, want one done", outcomes)
 	}
 
-	if measured := reconcile.Assess(target, Pyproject{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, Pyproject{}); len(measured.Changes) != 0 {
 		t.Errorf("a second look found %v — the merge is not idempotent", measured.Changes)
 	}
 }
@@ -121,13 +125,14 @@ func TestPyprojectKeepsTheProjectsOwnSettings(t *testing.T) {
 // explaining that an unresolved SDK import turns every decorated handler into
 // Any and hides the call-arity errors basedpyright reports.
 func TestPyprojectReportsADisagreementItMayNotRepair(t *testing.T) {
+	ctx := t.Context()
 	requireUV(t)
 	target := fixture(t, stacks("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n" +
 			"[tool.mypy]\nignore_missing_imports = false\n",
 	})
 
-	measured := reconcile.Assess(target, Pyproject{})
+	measured := reconcile.Assess(ctx, target, Pyproject{})
 
 	var conflict *reconcile.Change
 	for i, change := range measured.Changes {
@@ -229,13 +234,14 @@ func TestDecodeMergeReportReadsEveryPart(t *testing.T) {
 // back on both verbs. Only a run of the real script crosses the two languages,
 // so a spelling that drifts on either side fails here rather than in a plan.
 func TestPyprojectPlansAndAppliesARetraction(t *testing.T) {
+	ctx := t.Context()
 	requireUV(t)
 	target := fixture(t, stacks("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n" +
 			"[tool.ruff]\ngone = 1\n\n[tool.forge]\nmanaged = [[\"ruff\", \"gone\"]]\n",
 	})
 
-	measured := reconcile.Assess(target, Pyproject{})
+	measured := reconcile.Assess(ctx, target, Pyproject{})
 	if measured.Refusal != "" {
 		t.Fatalf("plan refused the repo: %s", measured.Refusal)
 	}
@@ -243,7 +249,7 @@ func TestPyprojectPlansAndAppliesARetraction(t *testing.T) {
 		t.Fatalf("want one automatic change whose patch removes the retracted key, got %+v", measured.Changes)
 	}
 
-	outcomes := reconcile.Apply(measured)
+	outcomes := reconcile.Apply(ctx, measured)
 	if len(outcomes) != 1 || outcomes[0].Status != reconcile.Done {
 		t.Fatalf("outcomes = %+v, want one done", outcomes)
 	}
@@ -256,13 +262,14 @@ func TestPyprojectPlansAndAppliesARetraction(t *testing.T) {
 // Written in TOML's block form it spans lines, and it is reported as one
 // conflict beside the merge rather than refusing the whole repo.
 func TestPyprojectReportsATableValueAsOneConflict(t *testing.T) {
+	ctx := t.Context()
 	requireUV(t)
 	target := fixture(t, stacks("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n" +
 			"[tool.ruff.line-length]\nmax = 140\n",
 	})
 
-	measured := reconcile.Assess(target, Pyproject{})
+	measured := reconcile.Assess(ctx, target, Pyproject{})
 	if measured.Refusal != "" {
 		t.Fatalf("plan refused the repo: %s", measured.Refusal)
 	}
@@ -305,13 +312,14 @@ func TestPyprojectLocksWithTheUvItsHookPins(t *testing.T) {
 }
 
 func TestPyprojectRefusesARepoWithALockWhenNoUvIsPinned(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("python"), map[string]string{
 		"pyproject.toml": "[project]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
 		"uv.lock":        "version = 1\n",
 	})
 	target.Assets.Manifest = &toolchain.Toolchain{Hooks: []toolchain.Hook{{Repo: "https://github.com/astral-sh/ruff-pre-commit", Rev: "v0.13.0"}}}
 
-	measured := reconcile.Assess(target, Pyproject{})
+	measured := reconcile.Assess(ctx, target, Pyproject{})
 
 	if !strings.Contains(measured.Refusal, "no pre-commit hook for uv") {
 		t.Errorf("refusal = %q, want it to name the uv pin it could not find", measured.Refusal)

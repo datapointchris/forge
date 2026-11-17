@@ -309,6 +309,7 @@ func (n *reconcileNoun) retype(args []string, verb string) string {
 }
 
 func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
 	chosen, err := selectedDies(args)
 	if err != nil {
 		return err
@@ -331,7 +332,7 @@ func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
 	var results []reconcile.Result
 	for i, m := range measurements {
 		result := planned[i]
-		outcomes := reconcile.Apply(m)
+		outcomes := reconcile.Apply(ctx, m)
 		if len(outcomes) > 0 {
 			result = reconcile.Applied(result, outcomes)
 			if !n.asJSON {
@@ -474,11 +475,12 @@ func selectedDies(args []string) ([]reconcile.Die, error) {
 func (n *reconcileNoun) walk(cmd *cobra.Command, targets []reconcile.Target, chosen []reconcile.Die,
 	lens reconcile.Lens,
 ) ([]reconcile.Measurement, []reconcile.Result) {
+	ctx := cmd.Context()
 	width := reconcile.LabelWidth(targets, chosen)
 	results := make([]reconcile.Result, 0, len(targets)*len(chosen))
 	status := newStatusLine(cmd.ErrOrStderr(), len(targets), n.many)
 
-	measurements := reconcile.AssessAll(targets, chosen, runtime.NumCPU(),
+	measurements := reconcile.AssessAll(ctx, targets, chosen, runtime.NumCPU(),
 		status.watch(func(measured []reconcile.Measurement) {
 			for _, m := range measured {
 				result := m.Fold(lens)

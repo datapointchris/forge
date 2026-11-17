@@ -8,10 +8,11 @@ import (
 )
 
 func TestBrokenSymlinksSaysNothingAboutARepoWithNone(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{"main.go": "package main\n"})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, BrokenSymlinks{})
+	measured := reconcile.Assess(ctx, target, BrokenSymlinks{})
 
 	if check := measured.Fold(reconcile.LensCheck); check.Status != reconcile.Converged {
 		t.Errorf("check status = %q, want converged", check.Status)
@@ -19,13 +20,14 @@ func TestBrokenSymlinksSaysNothingAboutARepoWithNone(t *testing.T) {
 }
 
 func TestBrokenSymlinksLeavesAResolvingLinkAlone(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{"real.md": "content\n"})
 	if err := os.Symlink("real.md", target.Path("alias.md")); err != nil {
 		t.Fatal(err)
 	}
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, BrokenSymlinks{})
+	measured := reconcile.Assess(ctx, target, BrokenSymlinks{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("a link that resolves was reported: %+v", measured.Changes)
@@ -33,13 +35,14 @@ func TestBrokenSymlinksLeavesAResolvingLinkAlone(t *testing.T) {
 }
 
 func TestBrokenSymlinksReportsALinkToNothing(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{"main.go": "package main\n"})
 	if err := os.Symlink("gone.md", target.Path("alias.md")); err != nil {
 		t.Fatal(err)
 	}
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, BrokenSymlinks{})
+	measured := reconcile.Assess(ctx, target, BrokenSymlinks{})
 
 	if len(measured.Changes) != 1 {
 		t.Fatalf("changes = %d, want 1: %+v", len(measured.Changes), measured.Changes)
@@ -61,6 +64,7 @@ func TestBrokenSymlinksReportsALinkToNothing(t *testing.T) {
 // by hand is how a checker reports a working link as broken, so this pins that
 // the die does not.
 func TestBrokenSymlinksResolvesARelativeTargetFromTheLinksDirectory(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"docs/real.md": "content\n",
 	})
@@ -69,7 +73,7 @@ func TestBrokenSymlinksResolvesARelativeTargetFromTheLinksDirectory(t *testing.T
 	}
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, BrokenSymlinks{})
+	measured := reconcile.Assess(ctx, target, BrokenSymlinks{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("a relative link inside a subdirectory was reported broken: %+v", measured.Changes)
@@ -79,6 +83,7 @@ func TestBrokenSymlinksResolvesARelativeTargetFromTheLinksDirectory(t *testing.T
 // An untracked dangling link is usually a machine fact — a tool not installed
 // here — and reporting those would bury the finding that matters.
 func TestBrokenSymlinksIgnoresAnUntrackedDanglingLink(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"main.go":    "package main\n",
 		".gitignore": "local-*\n",
@@ -88,7 +93,7 @@ func TestBrokenSymlinksIgnoresAnUntrackedDanglingLink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, BrokenSymlinks{})
+	measured := reconcile.Assess(ctx, target, BrokenSymlinks{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("an untracked dangling link was reported: %+v", measured.Changes)

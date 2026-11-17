@@ -2,6 +2,7 @@ package dies
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,11 +64,11 @@ func (s conflictMarkersState) Summary() string {
 	return fmt.Sprintf("%s tracked, no conflict markers", reconcile.Plural(s.scanned, "file", "files"))
 }
 
-func (ConflictMarkers) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (ConflictMarkers) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	if !t.Versioned() {
 		return conflictMarkersState{unversioned: true}, nil
 	}
-	files, err := trackedFiles(t.Repo.Path)
+	files, err := trackedFiles(ctx, t.Repo.Path)
 	if err != nil {
 		return nil, err
 	}

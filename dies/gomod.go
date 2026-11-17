@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,7 +117,7 @@ func (s gomodState) Summary() string {
 	return fmt.Sprintf("toolchain current (%s, %s)", reconcile.Plural(len(s.modules), "module", "modules"), reconcile.Plural(images, "Dockerfile", "Dockerfiles"))
 }
 
-func (GoMod) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (GoMod) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	state := gomodState{}
 	if m := t.Assets.Manifest; m != nil {
 		if lang, declared := m.LanguageFor("go"); declared {
@@ -424,8 +425,8 @@ func goImageTag(tag, want string) (string, bool) {
 	}
 }
 
-func (g GoMod) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	observed, err := g.Observe(t)
+func (g GoMod) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	observed, err := g.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}

@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -93,7 +94,7 @@ type Die interface {
 	Tags() []string
 
 	// Observe measures the repo. Reads only. May be slow, may need the network.
-	Observe(Target) (Observation, error)
+	Observe(context.Context, Target) (Observation, error)
 
 	// Diff is pure: standard × observed → decided work, in the order it must
 	// happen. Its purity is what the no-writes property test asserts.
@@ -102,13 +103,13 @@ type Die interface {
 	// Perform does one Change, re-checking live that it is still the right
 	// thing to do, and returns Refused rather than forcing when it is not.
 	// Apply passes it only Actionable changes.
-	Perform(Target, Change) (Outcome, error)
+	Perform(context.Context, Target, Change) (Outcome, error)
 }
 
 // ReportOnly is embedded by a die whose every change is ByHand, so Apply never
 // calls its Perform.
 type ReportOnly struct{}
 
-func (ReportOnly) Perform(_ Target, change Change) (Outcome, error) {
+func (ReportOnly) Perform(_ context.Context, _ Target, change Change) (Outcome, error) {
 	return Outcome{Change: change, Status: Refused, Message: "not an automatic repair"}, nil
 }

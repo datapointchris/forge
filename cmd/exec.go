@@ -59,6 +59,7 @@ For anything reusable, write a die instead — it gets plan, check and apply.`,
 }
 
 func runExec(n *reconcileNoun, cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
 	if scriptFile == "" && len(args) == 0 {
 		return goclikit.UsageError(fmt.Errorf("provide a command after -- or use -f to specify a script file"))
 	}
@@ -103,7 +104,7 @@ func runExec(n *reconcileNoun, cmd *cobra.Command, args []string) error {
 
 	var results []runner.Result
 	for _, repo := range repos {
-		r := runner.ExecuteInRepo(repo, opts, stdout, stderr)
+		r := runner.ExecuteInRepo(ctx, repo, opts, stdout, stderr)
 		results = append(results, r)
 		runner.PrintResult(stderr, r)
 	}

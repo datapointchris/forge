@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
@@ -32,7 +33,7 @@ func (d *fakeDie) Name() string        { return d.name }
 func (d *fakeDie) Description() string { return "a fake" }
 func (d *fakeDie) Tags() []string      { return nil }
 
-func (d *fakeDie) Observe(Target) (Observation, error) {
+func (d *fakeDie) Observe(context.Context, Target) (Observation, error) {
 	if d.observePanic {
 		panic("registry index out of range")
 	}
@@ -49,7 +50,7 @@ func (d *fakeDie) Diff(Target, Observation) ([]Change, error) {
 	return d.changes, nil
 }
 
-func (d *fakeDie) Perform(_ Target, c Change) (Outcome, error) {
+func (d *fakeDie) Perform(ctx context.Context, _ Target, c Change) (Outcome, error) {
 	if d.performErr != nil {
 		return Outcome{}, d.performErr
 	}
@@ -58,9 +59,10 @@ func (d *fakeDie) Perform(_ Target, c Change) (Outcome, error) {
 }
 
 func TestAssessCarriesChangesAndSummary(t *testing.T) {
+	ctx := t.Context()
 	die := &fakeDie{name: "gitignore", changes: []Change{{Item: ".gitignore", Verdict: Missing, Repair: Automatic}}}
 
-	m := Assess(Target{Repo: repoNamed("forge")}, die)
+	m := Assess(ctx, Target{Repo: repoNamed("forge")}, die)
 
 	if m.Refusal != "" {
 		t.Fatalf("unexpected refusal: %s", m.Refusal)
@@ -74,9 +76,10 @@ func TestAssessCarriesChangesAndSummary(t *testing.T) {
 }
 
 func TestObserveFailureBecomesARefusalCarryingTheCause(t *testing.T) {
+	ctx := t.Context()
 	die := &fakeDie{name: "merge-settings", observeErr: errors.New("gh: not logged in")}
 
-	m := Assess(Target{Repo: repoNamed("mimic")}, die)
+	m := Assess(ctx, Target{Repo: repoNamed("mimic")}, die)
 
 	if !strings.Contains(m.Refusal, "not logged in") {
 		t.Errorf("refusal %q does not carry the observe error", m.Refusal)
@@ -87,9 +90,10 @@ func TestObserveFailureBecomesARefusalCarryingTheCause(t *testing.T) {
 }
 
 func TestDiffFailureBecomesARefusal(t *testing.T) {
+	ctx := t.Context()
 	die := &fakeDie{name: "precommit", diffErr: errors.New("block names an unmanaged repo")}
 
-	if m := Assess(Target{Repo: repoNamed("forge")}, die); m.Refusal == "" {
+	if m := Assess(ctx, Target{Repo: repoNamed("forge")}, die); m.Refusal == "" {
 		t.Error("a diff failure produced no refusal")
 	}
 }
@@ -98,10 +102,11 @@ func TestDiffFailureBecomesARefusal(t *testing.T) {
 // panic value has to survive into the refusal or a forge bug looks like a clean
 // portfolio.
 func TestPanicBecomesARefusalRatherThanEndingTheWalk(t *testing.T) {
+	ctx := t.Context()
 	dies := []Die{&fakeDie{name: "boom", observePanic: true}, &fakeDie{name: "fine"}}
 	targets := []Target{{Repo: repoNamed("forge")}, {Repo: repoNamed("beta")}}
 
-	measurements := AssessAll(targets, dies, 2, Watch{})
+	measurements := AssessAll(ctx, targets, dies, 2, Watch{})
 
 	if len(measurements) != 4 {
 		t.Fatalf("measurements = %d, want 4 (2 repos × 2 dies)", len(measurements))
@@ -133,7 +138,7 @@ func (*gatedDie) Name() string        { return "gated" }
 func (*gatedDie) Description() string { return "a fake" }
 func (*gatedDie) Tags() []string      { return nil }
 
-func (d *gatedDie) Observe(t Target) (Observation, error) {
+func (d *gatedDie) Observe(ctx context.Context, t Target) (Observation, error) {
 	if t.Repo.Name == d.open {
 		return fakeObservation{}, nil
 	}
@@ -147,18 +152,19 @@ func (d *gatedDie) Observe(t Target) (Observation, error) {
 
 func (*gatedDie) Diff(Target, Observation) ([]Change, error) { return nil, nil }
 
-func (*gatedDie) Perform(_ Target, c Change) (Outcome, error) {
+func (*gatedDie) Perform(ctx context.Context, _ Target, c Change) (Outcome, error) {
 	return Outcome{Change: c, Status: Done}, nil
 }
 
 // Rows print in registry order although several repos are measured at once.
 // alpha cannot finish until beta has, so a serial walk fails here too.
 func TestMeasuredArrivesInTargetOrderWhenALaterTargetFinishesFirst(t *testing.T) {
+	ctx := t.Context()
 	gate := &gatedDie{open: "beta", release: make(chan struct{})}
 	targets := []Target{{Repo: repoNamed("alpha")}, {Repo: repoNamed("beta")}}
 
 	var finished, measured []string
-	AssessAll(targets, []Die{gate}, 2, Watch{
+	AssessAll(ctx, targets, []Die{gate}, 2, Watch{
 		Finished: func(t Target) {
 			finished = append(finished, t.Repo.Name)
 			if t.Repo.Name == "beta" {
@@ -182,6 +188,7 @@ func TestMeasuredArrivesInTargetOrderWhenALaterTargetFinishesFirst(t *testing.T)
 }
 
 func TestApplyPerformsOnlyActionableChanges(t *testing.T) {
+	ctx := t.Context()
 	die := &fakeDie{name: "gitignore", changes: []Change{
 		{Item: "fixable", Verdict: Missing, Repair: Automatic},
 		{Item: "needs-a-person", Verdict: Stale, Repair: ByHand},
@@ -189,7 +196,7 @@ func TestApplyPerformsOnlyActionableChanges(t *testing.T) {
 		{Item: "unreachable", Verdict: Unknown, Repair: NoRepair},
 	}}
 
-	outcomes := Apply(Assess(Target{Repo: repoNamed("forge")}, die))
+	outcomes := Apply(ctx, Assess(ctx, Target{Repo: repoNamed("forge")}, die))
 
 	if len(outcomes) != 1 {
 		t.Fatalf("outcomes = %d, want 1", len(outcomes))
@@ -200,21 +207,23 @@ func TestApplyPerformsOnlyActionableChanges(t *testing.T) {
 }
 
 func TestApplyDoesNothingForARefusedMeasurement(t *testing.T) {
+	ctx := t.Context()
 	die := &fakeDie{name: "ci", observeErr: errors.New("unreadable")}
 
-	if outcomes := Apply(Assess(Target{Repo: repoNamed("forge")}, die)); outcomes != nil {
+	if outcomes := Apply(ctx, Assess(ctx, Target{Repo: repoNamed("forge")}, die)); outcomes != nil {
 		t.Errorf("outcomes = %v, want none for a refused measurement", outcomes)
 	}
 }
 
 func TestPerformFailureIsAFailedOutcomeNotAPanic(t *testing.T) {
+	ctx := t.Context()
 	die := &fakeDie{
 		name:       "gitignore",
 		changes:    []Change{{Item: ".gitignore", Verdict: Missing, Repair: Automatic}},
 		performErr: errors.New("permission denied"),
 	}
 
-	outcomes := Apply(Assess(Target{Repo: repoNamed("forge")}, die))
+	outcomes := Apply(ctx, Assess(ctx, Target{Repo: repoNamed("forge")}, die))
 
 	if len(outcomes) != 1 {
 		t.Fatalf("outcomes = %d, want 1", len(outcomes))

@@ -56,6 +56,7 @@ func TestSyncedDirsMigratesARealDirectory(t *testing.T) {
 // The synced copy is what other machines have been editing. Moving this repo's
 // copy over it would lose the newer content silently.
 func TestSyncedDirsRefusesToMigrateOverADivergedCopy(t *testing.T) {
+	ctx := t.Context()
 	target := declaring(t, map[string]string{"stats/data/rows.csv": "local edit\n"})
 
 	synced := syncedPath(target, "stats")
@@ -66,7 +67,7 @@ func TestSyncedDirsRefusesToMigrateOverADivergedCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, SyncedDirs{})
+	measured := reconcile.Assess(ctx, target, SyncedDirs{})
 
 	if len(measured.Changes) != 1 {
 		t.Fatalf("changes = %v, want 1", measured.Changes)
@@ -108,6 +109,7 @@ func TestSyncedDirsMigratesWhenTheCopiesMatch(t *testing.T) {
 // Repointing a deliberate link is not a repair; it is overruling a decision
 // forge cannot see the reason for.
 func TestSyncedDirsLeavesAForeignSymlinkAlone(t *testing.T) {
+	ctx := t.Context()
 	target := declaring(t, nil)
 
 	elsewhere := filepath.Join(sandbox(target), "somewhere-else")
@@ -121,7 +123,7 @@ func TestSyncedDirsLeavesAForeignSymlinkAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, SyncedDirs{})
+	measured := reconcile.Assess(ctx, target, SyncedDirs{})
 	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.ByHand {
 		t.Fatalf("changes = %v, want one by-hand finding", measured.Changes)
 	}
@@ -135,6 +137,7 @@ func TestSyncedDirsLeavesAForeignSymlinkAlone(t *testing.T) {
 
 // A sync base that moved leaves its old links pointing at nothing.
 func TestSyncedDirsRelinksALinkToNothing(t *testing.T) {
+	ctx := t.Context()
 	target := declaring(t, nil)
 
 	if err := os.MkdirAll(target.Path("stats"), 0o755); err != nil {
@@ -144,7 +147,7 @@ func TestSyncedDirsRelinksALinkToNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, SyncedDirs{})
+	measured := reconcile.Assess(ctx, target, SyncedDirs{})
 	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.Automatic {
 		t.Fatalf("changes = %v, want one automatic repair", measured.Changes)
 	}
@@ -157,11 +160,12 @@ func TestSyncedDirsRelinksALinkToNothing(t *testing.T) {
 }
 
 func TestSyncedDirsIsIdempotent(t *testing.T) {
+	ctx := t.Context()
 	target := declaring(t, nil)
 
 	applyAll(t, target, SyncedDirs{})
 
-	if measured := reconcile.Assess(target, SyncedDirs{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, SyncedDirs{}); len(measured.Changes) != 0 {
 		t.Errorf("a second look found %v, want nothing", measured.Changes)
 	}
 }
@@ -169,6 +173,7 @@ func TestSyncedDirsIsIdempotent(t *testing.T) {
 // A correct link whose target was deleted is drift the die can repair — the
 // repo is left pointing at nothing until it does.
 func TestSyncedDirsRecreatesAMissingTarget(t *testing.T) {
+	ctx := t.Context()
 	target := declaring(t, nil)
 	applyAll(t, target, SyncedDirs{})
 
@@ -176,7 +181,7 @@ func TestSyncedDirsRecreatesAMissingTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, SyncedDirs{})
+	measured := reconcile.Assess(ctx, target, SyncedDirs{})
 	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.Automatic {
 		t.Fatalf("changes = %v, want one automatic repair", measured.Changes)
 	}
@@ -228,10 +233,11 @@ func TestSyncedDirsKeysTheSyncedPathOnTheRegistryName(t *testing.T) {
 // A repo declaring nothing has nothing to link, so it needs no sync base and
 // gains no .planning.
 func TestSyncedDirsConvergesARepoDeclaringNothing(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), nil)
 	target.Config = nil
 
-	measured := reconcile.Assess(target, SyncedDirs{})
+	measured := reconcile.Assess(ctx, target, SyncedDirs{})
 	if measured.Refusal != "" || len(measured.Changes) != 0 {
 		t.Fatalf("refusal %q, changes %v — want converged with no sync base", measured.Refusal, measured.Changes)
 	}
@@ -244,6 +250,7 @@ func TestSyncedDirsConvergesARepoDeclaringNothing(t *testing.T) {
 }
 
 func TestSyncedDirsRemovesARetiredLinkIntoTheSyncBase(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), nil)
 	planning := syncedPath(target, "planning")
 	if err := os.MkdirAll(planning, 0o755); err != nil {
@@ -256,7 +263,7 @@ func TestSyncedDirsRemovesARetiredLinkIntoTheSyncBase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, SyncedDirs{})
+	measured := reconcile.Assess(ctx, target, SyncedDirs{})
 	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.Automatic {
 		t.Fatalf("changes = %v, want one automatic removal", measured.Changes)
 	}
@@ -288,6 +295,7 @@ func TestSyncedDirsRemovesADanglingRetiredLink(t *testing.T) {
 }
 
 func TestSyncedDirsLeavesAPlanningLinkOutsideTheSyncBaseAlone(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), nil)
 	elsewhere := filepath.Join(sandbox(target), "somewhere-else")
 	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
@@ -297,7 +305,7 @@ func TestSyncedDirsLeavesAPlanningLinkOutsideTheSyncBaseAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if measured := reconcile.Assess(target, SyncedDirs{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, SyncedDirs{}); len(measured.Changes) != 0 {
 		t.Fatalf("changes = %v, want none — a link aimed elsewhere is the repo's own", measured.Changes)
 	}
 }
@@ -318,9 +326,10 @@ func TestSyncedDirsRemovesAnEmptyRetiredDirectory(t *testing.T) {
 // Files in a real .planning were never synced, so nothing else holds them and
 // only a person can say where they go.
 func TestSyncedDirsReportsARetiredDirectoryWithFilesByHand(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{".planning/status.md": "local only\n"})
 
-	measured := reconcile.Assess(target, SyncedDirs{})
+	measured := reconcile.Assess(ctx, target, SyncedDirs{})
 	if len(measured.Changes) != 1 || measured.Changes[0].Repair != reconcile.ByHand {
 		t.Fatalf("changes = %v, want one by-hand finding", measured.Changes)
 	}

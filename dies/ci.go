@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -67,7 +68,7 @@ func (s ciState) Summary() string {
 	return "validate.yml current"
 }
 
-func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (CI) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	// Checked first, because a maintained directory declares components too.
 	// Without this, a directory declaring python and shell grows a
 	// .github/workflows/validate.yml that nothing will ever run.
@@ -209,8 +210,8 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 			"the workflow forge would write has an unfilled {{ placeholder; expected every placeholder filled",
 			"fix the block in forge, because nothing in this repo fills it"))
 	}
-	if finding := lintWorkflow(wanted, lintConfig); finding != "" {
-		state.blockers = append(state.blockers, actionlintFinding("jactionlint", "generated workflow", finding, t.Assets.Manifest))
+	if finding := lintWorkflow(ctx, wanted, lintConfig); finding != "" {
+		state.blockers = append(state.blockers, actionlintFinding(ctx, "jactionlint", "generated workflow", finding, t.Assets.Manifest))
 	}
 
 	// A hand-written lint config is the one the repo's own jactionlint hook
@@ -220,14 +221,14 @@ func (CI) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// holds it back. It owns only the pins of a hand-written workflow, so that
 	// one is held back only when the repin is what the config refuses.
 	if ownPath, own, ok := ownLintConfig(root); ok {
-		if finding := lintWorkflow(wanted, own); finding != "" {
-			state.blockers = append(state.blockers, actionlintFinding(ownPath, ci.WorkflowPath, finding, t.Assets.Manifest))
+		if finding := lintWorkflow(ctx, wanted, own); finding != "" {
+			state.blockers = append(state.blockers, actionlintFinding(ctx, ownPath, ci.WorkflowPath, finding, t.Assets.Manifest))
 		}
 		var kept []generatedFile
 		for _, file := range state.repinned {
-			if !file.matches() && lintWorkflowAt(file.rel, file.have, own) == "" {
-				if finding := lintWorkflowAt(file.rel, file.want, own); finding != "" {
-					state.blockers = append(state.blockers, actionlintFinding(ownPath, file.rel, finding, t.Assets.Manifest))
+			if !file.matches() && lintWorkflowAt(ctx, file.rel, file.have, own) == "" {
+				if finding := lintWorkflowAt(ctx, file.rel, file.want, own); finding != "" {
+					state.blockers = append(state.blockers, actionlintFinding(ctx, ownPath, file.rel, finding, t.Assets.Manifest))
 					continue
 				}
 			}
@@ -330,8 +331,8 @@ func pinnedActionlint(manifest *toolchain.Toolchain) string {
 // The hook pins `v1.8.2`, and a release may print its version with the v or
 // without it, so the leading v is trimmed from both sides before they are
 // compared.
-func installedActionlint() string {
-	out, err := runIn(os.TempDir(), "jactionlint", "--version")
+func installedActionlint(ctx context.Context) string {
+	out, err := runIn(ctx, os.TempDir(), "jactionlint", "--version")
 	if err != nil {
 		return ""
 	}
@@ -355,13 +356,13 @@ func installedActionlint() string {
 // The finding is returned raw. Whether forge can stand behind it depends on
 // which jactionlint answered, and that is the caller's decision rather than a
 // property of the lint itself.
-func lintWorkflow(workflow, config string) string {
-	return lintWorkflowAt(ci.WorkflowPath, workflow, config)
+func lintWorkflow(ctx context.Context, workflow, config string) string {
+	return lintWorkflowAt(ctx, ci.WorkflowPath, workflow, config)
 }
 
 // lintWorkflowAt is lintWorkflow with the workflow written at rel, so a
 // finding names the file it is about.
-func lintWorkflowAt(rel, workflow, config string) string {
+func lintWorkflowAt(ctx context.Context, rel, workflow, config string) string {
 	dir, err := os.MkdirTemp("", "forge-actionlint-")
 	if err != nil {
 		return ""
@@ -382,9 +383,9 @@ func lintWorkflowAt(rel, workflow, config string) string {
 	}
 	// jactionlint wants a repo; without one it reports the absence rather than
 	// the workflow.
-	_, _ = runIn(dir, "git", "init", "-q")
+	_, _ = runIn(ctx, dir, "git", "init", "-q")
 
-	return runValidator(dir, "jactionlint", rel)
+	return runValidator(ctx, dir, "jactionlint", rel)
 }
 
 // actionlintFinding renders a lint finding as the Change a plan shows.
@@ -397,9 +398,9 @@ func lintWorkflowAt(rel, workflow, config string) string {
 // install from failing `forge repos check` across the portfolio.
 // rejecter names what refused the item: jactionlint itself, or the repo's own
 // lint config it read.
-func actionlintFinding(rejecter, item, finding string, manifest *toolchain.Toolchain) reconcile.Change {
+func actionlintFinding(ctx context.Context, rejecter, item, finding string, manifest *toolchain.Toolchain) reconcile.Change {
 	pinned := strings.TrimPrefix(pinnedActionlint(manifest), "v")
-	installed := installedActionlint()
+	installed := installedActionlint(ctx)
 	if pinned != "" && installed != "" && installed != pinned {
 		return reconcile.Change{
 			Item:    item,
@@ -454,8 +455,8 @@ func (CI) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.
 	return changes, nil
 }
 
-func (c CI) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	observed, err := c.Observe(t)
+func (c CI) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	observed, err := c.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}

@@ -13,6 +13,7 @@ import (
 // The identity rides on the commit rather than in `git config`. A config write
 // that escapes the fixture signs every later commit in the repo it lands in.
 func initRepo(t *testing.T, target reconcile.Target, branch string) {
+	ctx := t.Context()
 	t.Helper()
 	dir := target.Repo.Path
 	for _, args := range [][]string{
@@ -20,17 +21,18 @@ func initRepo(t *testing.T, target reconcile.Target, branch string) {
 		{"add", "-A"},
 		{"-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "initial"},
 	} {
-		if _, err := runIn(dir, "git", args...); err != nil {
+		if _, err := runIn(ctx, dir, "git", args...); err != nil {
 			t.Fatalf("git %v: %s", args, err)
 		}
 	}
 }
 
 func TestDefaultBranchSaysNothingAboutARepoOnMain(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
 	initRepo(t, target, "main")
 
-	if measured := reconcile.Assess(target, DefaultBranch{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, DefaultBranch{}); len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none", measured.Changes)
 	}
 }
@@ -38,10 +40,11 @@ func TestDefaultBranchSaysNothingAboutARepoOnMain(t *testing.T) {
 // A repo whose default branch is neither master nor main chose a third name.
 // This die renames one to another and has nothing to say about that.
 func TestDefaultBranchIgnoresARepoWithNeitherName(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
 	initRepo(t, target, "trunk")
 
-	if measured := reconcile.Assess(target, DefaultBranch{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, DefaultBranch{}); len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none", measured.Changes)
 	}
 }
@@ -49,13 +52,14 @@ func TestDefaultBranchIgnoresARepoWithNeitherName(t *testing.T) {
 // On a machine without gh, apply renames master once gh is installed, so check
 // must count the repo as unmeasured rather than exit 3 on it.
 func TestDefaultBranchOnAMachineWithoutGhIsUnmeasuredRatherThanByHand(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
 	initRepo(t, target, "master")
 	// A bare repo under a github.com directory: ls-remote reads it, and the URL
 	// still reads as GitHub, so the die reaches its gh lookup.
 	remote := filepath.Join(t.TempDir(), "github.com", "thing.git")
 	for _, args := range [][]string{{"init", "-q", "--bare", remote}, {"remote", "add", "origin", remote}} {
-		if _, err := runIn(target.Repo.Path, "git", args...); err != nil {
+		if _, err := runIn(ctx, target.Repo.Path, "git", args...); err != nil {
 			t.Fatalf("git %v: %s", args, err)
 		}
 	}
@@ -66,7 +70,7 @@ func TestDefaultBranchOnAMachineWithoutGhIsUnmeasuredRatherThanByHand(t *testing
 	linkTool(t, gitOnly, "git")
 	t.Setenv("PATH", gitOnly)
 
-	measured := reconcile.Assess(target, DefaultBranch{})
+	measured := reconcile.Assess(ctx, target, DefaultBranch{})
 
 	if len(measured.Changes) != 1 || measured.Changes[0].Verdict != reconcile.Unknown {
 		t.Fatalf("changes = %v, want one unknown", measured.Changes)
@@ -79,13 +83,14 @@ func TestDefaultBranchOnAMachineWithoutGhIsUnmeasuredRatherThanByHand(t *testing
 // The script exited 1 — FAIL — for this, so a repo in an entirely ordinary
 // state was reported as a failure and a sweep was mostly red for no fault.
 func TestDefaultBranchReportsADirtyTreeAsByHandNotAsFailure(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
 	initRepo(t, target, "master")
 	if err := writeFile(target.Path("uncommitted.txt"), "work in progress\n"); err != nil {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, DefaultBranch{})
+	measured := reconcile.Assess(ctx, target, DefaultBranch{})
 
 	if len(measured.Changes) != 1 {
 		t.Fatalf("changes = %v, want 1", measured.Changes)
@@ -104,6 +109,7 @@ func TestDefaultBranchReportsADirtyTreeAsByHandNotAsFailure(t *testing.T) {
 // Perform re-verifies, and this is the die where it matters most: every step is
 // hard to reverse.
 func TestDefaultBranchRefusesWhenTheRepoStoppedBeingSafe(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{"README.md": "# fixture\n"})
 	initRepo(t, target, "master")
 
@@ -112,14 +118,14 @@ func TestDefaultBranchRefusesWhenTheRepoStoppedBeingSafe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outcome, err := DefaultBranch{}.Perform(target, change)
+	outcome, err := DefaultBranch{}.Perform(ctx, target, change)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if outcome.Status != reconcile.Refused {
 		t.Errorf("status = %q, want refused", outcome.Status)
 	}
-	if !branchExists(target.Repo.Path, "master") {
+	if !branchExists(ctx, target.Repo.Path, "master") {
 		t.Error("a refused rename still renamed the branch")
 	}
 }

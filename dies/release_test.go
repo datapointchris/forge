@@ -252,8 +252,9 @@ func TestReleasePlanCarriesThePatchItWouldApply(t *testing.T) {
 }
 
 func assess(t *testing.T, target reconcile.Target) []reconcile.Change {
+	ctx := t.Context()
 	t.Helper()
-	result := reconcile.Assess(target, Release{})
+	result := reconcile.Assess(ctx, target, Release{})
 	return result.Changes
 }
 

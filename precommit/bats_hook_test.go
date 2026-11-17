@@ -31,6 +31,7 @@ func batsEntry(t *testing.T) string {
 // bats never ran. The real bash, git and getconf are linked in by name, so a
 // parallel installed on the host cannot leak into the run that has none.
 func runBatsEntry(t *testing.T, files []string, withParallel bool) (string, bool) {
+	ctx := t.Context()
 	t.Helper()
 	bin := t.TempDir()
 	for _, tool := range []string{"bash", "git", "getconf"} {
@@ -64,7 +65,7 @@ func runBatsEntry(t *testing.T, files []string, withParallel bool) (string, bool
 		}
 	}
 
-	cmd := exec.Command(filepath.Join(bin, "bash"), "-c", batsEntry(t))
+	cmd := exec.CommandContext(ctx, filepath.Join(bin, "bash"), "-c", batsEntry(t))
 	cmd.Dir = repo
 	cmd.Env = []string{"PATH=" + bin, "HOME=" + t.TempDir(), "BATS_ARGS=" + record}
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -81,7 +82,8 @@ func runBatsEntry(t *testing.T, files []string, withParallel bool) (string, bool
 }
 
 func TestBatsHookRunsAJobPerCoreWhereParallelIsOnPath(t *testing.T) {
-	cores, err := exec.Command("getconf", "_NPROCESSORS_ONLN").Output()
+	ctx := t.Context()
+	cores, err := exec.CommandContext(ctx, "getconf", "_NPROCESSORS_ONLN").Output()
 	if err != nil {
 		t.Fatal(err)
 	}

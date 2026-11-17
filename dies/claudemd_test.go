@@ -10,9 +10,10 @@ import (
 // The old check exited 1 — a failure — for a repo that simply had not been
 // given one yet. It is an Issue now: the same severity, said honestly.
 func TestClaudeMDMissingIsAnIssueAndNeverAPlan(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), nil)
 
-	measured := reconcile.Assess(target, ClaudeMD{})
+	measured := reconcile.Assess(ctx, target, ClaudeMD{})
 
 	if check := measured.Fold(reconcile.LensCheck); check.Status != reconcile.Issue {
 		t.Errorf("check status = %q, want issue", check.Status)
@@ -23,19 +24,21 @@ func TestClaudeMDMissingIsAnIssueAndNeverAPlan(t *testing.T) {
 }
 
 func TestClaudeMDSubstantialFileIsConverged(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{
 		"CLAUDE.md": strings.Repeat("a line about this repo\n", 40),
 	})
 
-	if measured := reconcile.Assess(target, ClaudeMD{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, ClaudeMD{}); len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none", measured.Changes)
 	}
 }
 
 func TestClaudeMDPlaceholderIsReported(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{"CLAUDE.md": "# CLAUDE.md\n\nTODO\n"})
 
-	measured := reconcile.Assess(target, ClaudeMD{})
+	measured := reconcile.Assess(ctx, target, ClaudeMD{})
 
 	if len(measured.Changes) != 1 {
 		t.Fatalf("changes = %v, want 1", measured.Changes)

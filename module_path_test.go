@@ -84,12 +84,13 @@ func TestMismatchIsDetected(t *testing.T) {
 // It fires on the first commit after a bad release rather than during it,
 // because the tag does not exist until the release job has already run.
 func TestModulePathMatchesLatestReleaseTag(t *testing.T) {
+	ctx := t.Context()
 	goMod, err := os.ReadFile("go.mod")
 	if err != nil {
 		t.Fatalf("reading go.mod: %s", err)
 	}
 
-	out, err := exec.Command("git", "tag", "--sort=-v:refname").Output()
+	out, err := exec.CommandContext(ctx, "git", "tag", "--sort=-v:refname").Output()
 	if err != nil {
 		t.Skipf("no git tags available: %s", err)
 	}

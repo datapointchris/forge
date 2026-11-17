@@ -36,6 +36,7 @@ func TestIndexIsNeverInsideTheWorkTree(t *testing.T) {
 // so filepath.Abs alone reports "outside" and a .git is created in a Syncthing
 // folder — the exact failure the package exists to prevent.
 func TestSymlinkedCacheIsSeenAsInsideTheWorkTree(t *testing.T) {
+	ctx := t.Context()
 	tree := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(tree, "cache"), 0o755); err != nil {
 		t.Fatal(err)
@@ -54,7 +55,7 @@ func TestSymlinkedCacheIsSeenAsInsideTheWorkTree(t *testing.T) {
 		t.Errorf("a git dir resolving to %s was not seen as inside %s",
 			filepath.Join(tree, "cache", "sample.git"), tree)
 	}
-	if err := index.Ensure(); err == nil {
+	if err := index.Ensure(ctx); err == nil {
 		t.Error("Ensure created an index inside the tree it indexes")
 	}
 }
@@ -80,10 +81,11 @@ func TestASymlinkedWorkTreeStillMatchesItsOwnIndex(t *testing.T) {
 
 // And when one would be, every write path refuses rather than proceeding.
 func TestEnsureAndDiscardRefuseAnIndexInsideTheWorkTree(t *testing.T) {
+	ctx := t.Context()
 	tree := t.TempDir()
 	index := Index{Name: "bad", GitDir: filepath.Join(tree, ".git"), WorkTree: tree}
 
-	if err := index.Ensure(); err == nil {
+	if err := index.Ensure(ctx); err == nil {
 		t.Error("Ensure wrote a git dir into the tree it indexes")
 	}
 	if err := index.Discard(); err == nil {
@@ -154,6 +156,7 @@ func TestCheckGeneratedRequiresAStampedConfig(t *testing.T) {
 // deliberately no `pre-commit run` — that needs a tool the suite must not
 // require and a hook fetch it must not perform.
 func TestIndexEnumeratesTheTreeAndHonorsGitignore(t *testing.T) {
+	ctx := t.Context()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")
 	}
@@ -168,14 +171,14 @@ func TestIndexEnumeratesTheTreeAndHonorsGitignore(t *testing.T) {
 	write(t, tree, "debug.log", "noise\n")
 
 	index := IndexFor(config.Repo{Name: "sample", Path: tree})
-	if err := index.Ensure(); err != nil {
+	if err := index.Ensure(ctx); err != nil {
 		t.Fatalf("Ensure: %s", err)
 	}
-	if err := index.Refresh(); err != nil {
+	if err := index.Refresh(ctx); err != nil {
 		t.Fatalf("Refresh: %s", err)
 	}
 
-	files, err := index.Files()
+	files, err := index.Files(ctx)
 	if err != nil {
 		t.Fatalf("Files: %s", err)
 	}
@@ -203,10 +206,10 @@ func TestIndexEnumeratesTheTreeAndHonorsGitignore(t *testing.T) {
 	if err := os.Remove(filepath.Join(tree, "README.md")); err != nil {
 		t.Fatal(err)
 	}
-	if err := index.Refresh(); err != nil {
+	if err := index.Refresh(ctx); err != nil {
 		t.Fatalf("Refresh after delete: %s", err)
 	}
-	files, err = index.Files()
+	files, err = index.Files(ctx)
 	if err != nil {
 		t.Fatalf("Files after delete: %s", err)
 	}

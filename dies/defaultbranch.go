@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -64,7 +65,7 @@ func (s defaultBranchState) Summary() string {
 	return "master renamed"
 }
 
-func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (DefaultBranch) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	// Without this the two branchExists calls below both answer false and the
 	// row reads "no master branch to rename", which is true of a directory that
 	// has no branches at all and says nothing about why.
@@ -74,13 +75,13 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 
 	state := defaultBranchState{}
 
-	state.hasMaster = branchExists(t.Repo.Path, "master")
-	state.hasMain = branchExists(t.Repo.Path, "main")
+	state.hasMaster = branchExists(ctx, t.Repo.Path, "master")
+	state.hasMain = branchExists(ctx, t.Repo.Path, "main")
 	if !state.hasMaster {
 		return state, nil
 	}
 
-	status, err := runIn(t.Repo.Path, "git", "status", "--porcelain")
+	status, err := runIn(ctx, t.Repo.Path, "git", "status", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
@@ -89,11 +90,11 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	// A master with no upstream counts as nothing unpushed rather than as an
 	// error: the branch has simply never been pushed, and the push below is
 	// what the rename does anyway.
-	if count, err := runIn(t.Repo.Path, "git", "rev-list", "--count", "origin/master..master"); err == nil {
+	if count, err := runIn(ctx, t.Repo.Path, "git", "rev-list", "--count", "origin/master..master"); err == nil {
 		state.unpushed, _ = strconv.Atoi(count)
 	}
 
-	refs, err := runIn(t.Repo.Path, "git", "ls-remote", "--heads", "origin")
+	refs, err := runIn(ctx, t.Repo.Path, "git", "ls-remote", "--heads", "origin")
 	if err != nil {
 		state.unmeasured = "could not read the remote: " + err.Error()
 		return state, nil
@@ -101,7 +102,7 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	state.remoteHasMain = strings.Contains(refs, "refs/heads/main")
 	state.remoteHasMaster = strings.Contains(refs, "refs/heads/master")
 
-	repo, unknown, summary, err := observeGitHub(t, "master")
+	repo, unknown, summary, err := observeGitHub(ctx, t, "master")
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +119,8 @@ func (DefaultBranch) Observe(t reconcile.Target) (reconcile.Observation, error) 
 	return state, nil
 }
 
-func branchExists(dir, name string) bool {
-	_, err := runIn(dir, "git", "rev-parse", "--verify", "refs/heads/"+name)
+func branchExists(ctx context.Context, dir, name string) bool {
+	_, err := runIn(ctx, dir, "git", "rev-parse", "--verify", "refs/heads/"+name)
 	return err == nil
 }
 
@@ -162,10 +163,10 @@ func (DefaultBranch) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 	return []reconcile.Change{change}, nil
 }
 
-func (d DefaultBranch) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+func (d DefaultBranch) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	// Re-verified live, and this is the die where that matters most: every step
 	// below is hard to reverse, and the plan may have been read for a while.
-	observed, err := d.Observe(t)
+	observed, err := d.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
@@ -179,25 +180,25 @@ func (d DefaultBranch) Perform(t reconcile.Target, change reconcile.Change) (rec
 	}
 
 	dir := t.Repo.Path
-	if _, err := runIn(dir, "git", "branch", "-m", "master", "main"); err != nil {
+	if _, err := runIn(ctx, dir, "git", "branch", "-m", "master", "main"); err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 	if !state.remoteHasMain {
-		if _, err := runIn(dir, "git", "push", "-u", "origin", "main"); err != nil {
+		if _, err := runIn(ctx, dir, "git", "push", "-u", "origin", "main"); err != nil {
 			return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 		}
 	}
-	if _, err := runIn(dir, "gh", "repo", "edit", state.repo.slug, "--default-branch", "main"); err != nil {
+	if _, err := runIn(ctx, dir, "gh", "repo", "edit", state.repo.slug, "--default-branch", "main"); err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 	// Deleting the old remote branch is last: until the default has moved,
 	// GitHub refuses to delete the branch the default points at.
 	if state.remoteHasMaster {
-		if _, err := runIn(dir, "git", "push", "origin", "--delete", "master"); err != nil {
+		if _, err := runIn(ctx, dir, "git", "push", "origin", "--delete", "master"); err != nil {
 			return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 		}
 	}
-	if _, err := runIn(dir, "git", "remote", "set-head", "origin", "main"); err != nil {
+	if _, err := runIn(ctx, dir, "git", "remote", "set-head", "origin", "main"); err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 

@@ -17,11 +17,12 @@ func githubDies() []reconcile.Die { return []reconcile.Die{MergeSettings{}, Bran
 
 // withRemote points the fixture repo at an origin without needing a real one.
 func withRemote(t *testing.T, target reconcile.Target, url string) {
+	ctx := t.Context()
 	t.Helper()
-	if _, err := runIn(target.Repo.Path, "git", "init", "-q"); err != nil {
+	if _, err := runIn(ctx, target.Repo.Path, "git", "init", "-q"); err != nil {
 		t.Fatalf("git init: %s", err)
 	}
-	if _, err := runIn(target.Repo.Path, "git", "remote", "add", "origin", url); err != nil {
+	if _, err := runIn(ctx, target.Repo.Path, "git", "remote", "add", "origin", url); err != nil {
 		t.Fatalf("git remote add: %s", err)
 	}
 }
@@ -31,10 +32,11 @@ func withRemote(t *testing.T, target reconcile.Target, url string) {
 func TestGitHubDiesTreatAnotherProviderAsOutOfScope(t *testing.T) {
 	for _, die := range githubDies() {
 		t.Run(die.Name(), func(t *testing.T) {
+			ctx := t.Context()
 			target := fixture(t, stacks("go"), nil)
 			withRemote(t, target, "git@bitbucket.org:someone/thing.git")
 
-			measured := reconcile.Assess(target, die)
+			measured := reconcile.Assess(ctx, target, die)
 
 			if len(measured.Changes) != 0 {
 				t.Errorf("changes = %v, want none", measured.Changes)
@@ -63,10 +65,11 @@ func TestGitHubDiesReportUnmeasuredRatherThanDriftWhenGhIsMissing(t *testing.T) 
 
 	for _, die := range githubDies() {
 		t.Run(die.Name(), func(t *testing.T) {
+			ctx := t.Context()
 			target := fixture(t, stacks("go"), nil)
 			withRemote(t, target, "git@github.com:datapointchris/thing.git")
 
-			measured := reconcile.Assess(target, die)
+			measured := reconcile.Assess(ctx, target, die)
 
 			if len(measured.Changes) != 1 {
 				t.Fatalf("changes = %v, want 1", measured.Changes)
@@ -93,6 +96,7 @@ func TestGitHubDiesReportUnmeasuredRatherThanDriftWhenGhIsMissing(t *testing.T) 
 // answered without its merge settings. Applying on it would be refused, so a
 // portfolio run on one must not plan every repo as drifted.
 func TestMergeSettingsATokenCannotSeeAreUnmeasuredRatherThanDrift(t *testing.T) {
+	ctx := t.Context()
 	bin := filepath.Join(t.TempDir(), "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
@@ -106,7 +110,7 @@ func TestMergeSettingsATokenCannotSeeAreUnmeasuredRatherThanDrift(t *testing.T) 
 	target := fixture(t, stacks("go"), nil)
 	withRemote(t, target, "git@github.com:datapointchris/thing.git")
 
-	measured := reconcile.Assess(target, MergeSettings{})
+	measured := reconcile.Assess(ctx, target, MergeSettings{})
 
 	if len(measured.Changes) != 1 || measured.Changes[0].Verdict != reconcile.Unknown {
 		t.Fatalf("changes = %v, want one unknown", measured.Changes)
@@ -119,6 +123,7 @@ func TestMergeSettingsATokenCannotSeeAreUnmeasuredRatherThanDrift(t *testing.T) 
 // A rebase merge lands every commit under a new sha, so an enabled rebase
 // button is drift apply turns off.
 func TestMergeSettingsTurnsTheRebaseButtonOff(t *testing.T) {
+	ctx := t.Context()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
@@ -138,12 +143,12 @@ func TestMergeSettingsTurnsTheRebaseButtonOff(t *testing.T) {
 	target := fixture(t, stacks("go"), nil)
 	withRemote(t, target, "git@github.com:datapointchris/thing.git")
 
-	measured := reconcile.Assess(target, MergeSettings{})
+	measured := reconcile.Assess(ctx, target, MergeSettings{})
 
 	if len(measured.Changes) != 1 || measured.Changes[0].Item != "allow_rebase_merge" {
 		t.Fatalf("changes = %v, want allow_rebase_merge alone", measured.Changes)
 	}
-	outcome, err := MergeSettings{}.Perform(target, measured.Changes[0])
+	outcome, err := MergeSettings{}.Perform(ctx, target, measured.Changes[0])
 	if err != nil || outcome.Status != reconcile.Done {
 		t.Fatalf("outcome = %v, %v; want done", outcome, err)
 	}
@@ -161,9 +166,10 @@ func TestMergeSettingsTurnsTheRebaseButtonOff(t *testing.T) {
 func TestGitHubDiesSkipARepoWithNoRemote(t *testing.T) {
 	for _, die := range githubDies() {
 		t.Run(die.Name(), func(t *testing.T) {
+			ctx := t.Context()
 			target := fixture(t, stacks("go"), nil)
 
-			if measured := reconcile.Assess(target, die); len(measured.Changes) != 0 {
+			if measured := reconcile.Assess(ctx, target, die); len(measured.Changes) != 0 {
 				t.Errorf("changes = %v, want none", measured.Changes)
 			}
 		})

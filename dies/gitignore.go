@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -114,7 +115,7 @@ func (s gitignoreState) Summary() string {
 	return fmt.Sprintf("gitignore current (%s)", reconcile.Plural(len(s.lines), "line", "lines"))
 }
 
-func (Gitignore) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (Gitignore) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	file, err := readLineFile(t.Path(".gitignore"))
 	if err != nil {
 		return nil, err
@@ -189,11 +190,11 @@ func (Gitignore) Diff(t reconcile.Target, observed reconcile.Observation) ([]rec
 	return changes, nil
 }
 
-func (g Gitignore) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+func (g Gitignore) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	// Re-read rather than trust the plan: Observe ran before the plan was
 	// printed, an earlier change in this same batch may have created the file,
 	// and the operator may have read the plan for a while before applying it.
-	observed, err := g.Observe(t)
+	observed, err := g.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}

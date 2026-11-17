@@ -51,8 +51,9 @@ func repoWith(t *testing.T, files map[string]string) config.Repo {
 }
 
 func gitIn(t *testing.T, dir string, args ...string) {
+	ctx := t.Context()
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(gitenv.WithoutRepoTarget(os.Environ()),
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -224,11 +225,11 @@ func unexpandedPlaceholder(text string) bool {
 // The working directory is set rather than passed as a flag. jactionlint has no
 // -chdir, which the first real run found: every repo reported "flag provided
 // but not defined" as a problem with its own workflow.
-func runValidator(dir, tool string, args ...string) string {
+func runValidator(ctx context.Context, dir, tool string, args ...string) string {
 	if _, err := exec.LookPath(tool); err != nil {
 		return ""
 	}
-	cmd := exec.Command(tool, args...)
+	cmd := exec.CommandContext(ctx, tool, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {

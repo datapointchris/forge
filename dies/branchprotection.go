@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -63,8 +64,8 @@ func (s branchProtectionState) Summary() string {
 	return "branch protection current on " + s.repo.defaultBranch
 }
 
-func (BranchProtection) Observe(t reconcile.Target) (reconcile.Observation, error) {
-	repo, unknown, summary, err := observeGitHub(t, "branch protection")
+func (BranchProtection) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
+	repo, unknown, summary, err := observeGitHub(ctx, t, "branch protection")
 	if err != nil || summary != "" || unknown != nil {
 		return branchProtectionState{changes: unknown, summary: summary}, err
 	}
@@ -75,7 +76,7 @@ func (BranchProtection) Observe(t reconcile.Target) (reconcile.Observation, erro
 		return branchProtectionState{repo: repo, summary: "no default branch yet (empty repo)"}, nil
 	}
 
-	out, err := runIn(t.Repo.Path, "gh", "api",
+	out, err := runIn(ctx, t.Repo.Path, "gh", "api",
 		fmt.Sprintf("repos/%s/branches/%s/protection", repo.slug, repo.defaultBranch),
 		"--jq", `"\(.allow_force_pushes.enabled) \(.allow_deletions.enabled) \(.enforce_admins.enabled)"`)
 	if err != nil {
@@ -146,8 +147,8 @@ const protectionRequest = `{
   "allow_deletions": false
 }`
 
-func (b BranchProtection) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	observed, err := b.Observe(t)
+func (b BranchProtection) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	observed, err := b.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
@@ -158,7 +159,7 @@ func (b BranchProtection) Perform(t reconcile.Target, change reconcile.Change) (
 
 	// One PUT carries the whole ruleset, so the first Change of a batch sets
 	// every field and its siblings report Skipped on the re-read above.
-	if err := pipeTo(t.Repo.Path, protectionRequest, "gh", "api", "-X", "PUT",
+	if err := pipeTo(ctx, t.Repo.Path, protectionRequest, "gh", "api", "-X", "PUT",
 		fmt.Sprintf("repos/%s/branches/%s/protection", state.repo.slug, state.repo.defaultBranch),
 		"--input", "-", "--silent"); err != nil {
 		// Classic protection on a private repo needs a paid plan. That is a

@@ -2,6 +2,7 @@ package dies
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -55,12 +56,12 @@ type ghRepo struct {
 //
 // gh is handed origin's URL. Left to choose, gh ranks a remote named
 // `upstream` above `origin`, so a fork would be measured as its parent.
-func resolveGitHubRepo(dir string) (ghRepo, error) {
+func resolveGitHubRepo(ctx context.Context, dir string) (ghRepo, error) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return ghRepo{}, unmeasurable{"gh is not installed"}
 	}
 
-	remote, err := runIn(dir, "git", "config", "--get", "remote.origin.url")
+	remote, err := runIn(ctx, dir, "git", "config", "--get", "remote.origin.url")
 	if err != nil || remote == "" {
 		return ghRepo{}, errNotGitHub
 	}
@@ -68,7 +69,7 @@ func resolveGitHubRepo(dir string) (ghRepo, error) {
 		return ghRepo{}, errNotGitHub
 	}
 
-	out, err := runIn(dir, "gh", "repo", "view", remote, "--json", "nameWithOwner,defaultBranchRef",
+	out, err := runIn(ctx, dir, "gh", "repo", "view", remote, "--json", "nameWithOwner,defaultBranchRef",
 		"-q", `"\(.nameWithOwner) \(.defaultBranchRef.name)"`)
 	if err != nil {
 		return ghRepo{}, unmeasurable{"gh could not identify this repo (check `gh auth status`)"}
@@ -90,8 +91,8 @@ func resolveGitHubRepo(dir string) (ghRepo, error) {
 // stdout only, and the error carries stderr. gh prints API errors to stdout, so
 // a combined capture would fold a 404 body into the value being parsed — the
 // bug that made a repo with no branch protection look like it had some.
-func runIn(dir, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
+func runIn(ctx context.Context, dir, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 
 	var stdout, stderr bytes.Buffer
@@ -122,7 +123,7 @@ func settingChange(name, observed, want string) reconcile.Change {
 // observeGitHub folds the two non-answers into what each die should report:
 // a non-GitHub remote is out of scope and says so, and anything else that
 // could not be reached is unmeasured.
-func observeGitHub(t reconcile.Target, item string) (ghRepo, []reconcile.Change, string, error) {
+func observeGitHub(ctx context.Context, t reconcile.Target, item string) (ghRepo, []reconcile.Change, string, error) {
 	// A directory with no .git resolves to errNotGitHub anyway, because
 	// `git config --get remote.origin.url` exits 1 outside a repo. Saying so
 	// here rather than relying on that costs one stat instead of a subprocess,
@@ -131,7 +132,7 @@ func observeGitHub(t reconcile.Target, item string) (ghRepo, []reconcile.Change,
 	if !t.Versioned() {
 		return ghRepo{}, nil, "not a git repo", nil
 	}
-	repo, err := resolveGitHubRepo(t.Repo.Path)
+	repo, err := resolveGitHubRepo(ctx, t.Repo.Path)
 	switch {
 	case errors.Is(err, errNotGitHub):
 		return ghRepo{}, nil, "not a GitHub remote", nil
@@ -147,8 +148,8 @@ func observeGitHub(t reconcile.Target, item string) (ghRepo, []reconcile.Change,
 
 // pipeTo runs a command with a body on stdin, for the API calls that take a
 // JSON document rather than fields.
-func pipeTo(dir, body, name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+func pipeTo(ctx context.Context, dir, body, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(body)
 

@@ -14,6 +14,7 @@
 package directory
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -84,7 +85,7 @@ func (i Index) createEnv() []string {
 }
 
 // Ensure creates the index if it is not there.
-func (i Index) Ensure() error {
+func (i Index) Ensure(ctx context.Context) error {
 	if inside, err := i.insideWorkTree(); err != nil {
 		return err
 	} else if inside {
@@ -98,13 +99,13 @@ func (i Index) Ensure() error {
 	if err := os.MkdirAll(filepath.Dir(i.GitDir), 0o755); err != nil {
 		return fmt.Errorf("creating the index directory: %w", err)
 	}
-	if err := i.gitWith(i.createEnv(), "init", "--quiet", "--bare", i.GitDir); err != nil {
+	if err := i.gitWith(ctx, i.createEnv(), "init", "--quiet", "--bare", i.GitDir); err != nil {
 		return err
 	}
 	// A bare repo has no work tree, and git versions disagree about whether
 	// GIT_WORK_TREE overrides that. Saying so in the index's own config settles
 	// it rather than depending on which git is installed.
-	return i.gitWith(i.createEnv(), "config", "core.bare", "false")
+	return i.gitWith(ctx, i.createEnv(), "config", "core.bare", "false")
 }
 
 // Refresh makes the index match the directory.
@@ -112,16 +113,16 @@ func (i Index) Ensure() error {
 // Rebuilt every run rather than updated. The index is not a record of anything
 // — a file deleted since the last run would otherwise linger in it and be
 // handed to hooks that cannot open it.
-func (i Index) Refresh() error {
-	if err := i.git("add", "--all"); err != nil {
+func (i Index) Refresh(ctx context.Context) error {
+	if err := i.git(ctx, "add", "--all"); err != nil {
 		return fmt.Errorf("indexing %s: %w", i.WorkTree, err)
 	}
 	return nil
 }
 
 // Files lists what the index holds, which is what a run will lint.
-func (i Index) Files() ([]string, error) {
-	cmd := exec.Command("git", "ls-files")
+func (i Index) Files(ctx context.Context) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "ls-files")
 	cmd.Env = i.Env()
 	cmd.Dir = i.WorkTree
 	out, err := cmd.Output()
@@ -202,12 +203,12 @@ func realPath(path string) (string, error) {
 	}
 }
 
-func (i Index) git(args ...string) error {
-	return i.gitWith(i.Env(), args...)
+func (i Index) git(ctx context.Context, args ...string) error {
+	return i.gitWith(ctx, i.Env(), args...)
 }
 
-func (i Index) gitWith(env []string, args ...string) error {
-	cmd := exec.Command("git", args...)
+func (i Index) gitWith(ctx context.Context, env []string, args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = env
 	cmd.Dir = i.WorkTree
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -252,7 +253,7 @@ func CheckGenerated(workTree string) error {
 // build. The environments land in pre-commit's own store keyed by hook repo and
 // rev, so the real run finds them already there and spawns no backend at all.
 // It is also idempotent and quiet once warm.
-func ensureHookEnvironments(workTree string, stderr io.Writer) error {
+func ensureHookEnvironments(ctx context.Context, workTree string, stderr io.Writer) error {
 	config, err := os.ReadFile(filepath.Join(workTree, precommit.ConfigPath))
 	if err != nil {
 		return err
@@ -279,7 +280,7 @@ func ensureHookEnvironments(workTree string, stderr io.Writer) error {
 		{"git", "init", "--quiet"},
 		{"pre-commit", "install-hooks"},
 	} {
-		cmd := exec.Command(args[0], args[1:]...)
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 		cmd.Env = baseEnv()
 		cmd.Dir = staging
 		cmd.Stdout = stderr
@@ -312,7 +313,7 @@ type Result struct {
 //
 // Output is streamed rather than captured. A hook failure has to arrive whole,
 // because a summary of one is missing the part that says what to change.
-func Run(index Index, stdout, stderr io.Writer) (Result, error) {
+func Run(ctx context.Context, index Index, stdout, stderr io.Writer) (Result, error) {
 	result := Result{Name: index.Name, Path: index.WorkTree}
 
 	if _, err := os.Stat(index.WorkTree); err != nil {
@@ -325,25 +326,25 @@ func Run(index Index, stdout, stderr io.Writer) (Result, error) {
 		return result, fmt.Errorf("pre-commit is not installed: %w", err)
 	}
 
-	if err := index.Ensure(); err != nil {
+	if err := index.Ensure(ctx); err != nil {
 		return result, err
 	}
-	if err := index.Refresh(); err != nil {
+	if err := index.Refresh(ctx); err != nil {
 		return result, err
 	}
 
-	files, err := index.Files()
+	files, err := index.Files(ctx)
 	if err != nil {
 		return result, err
 	}
 	result.Files = len(files)
 
-	if err := ensureHookEnvironments(index.WorkTree, stderr); err != nil {
+	if err := ensureHookEnvironments(ctx, index.WorkTree, stderr); err != nil {
 		return result, err
 	}
 	result.Ran = true
 
-	cmd := exec.Command("pre-commit", "run", "--all-files")
+	cmd := exec.CommandContext(ctx, "pre-commit", "run", "--all-files")
 	cmd.Env = index.Env()
 	cmd.Dir = index.WorkTree
 	cmd.Stdout = stdout

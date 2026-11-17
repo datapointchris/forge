@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"strings"
 )
 
@@ -14,8 +15,8 @@ import (
 //
 // -z because a repo can hold a filename with a newline in it, and splitting on
 // newlines would turn one such file into two nonexistent ones.
-func trackedFiles(dir string) ([]string, error) {
-	out, err := runIn(dir, "git", "ls-files", "-z")
+func trackedFiles(ctx context.Context, dir string) ([]string, error) {
+	out, err := runIn(ctx, dir, "git", "ls-files", "-z")
 	if err != nil {
 		return nil, err
 	}

@@ -39,9 +39,10 @@ func TestPreCommitDeploysTheConfigsItsDeclaredStacksNeed(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
 			target := fixture(t, stacks(tc.stacks...), nil)
 
-			items := plannedItems(reconcile.Assess(target, PreCommit{}))
+			items := plannedItems(reconcile.Assess(ctx, target, PreCommit{}))
 
 			for _, want := range tc.want {
 				if !has(items, want) {
@@ -58,11 +59,12 @@ func TestPreCommitDeploysTheConfigsItsDeclaredStacksNeed(t *testing.T) {
 }
 
 func TestPreCommitApplyThenPlanIsClean(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), nil)
 
 	applyAll(t, target, PreCommit{})
 
-	items := plannedItems(reconcile.Assess(target, PreCommit{}))
+	items := plannedItems(reconcile.Assess(ctx, target, PreCommit{}))
 	// The git hooks stay pending: the fixture is not a git repo, so there is
 	// nothing to install into and nothing is reported for them either.
 	if len(items) != 0 {
@@ -73,6 +75,7 @@ func TestPreCommitApplyThenPlanIsClean(t *testing.T) {
 // Unmarked hooks abort a real sync rather than being destroyed. The fix is
 // adding markers, not letting the sync take them.
 func TestPreCommitReportsUnmarkedHooksAsByHandAndOffersNoWrite(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), map[string]string{
 		".pre-commit-config.yaml": strings.Join([]string{
 			"# forge-toolchain: 1",
@@ -87,7 +90,7 @@ func TestPreCommitReportsUnmarkedHooksAsByHandAndOffersNoWrite(t *testing.T) {
 		}, "\n"),
 	})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var found bool
 	for _, change := range measured.Changes {
@@ -163,10 +166,11 @@ func TestARustRepoIsGivenTheDeclaredToolchain(t *testing.T) {
 // A channel rustup cannot resolve fails every cargo call in the repo, so a
 // declaration pinning no Rust toolchain refuses the repo rather than ship one.
 func TestARustRepoIsRefusedWhenTheDeclarationPinsNoToolchain(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("rust"), nil)
 	target.Assets.Manifest.Languages = map[string]toolchain.Language{"rust": {Floor: "fixture-floor"}}
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	if !strings.Contains(measured.Refusal, "languages.rust.toolchain") {
 		t.Errorf("refusal = %q, want one naming languages.rust.toolchain", measured.Refusal)
@@ -175,11 +179,12 @@ func TestARustRepoIsRefusedWhenTheDeclarationPinsNoToolchain(t *testing.T) {
 
 // A config can be schema-valid and still fail on the first commit.
 func TestPreCommitReportsAnNpmScriptTheHookWouldCall(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("vue"), map[string]string{
 		"package.json": `{"name":"fixture","scripts":{}}`,
 	})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var found bool
 	for _, change := range measured.Changes {
@@ -196,10 +201,11 @@ func TestPreCommitReportsAnNpmScriptTheHookWouldCall(t *testing.T) {
 }
 
 func TestPreCommitReadsWithoutWriting(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go", "python"), map[string]string{"pyproject.toml": "[project]\nname = \"x\"\n"})
 	before := snapshot(t, sandbox(target))
 
-	reconcile.Assess(target, PreCommit{})
+	reconcile.Assess(ctx, target, PreCommit{})
 
 	if after := snapshot(t, sandbox(target)); len(before) != len(after) {
 		t.Errorf("observe created files: %v", keysOf(after))
@@ -207,9 +213,10 @@ func TestPreCommitReadsWithoutWriting(t *testing.T) {
 }
 
 func TestPreCommitIgnoresARepoDeclaringNoToolchain(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, nil, nil)
 
-	if measured := reconcile.Assess(target, PreCommit{}); len(measured.Changes) != 0 {
+	if measured := reconcile.Assess(ctx, target, PreCommit{}); len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none", measured.Changes)
 	}
 }
@@ -237,9 +244,10 @@ func TestUnexpandedPlaceholderIgnoresActionsSyntax(t *testing.T) {
 }
 
 func TestPreCommitPerformRefusesAnItemNoLongerInTheStandard(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("go"), nil)
 
-	outcome, err := PreCommit{}.Perform(target, reconcile.Change{
+	outcome, err := PreCommit{}.Perform(ctx, target, reconcile.Change{
 		Item: ".retired-config", Verdict: reconcile.Missing, Repair: reconcile.Automatic,
 	})
 	if err != nil {
@@ -259,9 +267,10 @@ func TestPreCommitPerformRefusesAnItemNoLongerInTheStandard(t *testing.T) {
 const strandedStamp = "# forge-toolchain: 11\nfail_fast: true\ndefault_stages: [pre-commit]\nrepos: []\n"
 
 func TestPrecommitMaintainsARepoItStampedButDoesNotTrack(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, nil, map[string]string{precommit.ConfigPath: strandedStamp})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	if len(measured.Changes) == 0 {
 		t.Fatalf("summary = %q, want the stale files reported", measured.Summary)
@@ -289,9 +298,10 @@ func TestPrecommitMaintainsARepoItStampedButDoesNotTrack(t *testing.T) {
 // runner.ActiveRepos' reasoning intact: naming an untouched repo with -F still
 // writes nothing into it.
 func TestPrecommitLeavesARepoItNeverWroteTo(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, nil, nil)
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none for a repo forge has never written to", measured.Changes)
@@ -305,8 +315,9 @@ func TestPrecommitLeavesARepoItNeverWroteTo(t *testing.T) {
 // sentence. Declaring the first repo deploys the standard files. Declaring the
 // second deploys nothing and surfaces its unmarked hooks instead.
 func TestPrecommitSaysWhichOfTheTwoReasonsItIs(t *testing.T) {
-	never := reconcile.Assess(fixture(t, nil, nil), PreCommit{})
-	unstamped := reconcile.Assess(
+	ctx := t.Context()
+	never := reconcile.Assess(ctx, fixture(t, nil, nil), PreCommit{})
+	unstamped := reconcile.Assess(ctx,
 		fixture(t, nil, map[string]string{precommit.ConfigPath: "repos:\n  - repo: local\n    hooks: []\n"}),
 		PreCommit{})
 
@@ -322,10 +333,11 @@ func TestPrecommitSaysWhichOfTheTwoReasonsItIs(t *testing.T) {
 // stamp is the only thing separating the two, so its absence has to be enough
 // on its own.
 func TestPrecommitLeavesAnUnstampedConfigAlone(t *testing.T) {
+	ctx := t.Context()
 	handWritten := "repos:\n  - repo: local\n    hooks: []\n"
 	target := fixture(t, nil, map[string]string{precommit.ConfigPath: handWritten})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none for a config forge did not write", measured.Changes)
@@ -336,6 +348,7 @@ func TestPrecommitLeavesAnUnstampedConfigAlone(t *testing.T) {
 // installed, and installing them would put a commit gate on a repo nobody works
 // in and build every hook environment its frozen config names.
 func TestPrecommitDoesNotInstallHooksInARepoItOnlyStamped(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, nil, map[string]string{precommit.ConfigPath: strandedStamp})
 	for _, stage := range hookStages {
 		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
@@ -343,7 +356,7 @@ func TestPrecommitDoesNotInstallHooksInARepoItOnlyStamped(t *testing.T) {
 		}
 	}
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	// The positive half: the die did run, so "no install offered" is not "no
 	// run".
@@ -360,15 +373,16 @@ func TestPrecommitDoesNotInstallHooksInARepoItOnlyStamped(t *testing.T) {
 // A linked worktree's .git is a file, and its hooks are the main checkout's.
 // Read from .git/hooks, every stage reads uninstalled and never converges.
 func TestPrecommitFindsTheHooksOfALinkedWorktree(t *testing.T) {
+	ctx := t.Context()
 	checkout := fixture(t, stacks("shell"), map[string]string{"README.md": "# fixture\n"})
 	initRepo(t, checkout, "main")
 	linked := filepath.Join(t.TempDir(), "linked")
-	if _, err := runIn(checkout.Repo.Path, "git", "worktree", "add", "-q", "-b", "sweep", linked); err != nil {
+	if _, err := runIn(ctx, checkout.Repo.Path, "git", "worktree", "add", "-q", "-b", "sweep", linked); err != nil {
 		t.Fatalf("git worktree add: %s", err)
 	}
 
 	config := "default_stages: [" + strings.Join(hookStages, ", ") + "]\n"
-	if missing := uninstalledHooks(linked, config); len(missing) != 0 {
+	if missing := uninstalledHooks(ctx, linked, config); len(missing) != 0 {
 		t.Errorf("the worktree reports %v uninstalled, and the main checkout holds all of them", missing)
 	}
 }
@@ -376,6 +390,7 @@ func TestPrecommitFindsTheHooksOfALinkedWorktree(t *testing.T) {
 // The same fixture with a declaration still reports the missing hooks, which is
 // what makes the assertion above a narrowing rather than a removal.
 func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("shell"), map[string]string{precommit.ConfigPath: strandedStamp})
 	for _, stage := range hookStages {
 		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
@@ -383,7 +398,7 @@ func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T
 		}
 	}
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var hooks int
 	for _, c := range measured.Changes {
@@ -401,6 +416,7 @@ func TestPrecommitStillInstallsHooksWhereTheRegistryDeclaresTheRepo(t *testing.T
 // report converged over a state the die's own hookStages comment defines as
 // broken — a commit gate declared in the config and absent from .git/hooks.
 func TestPrecommitReportsUninstalledHooksItMayNotInstallInAStampedRepo(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, nil, map[string]string{precommit.ConfigPath: strandedStamp})
 	for _, stage := range hookStages {
 		if err := os.Remove(target.Path(".git", "hooks", stage)); err != nil {
@@ -408,7 +424,7 @@ func TestPrecommitReportsUninstalledHooksItMayNotInstallInAStampedRepo(t *testin
 		}
 	}
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var reported []string
 	for _, c := range measured.Changes {
@@ -466,9 +482,10 @@ func TestPrecommitReportsStrandedConfigsUnderASupersededSpelling(t *testing.T) {
 }
 
 func assertStrandedReported(t *testing.T, target reconcile.Target, generic map[string]string) {
+	ctx := t.Context()
 	t.Helper()
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	reported := map[string]reconcile.Change{}
 	for _, c := range measured.Changes {
@@ -505,9 +522,10 @@ func assertStrandedReported(t *testing.T, target reconcile.Target, generic map[s
 // A repo keeping its own .editorconfig is not one forge deployed to. All three
 // or nothing is the discriminator, so a partial set says nothing.
 func TestPrecommitStaysQuietAboutAnEditorconfigItDidNotDeploy(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, nil, map[string]string{".editorconfig": "root = true\n"})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("changes = %v, want none for one file forge cannot claim", measured.Changes)
@@ -544,6 +562,7 @@ func TestEveryDeployedToolConfigCarriesTheManagedMarker(t *testing.T) {
 // deliberately does not change the ignore list. Without this the second half
 // rests on one measurement taken once against one prettier version.
 func TestNoDeployedYAMLConfigIsBothUnignoredAndReformattedByPrettier(t *testing.T) {
+	ctx := t.Context()
 	if _, err := exec.LookPath("prettier"); err != nil {
 		t.Skip("prettier is not installed, so its formatting cannot be measured here")
 	}
@@ -572,7 +591,7 @@ func TestNoDeployedYAMLConfigIsBothUnignoredAndReformattedByPrettier(t *testing.
 		if err := os.WriteFile(path, content, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := runIn(dir, "prettier", "--write", path); err != nil {
+		if _, err := runIn(ctx, dir, "prettier", "--write", path); err != nil {
 			t.Fatalf("%s: %s", tool.rel, err)
 		}
 
@@ -590,10 +609,11 @@ func TestNoDeployedYAMLConfigIsBothUnignoredAndReformattedByPrettier(t *testing.
 // The whole point of the marker: a config a person wrote is reported and left
 // where it is, rather than replaced by the template.
 func TestPrecommitRefusesToOverwriteAHandWrittenToolConfig(t *testing.T) {
+	ctx := t.Context()
 	mine := "root = true\n\n[*]\nindent_size = 8\n"
 	target := fixture(t, stacks("shell"), map[string]string{".editorconfig": mine})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var found bool
 	for _, c := range measured.Changes {
@@ -695,6 +715,7 @@ func TestPrecommitRemovesASupersededSpellingCarryingTheSameConfig(t *testing.T) 
 // the same run. apply continues past a failed change, so a write that failed
 // and a removal that succeeded would leave the repo with no config at all.
 func TestPrecommitKeepsTheSupersededSpellingWhenTheReplacementIsNotThere(t *testing.T) {
+	ctx := t.Context()
 	sameContent := standardMarkdownlintAsJSON(t)
 	target := fixture(t, stacks("shell"), map[string]string{".markdownlint.json": sameContent})
 
@@ -703,7 +724,7 @@ func TestPrecommitKeepsTheSupersededSpellingWhenTheReplacementIsNotThere(t *test
 		t.Fatal(err)
 	}
 
-	outcome, err := PreCommit{}.Perform(target, reconcile.Change{
+	outcome, err := PreCommit{}.Perform(ctx, target, reconcile.Change{
 		Item: ".markdownlint.json", Verdict: reconcile.Stale, Repair: reconcile.Automatic,
 	})
 	if err != nil {
@@ -720,13 +741,14 @@ func TestPrecommitKeepsTheSupersededSpellingWhenTheReplacementIsNotThere(t *test
 // Both tools search an ordered list of filenames, so a spelling ranked above the
 // one forge writes governs even when forge's file is present and current.
 func TestPrecommitReachesASpellingRankedAboveTheOneItWrites(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("vue"), map[string]string{
 		"package.json":  `{"name":"fixture","scripts":{"lint:fix":"x","typecheck":"x"}}`,
 		".prettierrc":   "semi: true\n",
 		"src/index.mjs": "export const x = 1\n",
 	})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var found bool
 	for _, c := range measured.Changes {
@@ -742,11 +764,12 @@ func TestPrecommitReachesASpellingRankedAboveTheOneItWrites(t *testing.T) {
 // JSONC carries // comments the YAML parser rejects, so forge cannot compare a
 // superseded .markdownlint.jsonc with what it writes. It reports it and leaves it.
 func TestPrecommitKeepsASupersededSpellingItCannotParse(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("shell"), map[string]string{
 		".markdownlint.jsonc": "{\n  // markdownlint reads this; the YAML parser does not\n  \"default\": true\n}\n",
 	})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	if !slices.ContainsFunc(measured.Changes, func(c reconcile.Change) bool { return c.Item == ".markdownlint.jsonc" }) {
 		t.Fatalf("an unparsable superseded spelling was not reported: %v", measured.Changes)
@@ -761,11 +784,12 @@ func TestPrecommitKeepsASupersededSpellingItCannotParse(t *testing.T) {
 // A superseded file whose content differs is a config someone changed, and it is
 // the one the tool actually reads. Reported, never removed.
 func TestPrecommitReportsASupersededSpellingThatDiffers(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("shell"), map[string]string{
 		".markdownlint.json": `{"default": true, "MD033": true, "MD013": 120}`,
 	})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var found bool
 	for _, c := range measured.Changes {
@@ -790,13 +814,14 @@ func TestPrecommitReportsASupersededSpellingThatDiffers(t *testing.T) {
 // The custom hook keeps its own rev whatever the declared one is, and without
 // the report every verb calls the repo converged.
 func TestACustomHookReplacingAStandardOneIsReportedAndTheConfigStillRegenerates(t *testing.T) {
+	ctx := t.Context()
 	custom := "# > custom:after:all - our refcheck\n" +
 		"  - repo: https://github.com/datapointchris/refcheck\n    rev: v0.2.1\n    hooks:\n      - id: refcheck\n"
 	target := fixture(t, stacks("go"), map[string]string{
 		".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos:\n" + custom,
 	})
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 
 	var reported bool
 	for _, change := range measured.Fold(reconcile.LensCheck).Changes {
@@ -811,6 +836,7 @@ func TestACustomHookReplacingAStandardOneIsReportedAndTheConfigStillRegenerates(
 }
 
 func TestACustomHookOfItsOwnIdIsNotReported(t *testing.T) {
+	ctx := t.Context()
 	custom := "# > custom:after:all - our own check\n" +
 		"  - repo: local\n    hooks:\n      - id: my-bespoke-check\n" +
 		"        name: my bespoke check\n        entry: ./check.sh\n        language: system\n"
@@ -818,7 +844,7 @@ func TestACustomHookOfItsOwnIdIsNotReported(t *testing.T) {
 		".pre-commit-config.yaml": "# forge-toolchain: 1\nrepos:\n" + custom,
 	})
 
-	for _, change := range reconcile.Assess(target, PreCommit{}).Fold(reconcile.LensCheck).Changes {
+	for _, change := range reconcile.Assess(ctx, target, PreCommit{}).Fold(reconcile.LensCheck).Changes {
 		if strings.HasPrefix(change.Item, "custom hook ") {
 			t.Errorf("a hook no standard block defines was reported: %+v", change)
 		}

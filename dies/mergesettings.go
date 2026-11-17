@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -63,13 +64,13 @@ func (s mergeSettingsState) Summary() string {
 	return "merge settings current"
 }
 
-func (MergeSettings) Observe(t reconcile.Target) (reconcile.Observation, error) {
-	repo, unknown, summary, err := observeGitHub(t, "merge settings")
+func (MergeSettings) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
+	repo, unknown, summary, err := observeGitHub(ctx, t, "merge settings")
 	if err != nil || summary != "" || unknown != nil {
 		return mergeSettingsState{changes: unknown, summary: summary}, err
 	}
 
-	out, err := runIn(t.Repo.Path, "gh", "api", "repos/"+repo.slug,
+	out, err := runIn(ctx, t.Repo.Path, "gh", "api", "repos/"+repo.slug,
 		"--jq", `"\(.merge_commit_title) \(.merge_commit_message) \(.delete_branch_on_merge) \(.allow_merge_commit) \(.allow_squash_merge) \(.allow_rebase_merge)"`)
 	if err != nil {
 		return mergeSettingsState{
@@ -137,8 +138,8 @@ func (MergeSettings) Diff(_ reconcile.Target, observed reconcile.Observation) ([
 // write would fail on exactly the repos that need it most; the re-read below
 // is what keeps the batching honest, reporting Skipped once the first Change
 // has already carried its siblings.
-func (m MergeSettings) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	observed, err := m.Observe(t)
+func (m MergeSettings) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	observed, err := m.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
@@ -147,7 +148,7 @@ func (m MergeSettings) Perform(t reconcile.Target, change reconcile.Change) (rec
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already set"}, nil
 	}
 
-	if _, err := runIn(t.Repo.Path, "gh", "api", "-X", "PATCH", "repos/"+state.repo.slug,
+	if _, err := runIn(ctx, t.Repo.Path, "gh", "api", "-X", "PATCH", "repos/"+state.repo.slug,
 		"-F", "allow_merge_commit=true",
 		"-f", "merge_commit_title="+wantMergeTitle,
 		"-f", "merge_commit_message="+wantMergeMessage,

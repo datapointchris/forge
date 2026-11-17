@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -48,7 +49,7 @@ func (s claudeMDState) Summary() string {
 	return fmt.Sprintf("CLAUDE.md (%s)", reconcile.Plural(s.lines, "line", "lines"))
 }
 
-func (ClaudeMD) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (ClaudeMD) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	data, err := os.ReadFile(t.Path("CLAUDE.md"))
 	if os.IsNotExist(err) {
 		return claudeMDState{}, nil

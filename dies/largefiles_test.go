@@ -9,13 +9,14 @@ import (
 )
 
 func TestLargeFilesSaysNothingAboutARepoOfOrdinaryFiles(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"main.go":   "package main\n",
 		"README.md": strings.Repeat("a line\n", 200),
 	})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, LargeFiles{})
+	measured := reconcile.Assess(ctx, target, LargeFiles{})
 
 	if check := measured.Fold(reconcile.LensCheck); check.Status != reconcile.Converged {
 		t.Errorf("check status = %q, want converged", check.Status)
@@ -23,13 +24,14 @@ func TestLargeFilesSaysNothingAboutARepoOfOrdinaryFiles(t *testing.T) {
 }
 
 func TestLargeFilesReportsATrackedFileOverTheThreshold(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"main.go":  "package main\n",
 		"blob.bin": strings.Repeat("x", largeEnoughToQuestion+1),
 	})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, LargeFiles{})
+	measured := reconcile.Assess(ctx, target, LargeFiles{})
 	changes := measured.Changes
 
 	if len(changes) != 1 {
@@ -51,6 +53,7 @@ func TestLargeFilesReportsATrackedFileOverTheThreshold(t *testing.T) {
 // The set is what git tracks, not what the directory holds. A walk would report
 // every dependency tree in the fleet, every run.
 func TestLargeFilesIgnoresAnUntrackedFile(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"main.go":    "package main\n",
 		".gitignore": "ignored/\n",
@@ -64,7 +67,7 @@ func TestLargeFilesIgnoresAnUntrackedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	measured := reconcile.Assess(target, LargeFiles{})
+	measured := reconcile.Assess(ctx, target, LargeFiles{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("an untracked file was reported: %+v", measured.Changes)
@@ -72,9 +75,10 @@ func TestLargeFilesIgnoresAnUntrackedFile(t *testing.T) {
 }
 
 func TestLargeFilesSaysSoWhenThereIsNoCheckout(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{"main.go": "package main\n"})
 
-	measured := reconcile.Assess(target, LargeFiles{})
+	measured := reconcile.Assess(ctx, target, LargeFiles{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("a directory that is not a repo produced changes: %+v", measured.Changes)

@@ -17,12 +17,13 @@ var conflicted = "package main\n\n" +
 	strings.Repeat(">", 7) + " branch\n"
 
 func TestConflictMarkersSaysNothingAboutACleanRepo(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"main.go": "package main\n\nfunc main() {}\n",
 	})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, ConflictMarkers{})
+	measured := reconcile.Assess(ctx, target, ConflictMarkers{})
 
 	if check := measured.Fold(reconcile.LensCheck); check.Status != reconcile.Converged {
 		t.Errorf("check status = %q, want converged", check.Status)
@@ -30,10 +31,11 @@ func TestConflictMarkersSaysNothingAboutACleanRepo(t *testing.T) {
 }
 
 func TestConflictMarkersReportsACommittedConflictWithItsLine(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{"main.go": conflicted})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, ConflictMarkers{})
+	measured := reconcile.Assess(ctx, target, ConflictMarkers{})
 
 	if len(measured.Changes) != 1 {
 		t.Fatalf("changes = %d, want 1: %+v", len(measured.Changes), measured.Changes)
@@ -54,12 +56,13 @@ func TestConflictMarkersReportsACommittedConflictWithItsLine(t *testing.T) {
 // terminal-library/cards/git-merge-conflicts.md is the case, and a die
 // reporting it every run is a die nobody reads.
 func TestConflictMarkersIgnoresAnExampleInsideAMarkdownFence(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"workflows/git-merge-conflicts.md": "# Resolving\n\n```text\n" + conflicted + "```\n",
 	})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, ConflictMarkers{})
+	measured := reconcile.Assess(ctx, target, ConflictMarkers{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("a fenced example was reported as a conflict: %+v", measured.Changes)
@@ -69,12 +72,13 @@ func TestConflictMarkersIgnoresAnExampleInsideAMarkdownFence(t *testing.T) {
 // A fence hides an example, not everything after it. A real conflict below a
 // closed fence still counts.
 func TestConflictMarkersStillSeesAConflictAfterAClosedFence(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"notes.md": "# Notes\n\n```text\nexample\n```\n\n" + conflicted,
 	})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, ConflictMarkers{})
+	measured := reconcile.Assess(ctx, target, ConflictMarkers{})
 
 	if len(measured.Changes) != 1 {
 		t.Fatalf("a conflict after a closed fence was missed: %+v", measured.Changes)
@@ -90,12 +94,13 @@ func TestFirstMarkerLineIgnoresMarkersThatAreNotAtTheStartOfALine(t *testing.T) 
 }
 
 func TestConflictMarkersSkipsBinaryFiles(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
 		"asset.bin": "\x00\x01<<<<<<< HEAD\nbinary\n",
 	})
 	initRepo(t, target, "main")
 
-	measured := reconcile.Assess(target, ConflictMarkers{})
+	measured := reconcile.Assess(ctx, target, ConflictMarkers{})
 
 	if len(measured.Changes) != 0 {
 		t.Errorf("a binary file was reported: %+v", measured.Changes)

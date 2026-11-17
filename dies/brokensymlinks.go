@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,11 +51,11 @@ func (s brokenSymlinksState) Summary() string {
 	return fmt.Sprintf("%s tracked, all resolve", reconcile.Plural(s.links, "symlink", "symlinks"))
 }
 
-func (BrokenSymlinks) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (BrokenSymlinks) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	if !t.Versioned() {
 		return brokenSymlinksState{unversioned: true}, nil
 	}
-	files, err := trackedFiles(t.Repo.Path)
+	files, err := trackedFiles(ctx, t.Repo.Path)
 	if err != nil {
 		return nil, err
 	}

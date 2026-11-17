@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,11 +58,11 @@ func (s largeFilesState) Summary() string {
 	return fmt.Sprintf("%s tracked, none over %s", reconcile.Plural(s.scanned, "file", "files"), humanBytes(largeEnoughToQuestion))
 }
 
-func (LargeFiles) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (LargeFiles) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	if !t.Versioned() {
 		return largeFilesState{unversioned: true}, nil
 	}
-	files, err := trackedFiles(t.Repo.Path)
+	files, err := trackedFiles(ctx, t.Repo.Path)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -127,7 +128,7 @@ func decodeMergeReport(out string) (mergeReport, error) {
 	return report, nil
 }
 
-func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (Pyproject) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	if !slices.Contains(t.Repo.Toolchain.Stacks(), "python") {
 		return pyprojectState{reason: "declares no python component"}, nil
 	}
@@ -144,7 +145,7 @@ func (Pyproject) Observe(t reconcile.Target) (reconcile.Observation, error) {
 
 	// --check is the read. The script reports what it would write, with the
 	// unified diff as the patch, and writes nothing.
-	out, err := runMergeScript(t, "--check")
+	out, err := runMergeScript(ctx, t, "--check")
 	if err != nil {
 		return nil, err
 	}
@@ -197,8 +198,8 @@ func (Pyproject) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 	return changes, nil
 }
 
-func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	out, err := runMergeScript(t)
+func (p Pyproject) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	out, err := runMergeScript(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
@@ -212,7 +213,7 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already current"}, nil
 	case "updated":
 		if _, err := os.Stat(t.Path("uv.lock")); err == nil {
-			if err := lockWithPinnedUV(t); err != nil {
+			if err := lockWithPinnedUV(ctx, t); err != nil {
 				return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: "merged, then uv lock failed: " + err.Error()}, nil
 			}
 		}
@@ -242,7 +243,7 @@ func (p Pyproject) Perform(t reconcile.Target, change reconcile.Change) (reconci
 // because without it uv builds the repo being edited just to run the merge
 // script, and the build chatter on stderr buries the error runIn reports from a
 // failed run.
-func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
+func runMergeScript(ctx context.Context, t reconcile.Target, extraArgs ...string) (string, error) {
 	dir, err := os.MkdirTemp("", "forge-pyproject-")
 	if err != nil {
 		return "", err
@@ -266,18 +267,18 @@ func runMergeScript(t reconcile.Target, extraArgs ...string) (string, error) {
 	args := append([]string{"run", "--no-project", "--with", "tomlkit", "python", script}, extraArgs...)
 	args = append(args, pins...)
 	args = append(args, standard, "pyproject.toml")
-	return runIn(t.Repo.Path, "uv", args...)
+	return runIn(ctx, t.Repo.Path, "uv", args...)
 }
 
 // lockWithPinnedUV re-locks with the release the uv-lock hook pins. A lock whose
 // content changes takes the format revision of the uv that wrote it, so the uv
 // on PATH would leave a revision the hook rewrites on its next change.
-func lockWithPinnedUV(t reconcile.Target) error {
+func lockWithPinnedUV(ctx context.Context, t reconcile.Target) error {
 	version, err := pinnedUV(t.Assets.Manifest)
 	if err != nil {
 		return err
 	}
-	_, err = runIn(t.Repo.Path, "uvx", "uv@"+version, "lock")
+	_, err = runIn(ctx, t.Repo.Path, "uvx", "uv@"+version, "lock")
 	return err
 }
 

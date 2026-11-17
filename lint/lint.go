@@ -143,7 +143,7 @@ func lintRepo(parent context.Context, repo config.Repo, run HookRunner) Result {
 	if err != nil {
 		return Result{Outcome: Unknown, Note: "cannot resolve the repo path: " + err.Error()}
 	}
-	committed, found, err := committedConfig(root)
+	committed, found, err := committedConfig(parent, root)
 	if err != nil {
 		return Result{Outcome: Unknown, Note: err.Error()}
 	}
@@ -303,18 +303,18 @@ func hookEnv(env []string) []string {
 // committedConfig is the pre-commit config at HEAD, and whether there is one.
 // The working tree's copy is not read: the clone is HEAD, and an edit nobody
 // committed is not what CI runs either.
-func committedConfig(root string) (string, bool, error) {
-	if _, err := git(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"); err != nil {
+func committedConfig(ctx context.Context, root string) (string, bool, error) {
+	if _, err := git(ctx, root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"); err != nil {
 		return "", false, fmt.Errorf("no commit to lint: %w", err)
 	}
-	listed, err := git(root, "ls-tree", "--name-only", "HEAD", "--", precommit.ConfigPath)
+	listed, err := git(ctx, root, "ls-tree", "--name-only", "HEAD", "--", precommit.ConfigPath)
 	if err != nil {
 		return "", false, err
 	}
 	if strings.TrimSpace(listed) == "" {
 		return "", false, nil
 	}
-	body, err := git(root, "show", "HEAD:"+precommit.ConfigPath)
+	body, err := git(ctx, root, "show", "HEAD:"+precommit.ConfigPath)
 	if err != nil {
 		return "", false, err
 	}
@@ -329,7 +329,7 @@ type clone struct{ dir string }
 // worktree would register itself there, and a run killed before it cleaned up
 // would leave the entry behind.
 func checkout(ctx context.Context, root, name string) (clone, error) {
-	head, err := git(root, "rev-parse", "HEAD")
+	head, err := git(ctx, root, "rev-parse", "HEAD")
 	if err != nil {
 		return clone{}, err
 	}
@@ -342,11 +342,11 @@ func checkout(ctx context.Context, root, name string) (clone, error) {
 		return clone{}, err
 	}
 	made := clone{dir: dir}
-	if _, err := git(parent, "clone", "--quiet", "--shared", "--no-checkout", root, dir); err != nil {
+	if _, err := git(ctx, parent, "clone", "--quiet", "--shared", "--no-checkout", root, dir); err != nil {
 		made.remove()
 		return clone{}, err
 	}
-	if _, err := git(dir, "checkout", "--quiet", "--detach", strings.TrimSpace(head)); err != nil {
+	if _, err := git(ctx, dir, "checkout", "--quiet", "--detach", strings.TrimSpace(head)); err != nil {
 		made.remove()
 		return clone{}, err
 	}
@@ -374,7 +374,7 @@ func (c clone) remove() {
 // The packages are listed from the clone's index, which is HEAD. One staged in
 // the checkout and not yet committed has no directory in the clone.
 func prepareNodePackages(ctx context.Context, root, dir string) error {
-	listed, err := git(dir, "ls-files", "-z", "--", ":(glob)**/package.json")
+	listed, err := git(ctx, dir, "ls-files", "-z", "--", ":(glob)**/package.json")
 	if err != nil {
 		return err
 	}
@@ -498,8 +498,8 @@ func postinstall(ctx context.Context, pkg string) error {
 }
 
 // git runs git in dir with stdout returned and stderr folded into the error.
-func git(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+func git(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = gitenv.WithoutRepoTarget(os.Environ())
 	var stderr strings.Builder
 	cmd.Stderr = &stderr

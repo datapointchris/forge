@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -410,7 +411,7 @@ type owedPreCommit struct {
 	wanted string
 }
 
-func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
+func preCommitOwed(ctx context.Context, t reconcile.Target) (owedPreCommit, error) {
 	blocksFS, err := fs.Sub(t.Assets.PreCommit, "blocks")
 	if err != nil {
 		return owedPreCommit{}, err
@@ -428,7 +429,7 @@ func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 	owed.customSections = precommit.ExtractCustomSections(owed.existing)
 	owed.observed = precommit.Observed{
 		Versioning:        precommit.Versioning(t.Versioned()),
-		Scripts:           shebangScripts(t.Repo.Path, t.Versioned()),
+		Scripts:           shebangScripts(ctx, t.Repo.Path, t.Versioned()),
 		GoSemanticRelease: ci.InvokesGoSemanticRelease(t.Repo.Path),
 	}
 	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, owed.observed)
@@ -438,9 +439,9 @@ func preCommitOwed(t reconcile.Target) (owedPreCommit, error) {
 	return owed, nil
 }
 
-func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (PreCommit) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	root := t.Repo.Path
-	owed, err := preCommitOwed(t)
+	owed, err := preCommitOwed(ctx, t)
 	if err != nil {
 		return nil, err
 	}
@@ -540,14 +541,14 @@ func (PreCommit) Observe(t reconcile.Target) (reconcile.Observation, error) {
 	// silently never run. Not measuring it let apply write that config and plan
 	// then report converged over the state hookStages above defines as broken.
 	// Diff decides who may fix it; this decides whether anyone is told.
-	state.missingHooks = uninstalledHooks(root, wanted)
+	state.missingHooks = uninstalledHooks(ctx, root, wanted)
 
 	// A schema-valid config can still fail on the first commit, which is the
 	// check `pre-commit validate-config` cannot make.
 	for _, missing := range unresolvedNpmScripts(root, wanted) {
 		state.blockers = append(state.blockers, blocker(precommit.ConfigPath, missing))
 	}
-	if finding := validateConfig(wanted); finding != "" {
+	if finding := validateConfig(ctx, wanted); finding != "" {
 		state.blockers = append(state.blockers, blocker("generated config",
 			"pre-commit validate-config rejects the config forge would write: "+finding))
 	}
@@ -611,7 +612,7 @@ func declaredStages(generated string) []string {
 }
 
 // uninstalledHooks returns the stages the config uses whose git hook is absent.
-func uninstalledHooks(root, generated string) []string {
+func uninstalledHooks(ctx context.Context, root, generated string) []string {
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		return nil
 	}
@@ -623,7 +624,7 @@ func uninstalledHooks(root, generated string) []string {
 		if !slices.Contains(used, stage) {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(hooksDir(root), stage))
+		data, err := os.ReadFile(filepath.Join(hooksDir(ctx, root), stage))
 		if err != nil || !strings.Contains(string(data), "pre-commit") {
 			missing = append(missing, stage)
 		}
@@ -634,8 +635,8 @@ func uninstalledHooks(root, generated string) []string {
 // hooksDir is where git runs root's hooks from. In a linked worktree .git is a
 // file, and the hooks are the main checkout's, so .git/hooks names nothing there.
 // Where git cannot answer, the path is .git/hooks.
-func hooksDir(root string) string {
-	path, err := runIn(root, "git", "rev-parse", "--git-path", "hooks")
+func hooksDir(ctx context.Context, root string) string {
+	path, err := runIn(ctx, root, "git", "rev-parse", "--git-path", "hooks")
 	if err != nil || path == "" {
 		return filepath.Join(root, ".git", "hooks")
 	}
@@ -685,7 +686,7 @@ func unresolvedNpmScripts(root, generated string) []string {
 	return missing
 }
 
-func validateConfig(generated string) string {
+func validateConfig(ctx context.Context, generated string) string {
 	dir, err := os.MkdirTemp("", "forge-precommit-")
 	if err != nil {
 		return ""
@@ -696,7 +697,7 @@ func validateConfig(generated string) string {
 	if err := os.WriteFile(path, []byte(generated), 0o644); err != nil {
 		return ""
 	}
-	return runValidator(dir, "pre-commit", "validate-config", path)
+	return runValidator(ctx, dir, "pre-commit", "validate-config", path)
 }
 
 func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
@@ -761,15 +762,15 @@ func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]rec
 	return changes, nil
 }
 
-func (p PreCommit) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	observed, err := p.Observe(t)
+func (p PreCommit) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	observed, err := p.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
 	state := observed.(preCommitState)
 
 	if strings.HasPrefix(change.Item, ".git/hooks/") {
-		return installHooks(t.Repo.Path, change)
+		return installHooks(ctx, t.Repo.Path, change)
 	}
 
 	if change.Item == precommit.ConfigPath {
@@ -822,9 +823,9 @@ func writeIfStale(root string, file generatedFile, change reconcile.Change) (rec
 // installHooks installs every stage at once. `pre-commit install` is not
 // per-stage cheap, and the stages are decided by one config, so the first
 // change of a batch carries its siblings and they report Skipped.
-func installHooks(root string, change reconcile.Change) (reconcile.Outcome, error) {
+func installHooks(ctx context.Context, root string, change reconcile.Change) (reconcile.Outcome, error) {
 	stage := strings.TrimPrefix(change.Item, ".git/hooks/")
-	if data, err := os.ReadFile(filepath.Join(hooksDir(root), stage)); err == nil && strings.Contains(string(data), "pre-commit") {
+	if data, err := os.ReadFile(filepath.Join(hooksDir(ctx, root), stage)); err == nil && strings.Contains(string(data), "pre-commit") {
 		return reconcile.Outcome{Change: change, Status: reconcile.Skipped, Message: "already installed"}, nil
 	}
 
@@ -832,7 +833,7 @@ func installHooks(root string, change reconcile.Change) (reconcile.Outcome, erro
 	for _, name := range hookStages {
 		args = append(args, "-t", name)
 	}
-	if _, err := runIn(root, "pre-commit", args...); err != nil {
+	if _, err := runIn(ctx, root, "pre-commit", args...); err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 	return reconcile.Outcome{Change: change, Status: reconcile.Done, Message: "installed"}, nil
@@ -853,11 +854,11 @@ func installHooks(root string, change reconcile.Change) (reconcile.Outcome, erro
 // git's index is the enumeration. An unversioned target has no bounded one, and
 // a maintained directory can be a home directory — walking it on every check is
 // not a cost this finding is worth, so those targets return nothing.
-func shebangScripts(root string, versioned bool) []string {
+func shebangScripts(ctx context.Context, root string, versioned bool) []string {
 	if !versioned {
 		return nil
 	}
-	out, err := runIn(root, "git", "ls-files", "--cached")
+	out, err := runIn(ctx, root, "git", "ls-files", "--cached")
 	if err != nil || out == "" {
 		return nil
 	}

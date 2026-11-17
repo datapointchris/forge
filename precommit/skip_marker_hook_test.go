@@ -12,6 +12,7 @@ import (
 // no match, so every message would pass. Running the shipped entry is what
 // catches that.
 func TestTheSkipMarkerHookRefusesEachDocumentedSpelling(t *testing.T) {
+	ctx := t.Context()
 	config, err := Generate(realBlocks(t), testToolchain(t), detected(), nil, Observed{Versioning: Versioned})
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +48,7 @@ func TestTheSkipMarkerHookRefusesEachDocumentedSpelling(t *testing.T) {
 		if err := os.WriteFile(path, []byte(tc.message), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, err := exec.Command("bash", "-c", entry+` "$0"`, path).CombinedOutput()
+		out, err := exec.CommandContext(ctx, "bash", "-c", entry+` "$0"`, path).CombinedOutput()
 		var exit *exec.ExitError
 		switch {
 		case err == nil:

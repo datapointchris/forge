@@ -29,11 +29,12 @@ func fakeGH(t *testing.T, refusal string) {
 }
 
 func assessProtection(t *testing.T, refusal string) reconcile.Measurement {
+	ctx := t.Context()
 	t.Helper()
 	fakeGH(t, refusal)
 	target := fixture(t, stacks("go"), nil)
 	withRemote(t, target, "git@github.com:datapointchris/thing.git")
-	return reconcile.Assess(target, BranchProtection{})
+	return reconcile.Assess(ctx, target, BranchProtection{})
 }
 
 func TestBranchProtectionReportsAnUnprotectedBranchAsDriftApplyFixes(t *testing.T) {

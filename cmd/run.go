@@ -63,6 +63,7 @@ could not happen.`,
 }
 
 func runDirectories(n *reconcileNoun, cmd *cobra.Command, rebuild bool) error {
+	ctx := cmd.Context()
 	selected, _, err := n.selected(cmd)
 	if err != nil {
 		return refused(err)
@@ -81,7 +82,7 @@ func runDirectories(n *reconcileNoun, cmd *cobra.Command, rebuild bool) error {
 
 		// The hooks write their own output as they go; stdout stays the summary
 		// rows, so a caller piping one gets rows and not hook noise.
-		result, err := directory.Run(index, cmd.ErrOrStderr(), cmd.ErrOrStderr())
+		result, err := directory.Run(ctx, index, cmd.ErrOrStderr(), cmd.ErrOrStderr())
 		if err != nil {
 			// One directory that cannot run must not abandon the others, for the
 			// same reason reconcile.Assess recovers per die per repo.

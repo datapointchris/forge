@@ -69,12 +69,13 @@ func TestReadVerbsWriteNothing(t *testing.T) {
 
 			for _, die := range Builtin() {
 				t.Run(die.Name(), func(t *testing.T) {
+					ctx := t.Context()
 					target := build(t)
 					// The whole sandbox, not just the repo: synced-dirs writes into the
 					// sync base, so a property scoped to the repo would miss it.
 					before := snapshot(t, sandbox(target))
 
-					measured := reconcile.Assess(target, die)
+					measured := reconcile.Assess(ctx, target, die)
 					found += len(measured.Changes)
 
 					if after := snapshot(t, sandbox(target)); !maps.Equal(before, after) {
@@ -102,7 +103,8 @@ func TestEveryChangeIsClassified(t *testing.T) {
 		t.Run(shape, func(t *testing.T) {
 			for _, die := range Builtin() {
 				t.Run(die.Name(), func(t *testing.T) {
-					for _, change := range reconcile.Assess(build(t), die).Changes {
+					ctx := t.Context()
+					for _, change := range reconcile.Assess(ctx, build(t), die).Changes {
 						if change.Item == "" {
 							t.Errorf("%s emitted a change with no item: %+v", die.Name(), change)
 						}
@@ -132,12 +134,13 @@ func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
 
 	for _, name := range gitOnly {
 		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
 			die, err := Named(name)
 			if err != nil {
 				t.Fatalf("%s is not registered: %s", name, err)
 			}
 
-			measured := reconcile.Assess(driftedDirectory(t), die)
+			measured := reconcile.Assess(ctx, driftedDirectory(t), die)
 			if measured.Refusal != "" {
 				t.Fatalf("%s refused rather than reporting not-applicable: %s", name, measured.Refusal)
 			}
@@ -159,6 +162,7 @@ func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
 func TestFilesystemDiesStillMeasureAnUnversionedDirectory(t *testing.T) {
 	for _, name := range []string{"gitignore", "claude-md", "pyproject", "precommit"} {
 		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
 			if name == "pyproject" {
 				requireUV(t)
 			}
@@ -166,7 +170,7 @@ func TestFilesystemDiesStillMeasureAnUnversionedDirectory(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s is not registered: %s", name, err)
 			}
-			measured := reconcile.Assess(driftedDirectory(t), die)
+			measured := reconcile.Assess(ctx, driftedDirectory(t), die)
 			// Asserted before the count, because a die that could not run
 			// reports zero changes and would otherwise read as one that ran and
 			// found nothing — the wrong diagnosis, on a machine missing a tool.

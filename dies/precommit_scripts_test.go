@@ -11,11 +11,12 @@ import (
 // what shebangScripts enumerates. The fixture's .git is a bare directory with
 // hook stubs in it and holds no index, so a scan run against it finds nothing.
 func trackAll(t *testing.T, target reconcile.Target) {
+	ctx := t.Context()
 	t.Helper()
-	if _, err := runIn(target.Repo.Path, "git", "init", "-q"); err != nil {
+	if _, err := runIn(ctx, target.Repo.Path, "git", "init", "-q"); err != nil {
 		t.Fatalf("git init: %s", err)
 	}
-	if _, err := runIn(target.Repo.Path, "git", "add", "-A"); err != nil {
+	if _, err := runIn(ctx, target.Repo.Path, "git", "add", "-A"); err != nil {
 		t.Fatalf("git add: %s", err)
 	}
 }
@@ -24,6 +25,7 @@ func trackAll(t *testing.T, target reconcile.Target) {
 // extension or by identify's tags cannot: it has no extension, and its shebang
 // names uv.
 func TestShebangScriptsFindsWhatIdentifyCannotTag(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks("python"), map[string]string{
 		"apps/worktree":  "#!/usr/bin/env -S uv run --script\nimport os\n",
 		"apps/notes":     "#!/usr/bin/env bash\necho hi\n",
@@ -33,7 +35,7 @@ func TestShebangScriptsFindsWhatIdentifyCannotTag(t *testing.T) {
 	})
 	trackAll(t, target)
 
-	got := shebangScripts(target.Repo.Path, true)
+	got := shebangScripts(ctx, target.Repo.Path, true)
 
 	want := []string{"apps/worktree"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -44,11 +46,12 @@ func TestShebangScriptsFindsWhatIdentifyCannotTag(t *testing.T) {
 // A maintained directory has no index to enumerate, and can be a home
 // directory. Walking one on every check is not a cost this finding is worth.
 func TestShebangScriptsSkipsAnUnversionedTarget(t *testing.T) {
+	ctx := t.Context()
 	target := unversionedFixture(t, stacks("python"), map[string]string{
 		"apps/worktree": "#!/usr/bin/env -S uv run --script\nimport os\n",
 	})
 
-	if got := shebangScripts(target.Repo.Path, false); got != nil {
+	if got := shebangScripts(ctx, target.Repo.Path, false); got != nil {
 		t.Errorf("shebangScripts = %v, want nothing for a target git does not version", got)
 	}
 }
@@ -76,12 +79,13 @@ func TestPreCommitConfigReachesTheScannedScripts(t *testing.T) {
 // settings from, so the config leaves it out and check names the declaration
 // that is missing instead.
 func TestPreCommitReportsScriptsInARepoDeclaringNoPython(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, stacks(), map[string]string{
 		"apps/worktree": "#!/usr/bin/env -S uv run --script\nimport os\n",
 	})
 	trackAll(t, target)
 
-	measured := reconcile.Assess(target, PreCommit{})
+	measured := reconcile.Assess(ctx, target, PreCommit{})
 	found := false
 	for _, change := range measured.Changes {
 		if change.Item == "python-scripts block" && change.Repair == reconcile.ByHand {
@@ -92,7 +96,7 @@ func TestPreCommitReportsScriptsInARepoDeclaringNoPython(t *testing.T) {
 		t.Errorf("no ByHand finding for the scripts; changes: %+v", measured.Changes)
 	}
 
-	reconcile.Apply(measured)
+	reconcile.Apply(ctx, measured)
 	if generated := readFile(t, target.Path(".pre-commit-config.yaml")); strings.Contains(generated, "mypy-scripts") {
 		t.Errorf("a repo declaring no Python got the script block:\n%s", generated)
 	}

@@ -10,6 +10,7 @@ import (
 )
 
 func TestOpenBaoLoginWritesAnExecutableScriptThatThenReadsAsCurrent(t *testing.T) {
+	ctx := t.Context()
 	target := fixture(t, &config.Toolchain{OpenBaoLogin: true}, nil)
 
 	applyAll(t, target, OpenBaoLogin{})
@@ -25,16 +26,17 @@ func TestOpenBaoLoginWritesAnExecutableScriptThatThenReadsAsCurrent(t *testing.T
 	if info.Mode().Perm()&0o111 == 0 {
 		t.Errorf("%s has mode %v; a workflow step runs it by path", openBaoLoginPath, info.Mode().Perm())
 	}
-	if changes := reconcile.Assess(target, OpenBaoLogin{}).Changes; len(changes) != 0 {
+	if changes := reconcile.Assess(ctx, target, OpenBaoLogin{}).Changes; len(changes) != 0 {
 		t.Errorf("the written script reads as drift, so its marker is not recognized: %+v", changes)
 	}
 }
 
 func TestOpenBaoLoginReportsAnUnmarkedCopyAndLeavesItInPlace(t *testing.T) {
+	ctx := t.Context()
 	copied := "#!/usr/bin/env bash\n# Runs one command logged in to OpenBao.\n"
 	target := fixture(t, &config.Toolchain{OpenBaoLogin: true}, map[string]string{openBaoLoginPath: copied})
 
-	changes := reconcile.Assess(target, OpenBaoLogin{}).Changes
+	changes := reconcile.Assess(ctx, target, OpenBaoLogin{}).Changes
 	if len(changes) != 1 || changes[0].Repair != reconcile.ByHand {
 		t.Fatalf("expected one by-hand finding for the unmarked copy, got %+v", changes)
 	}

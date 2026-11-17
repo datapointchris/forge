@@ -48,8 +48,9 @@ func goTarget(t *testing.T, pin string, mods map[string]string) reconcile.Target
 }
 
 func gomodChanges(t *testing.T, target reconcile.Target) []reconcile.Change {
+	ctx := t.Context()
 	t.Helper()
-	observed, err := GoMod{}.Observe(target)
+	observed, err := GoMod{}.Observe(ctx, target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,13 +62,14 @@ func gomodChanges(t *testing.T, target reconcile.Target) []reconcile.Change {
 }
 
 func TestAModuleBelowThePinGetsAToolchainDirective(t *testing.T) {
+	ctx := t.Context()
 	target := goTarget(t, "1.26.6", map[string]string{".": "module x\n\ngo 1.26.5\n"})
 	changes := gomodChanges(t, target)
 	if len(changes) != 1 || changes[0].Verdict != reconcile.Missing {
 		t.Fatalf("changes = %+v", changes)
 	}
 
-	if _, err := (GoMod{}).Perform(target, changes[0]); err != nil {
+	if _, err := (GoMod{}).Perform(ctx, target, changes[0]); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(target.Repo.Path, "go.mod"))
@@ -80,11 +82,12 @@ func TestAModuleBelowThePinGetsAToolchainDirective(t *testing.T) {
 }
 
 func TestTheGoDirectiveIsNeverRewritten(t *testing.T) {
+	ctx := t.Context()
 	// The whole reason this die exists. Raising the floor is what makes
 	// `go install <tool>@latest` skip a release on a machine running older Go.
 	target := goTarget(t, "1.26.6", map[string]string{".": "module x\n\ngo 1.26.5\n"})
 	changes := gomodChanges(t, target)
-	if _, err := (GoMod{}).Perform(target, changes[0]); err != nil {
+	if _, err := (GoMod{}).Perform(ctx, target, changes[0]); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(target.Repo.Path, "go.mod"))
@@ -113,6 +116,7 @@ func TestAModuleFlooredAboveThePinIsLeftAlone(t *testing.T) {
 }
 
 func TestAToolchainBehindThePinIsRaised(t *testing.T) {
+	ctx := t.Context()
 	target := goTarget(t, "1.26.6", map[string]string{
 		".": "module x\n\ngo 1.26.5\n\ntoolchain go1.26.5\n",
 	})
@@ -120,7 +124,7 @@ func TestAToolchainBehindThePinIsRaised(t *testing.T) {
 	if len(changes) != 1 || changes[0].Verdict != reconcile.Stale {
 		t.Fatalf("changes = %+v", changes)
 	}
-	if _, err := (GoMod{}).Perform(target, changes[0]); err != nil {
+	if _, err := (GoMod{}).Perform(ctx, target, changes[0]); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(target.Repo.Path, "go.mod"))
@@ -183,9 +187,10 @@ func TestARepoDeclaringNoGoComponentIsUntouched(t *testing.T) {
 }
 
 func TestApplyingTwiceIsIdempotent(t *testing.T) {
+	ctx := t.Context()
 	target := goTarget(t, "1.26.6", map[string]string{".": "module x\n\ngo 1.26.5\n"})
 	changes := gomodChanges(t, target)
-	if _, err := (GoMod{}).Perform(target, changes[0]); err != nil {
+	if _, err := (GoMod{}).Perform(ctx, target, changes[0]); err != nil {
 		t.Fatal(err)
 	}
 	if again := gomodChanges(t, target); len(again) != 0 {
@@ -221,6 +226,7 @@ func declared(t *testing.T, floor, pin string, mods map[string]string) reconcile
 }
 
 func TestAFlooredRepoIsPulledDownToTheDeclaration(t *testing.T) {
+	ctx := t.Context()
 	// The case the whole declaration exists for. A floor above the declared one
 	// excludes consumers and buys nothing, because the toolchain directive
 	// already carries the fixed standard library.
@@ -232,7 +238,7 @@ func TestAFlooredRepoIsPulledDownToTheDeclaration(t *testing.T) {
 		t.Fatal("a repo above the declared floor read as converged")
 	}
 	for _, c := range changes {
-		if _, err := (GoMod{}).Perform(target, c); err != nil {
+		if _, err := (GoMod{}).Perform(ctx, target, c); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -270,6 +276,7 @@ func TestAToolchainThatTheFloorHasOvertakenIsReportedNotRemoved(t *testing.T) {
 }
 
 func TestConvergingOneModuleSettlesBothDirectivesAtOnce(t *testing.T) {
+	ctx := t.Context()
 	// A Change names the file rather than the line, and a module can drift on
 	// both, so the second change arrives after the first already settled it.
 	target := declared(t, "1.26.5", "1.26.6", map[string]string{
@@ -278,7 +285,7 @@ func TestConvergingOneModuleSettlesBothDirectivesAtOnce(t *testing.T) {
 	changes := gomodChanges(t, target)
 	outcomes := make([]reconcile.Outcome, 0, len(changes))
 	for _, c := range changes {
-		out, err := (GoMod{}).Perform(target, c)
+		out, err := (GoMod{}).Perform(ctx, target, c)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -310,9 +317,10 @@ func withFiles(t *testing.T, target reconcile.Target, files map[string]string) r
 }
 
 func performAll(t *testing.T, target reconcile.Target, changes []reconcile.Change) {
+	ctx := t.Context()
 	t.Helper()
 	for _, c := range changes {
-		if _, err := (GoMod{}).Perform(target, c); err != nil {
+		if _, err := (GoMod{}).Perform(ctx, target, c); err != nil {
 			t.Fatal(err)
 		}
 	}

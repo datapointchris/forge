@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -78,7 +79,7 @@ func (s syncedDirsState) Summary() string {
 	return fmt.Sprintf("%s synced", reconcile.Plural(len(s.dirs), "directory", "directories"))
 }
 
-func (SyncedDirs) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (SyncedDirs) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	// This die exists to carry a gitignored directory out to where a file-sync
 	// tool can see it. A target that git does not version is already there —
 	// and where the sync base is inside the target, the link would point
@@ -292,8 +293,8 @@ func (SyncedDirs) Diff(t reconcile.Target, observed reconcile.Observation) ([]re
 	return changes, nil
 }
 
-func (s SyncedDirs) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
-	observed, err := s.Observe(t)
+func (s SyncedDirs) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+	observed, err := s.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}

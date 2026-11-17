@@ -1,6 +1,7 @@
 package dies
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -135,7 +136,7 @@ func (s releaseState) Summary() string {
 	return fmt.Sprintf("release workflow current (%s)", reconcile.Plural(len(s.lines), "line", "lines"))
 }
 
-func (Release) Observe(t reconcile.Target) (reconcile.Observation, error) {
+func (Release) Observe(ctx context.Context, t reconcile.Target) (reconcile.Observation, error) {
 	file, err := readLineFile(t.Path(releaseWorkflowPath))
 	if err != nil {
 		return nil, err
@@ -304,10 +305,10 @@ func (Release) Diff(_ reconcile.Target, observed reconcile.Observation) ([]recon
 	return changes, nil
 }
 
-func (r Release) Perform(t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
+func (r Release) Perform(ctx context.Context, t reconcile.Target, change reconcile.Change) (reconcile.Outcome, error) {
 	// Re-read rather than trust the plan: the plan may have been on screen for a
 	// while, and the line the block goes above moves whenever the file does.
-	observed, err := r.Observe(t)
+	observed, err := r.Observe(ctx, t)
 	if err != nil {
 		return reconcile.Outcome{}, err
 	}
