@@ -501,10 +501,14 @@ func postinstall(ctx context.Context, pkg string) error {
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = gitenv.WithoutRepoTarget(os.Environ())
+	cmd.WaitDelay = waitDelay
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), ctx.Err())
+		}
 		detail := strings.TrimSpace(stderr.String())
 		if detail == "" {
 			detail = err.Error()
