@@ -363,29 +363,32 @@ func lintWorkflow(ctx context.Context, workflow, config string) string {
 // lintWorkflowAt is lintWorkflow with the workflow written at rel, so a
 // finding names the file it is about.
 func lintWorkflowAt(ctx context.Context, rel, workflow, config string) string {
-	dir, err := os.MkdirTemp("", "forge-actionlint-")
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-
-	path := filepath.Join(dir, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return ""
-	}
-	if err := os.WriteFile(path, []byte(workflow), 0o644); err != nil {
-		return ""
-	}
-	if config != "" {
-		if err := os.WriteFile(filepath.Join(dir, ci.ActionlintConfigPath), []byte(config), 0o644); err != nil {
+	content := rel + "\x00" + workflow + "\x00" + config
+	return memoValidation(ctx, "jactionlint", content, func() string {
+		dir, err := os.MkdirTemp("", "forge-actionlint-")
+		if err != nil {
 			return ""
 		}
-	}
-	// jactionlint wants a repo; without one it reports the absence rather than
-	// the workflow.
-	_, _ = runIn(ctx, dir, "git", "init", "-q")
+		defer func() { _ = os.RemoveAll(dir) }()
 
-	return runValidator(ctx, dir, "jactionlint", rel)
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return ""
+		}
+		if err := os.WriteFile(path, []byte(workflow), 0o644); err != nil {
+			return ""
+		}
+		if config != "" {
+			if err := os.WriteFile(filepath.Join(dir, ci.ActionlintConfigPath), []byte(config), 0o644); err != nil {
+				return ""
+			}
+		}
+		// jactionlint wants a repo; without one it reports the absence rather
+		// than the workflow.
+		_, _ = runIn(ctx, dir, "git", "init", "-q")
+
+		return runValidator(ctx, dir, "jactionlint", rel)
+	})
 }
 
 // actionlintFinding renders a lint finding as the Change a plan shows.

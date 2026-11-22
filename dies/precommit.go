@@ -687,17 +687,19 @@ func unresolvedNpmScripts(root, generated string) []string {
 }
 
 func validateConfig(ctx context.Context, generated string) string {
-	dir, err := os.MkdirTemp("", "forge-precommit-")
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	return memoValidation(ctx, "pre-commit", generated, func() string {
+		dir, err := os.MkdirTemp("", "forge-precommit-")
+		if err != nil {
+			return ""
+		}
+		defer func() { _ = os.RemoveAll(dir) }()
 
-	path := filepath.Join(dir, precommit.ConfigPath)
-	if err := os.WriteFile(path, []byte(generated), 0o644); err != nil {
-		return ""
-	}
-	return runValidator(ctx, dir, "pre-commit", "validate-config", path)
+		path := filepath.Join(dir, precommit.ConfigPath)
+		if err := os.WriteFile(path, []byte(generated), 0o644); err != nil {
+			return ""
+		}
+		return runValidator(ctx, dir, "pre-commit", "validate-config", path)
+	})
 }
 
 func (PreCommit) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {

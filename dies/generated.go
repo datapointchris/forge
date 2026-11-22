@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/datapointchris/forge/ci"
 	"github.com/datapointchris/forge/precommit"
@@ -239,6 +240,38 @@ func runValidator(ctx context.Context, dir, tool string, args ...string) string 
 		return line
 	}
 	return err.Error()
+}
+
+// validations holds each validator answer already given in this process, keyed
+// by the validator binary and the content it was handed.
+var validations sync.Map
+
+// memoValidation returns validate's answer for content, running validate only
+// the first time this process asks tool about that content.
+//
+// A validator's answer depends on the binary and the content alone. Every
+// Perform re-observes its repo before writing, so without this an apply runs
+// the same validation again for each change it makes. The repo's files are
+// still read live; only the answer about the generated content is reused.
+//
+// The binary's resolved path is part of the key, so a PATH that names another
+// build gets its own answer. An absent tool answers "" and is not stored. An
+// answer given while ctx is done is not stored either, because a killed
+// validator's complaint is about the cancellation rather than the content.
+func memoValidation(ctx context.Context, tool, content string, validate func() string) string {
+	bin, err := exec.LookPath(tool)
+	if err != nil {
+		return ""
+	}
+	key := bin + "\x00" + content
+	if answer, ok := validations.Load(key); ok {
+		return answer.(string)
+	}
+	answer := validate()
+	if ctx.Err() == nil {
+		validations.Store(key, answer)
+	}
+	return answer
 }
 
 // subFS narrows an embedded tree, passing a root of "." straight through.
