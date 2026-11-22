@@ -52,9 +52,8 @@ func TestConflictMarkersReportsACommittedConflictWithItsLine(t *testing.T) {
 }
 
 // The live false positive: a document explaining how to resolve a conflict
-// contains a complete conflict, at the start of its lines, inside a fence.
-// terminal-library/cards/git-merge-conflicts.md is the case, and a die
-// reporting it every run is a die nobody reads.
+// contains a complete conflict, at the start of its lines, inside a fence. A
+// die that reports such a document on every run becomes a die that nobody reads.
 func TestConflictMarkersIgnoresAnExampleInsideAMarkdownFence(t *testing.T) {
 	ctx := t.Context()
 	target := unversionedFixture(t, stacks("go"), map[string]string{
@@ -87,7 +86,7 @@ func TestConflictMarkersStillSeesAConflictAfterAClosedFence(t *testing.T) {
 
 func TestFirstMarkerLineIgnoresMarkersThatAreNotAtTheStartOfALine(t *testing.T) {
 	// A diff quoted mid-sentence, which is prose rather than a conflict.
-	prose := []byte("The marker <<<<<<< HEAD appears in running text.\n")
+	prose := strings.NewReader("The marker <<<<<<< HEAD appears in running text.\n")
 	if got := firstMarkerLine(prose, false); got != 0 {
 		t.Errorf("line = %d, want 0 for a mid-line marker", got)
 	}

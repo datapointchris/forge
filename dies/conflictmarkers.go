@@ -1,9 +1,11 @@
 package dies
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -80,21 +82,39 @@ func (ConflictMarkers) Observe(ctx context.Context, t reconcile.Target) (reconci
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		data, err := os.ReadFile(full)
-		if err != nil {
-			continue
-		}
-		// A file with a NUL byte is binary, and a byte sequence matching a
-		// marker inside a PNG is not a merge conflict.
-		if bytes.IndexByte(data, 0) >= 0 {
-			continue
-		}
-		if line := firstMarkerLine(data, filepath.Ext(rel) == ".md"); line > 0 {
+		if line := fileMarkerLine(full, filepath.Ext(rel) == ".md"); line > 0 {
 			state.found = append(state.found, conflictedFile{path: rel, line: line})
 		}
 	}
 	sort.Slice(state.found, func(i, j int) bool { return state.found[i].path < state.found[j].path })
 	return state, nil
+}
+
+// binarySniffSize is how much of a file's start is read to decide whether it
+// is binary, the same amount git reads to answer that question.
+const binarySniffSize = 8000
+
+// fileMarkerLine returns the 1-indexed line of the first conflict marker in the
+// file at path, or 0 where it has none, is binary, or cannot be read.
+//
+// The file is streamed through one buffer of binarySniffSize bytes rather than
+// read whole, so a walk running across many repos at once holds that buffer
+// per worker instead of each repo's largest tracked file.
+func fileMarkerLine(path string, markdown bool) int {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer func() { _ = f.Close() }()
+
+	r := bufio.NewReaderSize(f, binarySniffSize)
+	// A file with a NUL byte near its start is binary, and a byte sequence
+	// matching a marker inside a PNG is not a merge conflict.
+	head, _ := r.Peek(binarySniffSize)
+	if bytes.IndexByte(head, 0) >= 0 {
+		return 0
+	}
+	return firstMarkerLine(r, markdown)
 }
 
 // firstMarkerLine returns the 1-indexed line of the first conflict marker, or 0.
@@ -103,29 +123,43 @@ func (ConflictMarkers) Observe(ctx context.Context, t reconcile.Target) (reconci
 // heuristic. git writes conflict markers into a file's content; it cannot write
 // them into a fence, because a fence is the author declaring the lines inside
 // it to be an example. Without this, every document explaining how to resolve a
-// conflict reports as one — `terminal-library/cards/git-merge-conflicts.md`
-// is the live case, and a die that reports it every run is a die nobody reads.
+// conflict reports as one. A die that reports such a document on every run
+// becomes a die that nobody reads.
 //
 // The cost is a real conflict inside a fenced code block, which this misses. It
 // takes two people editing the same example in a markdown file, and being wrong
 // about that is better than being wrong about every conflict document.
-func firstMarkerLine(data []byte, skipFences bool) int {
+//
+// A line longer than the reader's buffer arrives in several fragments. Only the
+// first is tested, because every marker and fence is decided by how its line
+// starts, and a line that long is never the bare separator.
+func firstMarkerLine(r io.Reader, skipFences bool) int {
+	br := bufio.NewReader(r)
 	inFence := false
-	for i, line := range bytes.Split(data, []byte("\n")) {
-		if skipFences && (bytes.HasPrefix(line, []byte("```")) || bytes.HasPrefix(line, []byte("~~~"))) {
+	line := 0
+	continued := false
+	for {
+		fragment, isPrefix, err := br.ReadLine()
+		if err != nil {
+			return 0
+		}
+		starts := !continued
+		continued = isPrefix
+		if !starts {
+			continue
+		}
+		line++
+		if skipFences && (bytes.HasPrefix(fragment, []byte("```")) || bytes.HasPrefix(fragment, []byte("~~~"))) {
 			inFence = !inFence
 			continue
 		}
 		if inFence {
 			continue
 		}
-		// bytes.Split returns slices into data, so appending a newline here to
-		// match a marker would write into the shared backing array.
-		if isMarker(bytes.TrimSuffix(line, []byte("\r"))) {
-			return i + 1
+		if isMarker(bytes.TrimSuffix(fragment, []byte("\r"))) {
+			return line
 		}
 	}
-	return 0
 }
 
 func (ConflictMarkers) Diff(_ reconcile.Target, observed reconcile.Observation) ([]reconcile.Change, error) {
