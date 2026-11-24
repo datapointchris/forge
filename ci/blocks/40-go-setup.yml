@@ -1,6 +1,6 @@
 # Go setup
-      # Shared by the go job and the hooks job, whose go-vet, go-build,
-      # go-mod-tidy and go-test hooks call the go on PATH.
+      # The go on PATH, which this job's tests or its Go hooks call. Each
+      # job that needs Go installs it here.
       - name: Install the Go {{dir}}/go.mod names
         uses: actions/setup-go@{{pin}}
         with:
