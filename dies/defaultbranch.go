@@ -188,7 +188,11 @@ func (d DefaultBranch) Perform(ctx context.Context, t reconcile.Target, change r
 			return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 		}
 	}
-	if _, err := runIn(ctx, dir, "gh", "repo", "edit", state.repo.slug, "--default-branch", "main"); err != nil {
+	_, err = runIn(ctx, dir, "gh", "repo", "edit", state.repo.slug, "--default-branch", "main")
+	// Dropped whether or not the edit succeeded, because a failed call may still
+	// have reached GitHub, and a die read after it must see the default as it is.
+	forgetGitHubRepo(t)
+	if err != nil {
 		return reconcile.Outcome{Change: change, Status: reconcile.Failed, Message: err.Error()}, nil
 	}
 	// Deleting the old remote branch is last: until the default has moved,

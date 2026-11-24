@@ -120,9 +120,22 @@ func settingChange(name, observed, want string) reconcile.Change {
 	}
 }
 
+// ghRepoKey is the memo key for a target's resolved ghRepo.
+type ghRepoKey struct{}
+
+// forgetGitHubRepo drops the target's resolved ghRepo, for a Perform that has
+// just changed what GitHub would answer.
+func forgetGitHubRepo(t reconcile.Target) {
+	t.Memo.Delete(ghRepoKey{})
+}
+
 // observeGitHub folds the two non-answers into what each die should report:
 // a non-GitHub remote is out of scope and says so, and anything else that
 // could not be reached is unmeasured.
+//
+// A resolved repo is kept on the target's memo, because every GitHub die asks
+// the same question of the same remote, and each Perform asks it again. Only an
+// answer is kept: a gh that could not reach GitHub is asked again next time.
 func observeGitHub(ctx context.Context, t reconcile.Target, item string) (ghRepo, []reconcile.Change, string, error) {
 	// A directory with no .git resolves to errNotGitHub anyway, because
 	// `git config --get remote.origin.url` exits 1 outside a repo. Saying so
@@ -131,6 +144,9 @@ func observeGitHub(ctx context.Context, t reconcile.Target, item string) (ghRepo
 	// in the right place.
 	if !t.Versioned() {
 		return ghRepo{}, nil, "not a git repo", nil
+	}
+	if kept, ok := t.Memo.Load(ghRepoKey{}); ok {
+		return kept.(ghRepo), nil, "", nil
 	}
 	repo, err := resolveGitHubRepo(ctx, t.Repo.Path)
 	switch {
@@ -143,6 +159,7 @@ func observeGitHub(ctx context.Context, t reconcile.Target, item string) (ghRepo
 		}
 		return ghRepo{}, nil, "", err
 	}
+	t.Memo.Store(ghRepoKey{}, repo)
 	return repo, nil, "", nil
 }
 
