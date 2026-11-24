@@ -429,7 +429,7 @@ func preCommitOwed(ctx context.Context, t reconcile.Target) (owedPreCommit, erro
 	owed.customSections = precommit.ExtractCustomSections(owed.existing)
 	owed.observed = precommit.Observed{
 		Versioning:        precommit.Versioning(t.Versioned()),
-		Scripts:           shebangScripts(ctx, t.Repo.Path, t.Versioned()),
+		Scripts:           shebangScripts(ctx, t),
 		GoSemanticRelease: ci.InvokesGoSemanticRelease(t.Repo.Path),
 	}
 	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, owed.observed)
@@ -856,23 +856,23 @@ func installHooks(ctx context.Context, root string, change reconcile.Change) (re
 // git's index is the enumeration. An unversioned target has no bounded one, and
 // a maintained directory can be a home directory — walking it on every check is
 // not a cost this finding is worth, so those targets return nothing.
-func shebangScripts(ctx context.Context, root string, versioned bool) []string {
-	if !versioned {
+func shebangScripts(ctx context.Context, t reconcile.Target) []string {
+	if !t.Versioned() {
 		return nil
 	}
-	out, err := runIn(ctx, root, "git", "ls-files", "--cached")
-	if err != nil || out == "" {
+	files, err := trackedFiles(ctx, t)
+	if err != nil {
 		return nil
 	}
 
 	var scripts []string
-	for _, rel := range strings.Split(out, "\n") {
-		if rel == "" || filepath.Ext(rel) != "" {
+	for _, f := range files {
+		if filepath.Ext(f.path) != "" {
 			continue
 		}
-		firstLine := firstLineOf(filepath.Join(root, rel))
-		if precommit.UntaggedPythonScript(rel, firstLine) {
-			scripts = append(scripts, rel)
+		firstLine := firstLineOf(t.Path(f.path))
+		if precommit.UntaggedPythonScript(f.path, firstLine) {
+			scripts = append(scripts, f.path)
 		}
 	}
 	slices.Sort(scripts)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/datapointchris/forge/reconcile"
@@ -55,21 +54,20 @@ func (BrokenSymlinks) Observe(ctx context.Context, t reconcile.Target) (reconcil
 	if !t.Versioned() {
 		return brokenSymlinksState{unversioned: true}, nil
 	}
-	files, err := trackedFiles(ctx, t.Repo.Path)
+	files, err := trackedFiles(ctx, t)
 	if err != nil {
 		return nil, err
 	}
 
 	state := brokenSymlinksState{}
-	for _, rel := range files {
-		full := filepath.Join(t.Repo.Path, rel)
-		info, err := os.Lstat(full)
-		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+	for _, f := range files {
+		if f.info == nil || f.info.Mode()&os.ModeSymlink == 0 {
 			continue
 		}
+		rel, full := f.path, t.Path(f.path)
 		state.links++
 
-		// Stat follows the link; Lstat above proved it is one. A relative
+		// Stat follows the link; the listing's Lstat proved it is one. A relative
 		// target resolves against the link's own directory, which is what
 		// Stat on the full path already does — computing it by hand is how a
 		// checker reports a working link as broken.

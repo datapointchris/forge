@@ -3,8 +3,6 @@ package dies
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/datapointchris/forge/reconcile"
@@ -62,22 +60,20 @@ func (LargeFiles) Observe(ctx context.Context, t reconcile.Target) (reconcile.Ob
 	if !t.Versioned() {
 		return largeFilesState{unversioned: true}, nil
 	}
-	files, err := trackedFiles(ctx, t.Repo.Path)
+	files, err := trackedFiles(ctx, t)
 	if err != nil {
 		return nil, err
 	}
 
 	state := largeFilesState{scanned: len(files)}
-	for _, rel := range files {
-		// Lstat, not Stat: a symlink to something huge is not a huge file in
-		// this repo, and following it would report the target's size against
-		// the wrong repo. Broken symlinks are their own die.
-		info, err := os.Lstat(filepath.Join(t.Repo.Path, rel))
-		if err != nil || !info.Mode().IsRegular() {
+	for _, f := range files {
+		// A symlink to something huge is not a huge file in this repo, so only
+		// a regular file counts. Broken symlinks are their own die.
+		if f.info == nil || !f.info.Mode().IsRegular() {
 			continue
 		}
-		if info.Size() >= largeEnoughToQuestion {
-			state.found = append(state.found, largeFile{path: rel, bytes: info.Size()})
+		if f.info.Size() >= largeEnoughToQuestion {
+			state.found = append(state.found, largeFile{path: f.path, bytes: f.info.Size()})
 		}
 	}
 	sort.Slice(state.found, func(i, j int) bool { return state.found[i].bytes > state.found[j].bytes })

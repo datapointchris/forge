@@ -233,7 +233,7 @@ func (n *reconcileNoun) targets(cmd *cobra.Command) ([]reconcile.Target, error) 
 
 	walked := make([]reconcile.Target, 0, len(selected))
 	for _, target := range selected {
-		walked = append(walked, reconcile.Target{Repo: target, Assets: assets, Config: cfg})
+		walked = append(walked, reconcile.Target{Repo: target, Assets: assets, Config: cfg, Memo: &reconcile.Memo{}})
 	}
 	return walked, nil
 }

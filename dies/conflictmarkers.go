@@ -70,20 +70,18 @@ func (ConflictMarkers) Observe(ctx context.Context, t reconcile.Target) (reconci
 	if !t.Versioned() {
 		return conflictMarkersState{unversioned: true}, nil
 	}
-	files, err := trackedFiles(ctx, t.Repo.Path)
+	files, err := trackedFiles(ctx, t)
 	if err != nil {
 		return nil, err
 	}
 
 	state := conflictMarkersState{scanned: len(files)}
-	for _, rel := range files {
-		full := filepath.Join(t.Repo.Path, rel)
-		info, err := os.Lstat(full)
-		if err != nil || !info.Mode().IsRegular() {
+	for _, f := range files {
+		if f.info == nil || !f.info.Mode().IsRegular() {
 			continue
 		}
-		if line := fileMarkerLine(full, filepath.Ext(rel) == ".md"); line > 0 {
-			state.found = append(state.found, conflictedFile{path: rel, line: line})
+		if line := fileMarkerLine(t.Path(f.path), filepath.Ext(f.path) == ".md"); line > 0 {
+			state.found = append(state.found, conflictedFile{path: f.path, line: line})
 		}
 	}
 	sort.Slice(state.found, func(i, j int) bool { return state.found[i].path < state.found[j].path })

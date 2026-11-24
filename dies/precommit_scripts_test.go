@@ -35,7 +35,7 @@ func TestShebangScriptsFindsWhatIdentifyCannotTag(t *testing.T) {
 	})
 	trackAll(t, target)
 
-	got := shebangScripts(ctx, target.Repo.Path, true)
+	got := shebangScripts(ctx, target)
 
 	want := []string{"apps/worktree"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -51,7 +51,7 @@ func TestShebangScriptsSkipsAnUnversionedTarget(t *testing.T) {
 		"apps/worktree": "#!/usr/bin/env -S uv run --script\nimport os\n",
 	})
 
-	if got := shebangScripts(ctx, target.Repo.Path, false); got != nil {
+	if got := shebangScripts(ctx, target); got != nil {
 		t.Errorf("shebangScripts = %v, want nothing for a target git does not version", got)
 	}
 }

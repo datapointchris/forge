@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/datapointchris/forge/config"
 	"github.com/datapointchris/forge/toolchain"
@@ -40,6 +41,48 @@ type Target struct {
 	// live, say. Carried whole rather than as a field per die, so one die
 	// needing one setting does not widen this struct for the other eight.
 	Config *config.SyncerConfig
+	// Memo is what this target's dies derive from the repo once and share for
+	// the walk. Nil keeps nothing, so every value is derived afresh.
+	Memo *Memo
+}
+
+// Memo holds facts about one target that several of its dies read: what git
+// tracks there, or which GitHub repo its remote names. Each die reading such a
+// fact from its source again costs a subprocess or a network call per die, for
+// an answer the walk already has.
+//
+// One Memo belongs to one Target for one walk, so an entry describes that repo
+// and nothing else, and the next run derives every entry again. Keys are types
+// private to the package that stores them, never a path. A die whose Perform
+// changes a fact deletes its entry, so a later reader derives it again.
+//
+// The methods accept a nil receiver and keep nothing there.
+type Memo struct {
+	values sync.Map
+}
+
+// Load returns the value stored under key, if any.
+func (m *Memo) Load(key any) (any, bool) {
+	if m == nil {
+		return nil, false
+	}
+	return m.values.Load(key)
+}
+
+// Store keeps value under key for the rest of the walk.
+func (m *Memo) Store(key, value any) {
+	if m == nil {
+		return
+	}
+	m.values.Store(key, value)
+}
+
+// Delete drops the value under key, so the next Load derives it again.
+func (m *Memo) Delete(key any) {
+	if m == nil {
+		return
+	}
+	m.values.Delete(key)
 }
 
 // Path resolves a repo-relative path against this target.
