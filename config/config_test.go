@@ -137,8 +137,7 @@ func TestRepoParsesIdenticallyFromJSONAndYAML(t *testing.T) {
 			"sql_dialect": "sqlite",
 			"shellcheck_disable": [{"rule": "SC2029", "reason": "deliberate remote interpolation"}],
 			"exclude": "^fixtures/"
-		},
-		"synced_dirs": [{"dir": "stats/data", "as": "stats"}]
+		}
 	}`
 
 	const asYAML = `
@@ -152,8 +151,6 @@ toolchain:
   shellcheck_disable:
     - {rule: SC2029, reason: deliberate remote interpolation}
   exclude: "^fixtures/"
-synced_dirs:
-  - {dir: stats/data, as: stats}
 `
 
 	var fromJSON Repo

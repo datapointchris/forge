@@ -71,8 +71,8 @@ func TestReadVerbsWriteNothing(t *testing.T) {
 				t.Run(die.Name(), func(t *testing.T) {
 					ctx := t.Context()
 					target := build(t)
-					// The whole sandbox, not just the repo: synced-dirs writes into the
-					// sync base, so a property scoped to the repo would miss it.
+					// The whole sandbox, not just the repo, so a die that writes outside
+					// its repo breaks the property too.
 					before := snapshot(t, sandbox(target))
 
 					measured := reconcile.Assess(ctx, target, die)
@@ -129,7 +129,7 @@ func TestEveryChangeIsClassified(t *testing.T) {
 // will ever run.
 func TestGitDiesFindNothingInAnUnversionedDirectory(t *testing.T) {
 	gitOnly := []string{
-		"ci", "synced-dirs", "branch-protection", "default-branch", "merge-settings",
+		"ci", "branch-protection", "default-branch", "merge-settings",
 	}
 
 	for _, name := range gitOnly {

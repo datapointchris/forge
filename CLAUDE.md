@@ -75,8 +75,7 @@ nil. `TestRepoParsesIdenticallyFromJSONAndYAML` pins it.
 **`toolchain` on a registry entry is declared, never detected.** It names `components` (a `stack` and
 its `dir`) and `sql_dialect`. The portfolio has five layouts for where a Go service lives, and no
 layout reveals a SQL dialect. Every target resolves by name through `runner.SelectRepos`, never from
-the working directory. `sync_base` and `synced_dirs` are declared for the same reason: a sync base is
-one machine's layout.
+the working directory.
 
 **`directory` runs a maintained directory's hooks through a throwaway git index**: a bare repo in
 `$XDG_CACHE_HOME/forge/directories/<name>.git` with the directory as its work tree, because a `.git`
@@ -112,7 +111,7 @@ A die is a Go value implementing `reconcile.Die`: `Observe` reads, `Diff` is pur
 **`Change` is the contract.** `Verdict` is matched/missing/stale/undeclared/**unknown**; `Repair` is automatic/by_hand/none.
 
 - **`plan` keeps `Automatic` repairs** — the repo differs from the standard, which is what apply is for.
-- **`check` keeps `ByHand` findings** — a hand-written pipeline, an unmarked custom hook, a synced directory diverged from its copy in the sync base, a missing CLAUDE.md. Real drift apply cannot fix.
+- **`check` keeps `ByHand` findings** — a hand-written pipeline, an unmarked custom hook, a missing CLAUDE.md. Real drift apply cannot fix.
 - **`Unknown` is neither**, and never moves the exit code. `gh` unauthenticated is not fifty drifted repos, and apply is not the fix for a login. *Unverified is not permission.*
 - **`Undeclared` is never actionable.** Forge does not delete what it did not put there.
 - **`Detail` is the whole line a person reads.** It names the item, then what was found and what was expected, in the shape `<item> has <found>; expected <wanted>` or `missing <kind>: <item>`. It never says why the standard holds, and never how to fix it. A fix apply cannot make goes in `Advice`, set only where an exact one exists, and prints beneath the finding as `fix: <advice>`. `--json` carries the found value as `observed` where a die sets one, the fix as `advice`, and no structured expected value. A row with one change prints that line as its own text. A row with several prints a count, with each line beneath it. An `Unknown` item's Detail is its cause, printed on the row beside the count of what could not be measured.

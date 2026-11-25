@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -73,14 +72,6 @@ type Repo struct {
 	// Go service lives" exist across the portfolio, and facts like the SQL
 	// dialect are not derivable from the layout at all.
 	Toolchain *Toolchain `json:"toolchain,omitempty" yaml:"toolchain,omitempty"`
-	// SyncedDirs are repo-relative directories the synced-dirs die keeps in the
-	// sync base, by symlink.
-	//
-	// Declared rather than built into the die, because a repo's name is a fact
-	// about one deployment and does not belong in a generic tool. The repo is what
-	// knows it keeps generated data outside git; forge only has to know the
-	// operation.
-	SyncedDirs []SyncedDir `json:"synced_dirs,omitempty" yaml:"synced_dirs,omitempty"`
 	// Binary is the command this repo installs for a person to run, declared on
 	// every entry that has one and absent where it has none. Declared for the
 	// same reason Toolchain is: a Go CLI has no standard place to state its
@@ -172,18 +163,6 @@ type ComposeProject struct {
 	EnvFile string   `json:"env_file" yaml:"env_file"`
 }
 
-// SyncedDir is one repo-relative directory kept in the sync base, and the name
-// it takes there.
-//
-// As is explicit rather than derived. A repo can sync a data directory into a
-// directory called `stats`, so neither the basename nor the first segment is
-// the rule — and a tool that guessed would silently point an existing link
-// somewhere new, which reads as drift and repairs into a second copy.
-type SyncedDir struct {
-	Dir string `json:"dir" yaml:"dir"`
-	As  string `json:"as"  yaml:"as"`
-}
-
 // ShellcheckException is one disabled rule and why it does not apply here.
 // Reason is not optional: an undocumented disable is indistinguishable from
 // one nobody has re-examined since, which is how the previous configs drifted.
@@ -221,35 +200,6 @@ type SyncerConfig struct {
 	Host        string   `json:"host"`
 	SearchPaths []string `json:"search_paths"`
 	Repos       []Repo   `json:"repos"`
-	// SyncBase is where per-repo directories are kept so a file-sync tool can
-	// see them: one directory per registry name, which the synced-dirs die links
-	// declared directories into.
-	//
-	// Declared, with no default to fall back on. The path is a property of one
-	// deployment rather than of the tool, so a binary carrying one would point
-	// every installation at somebody else's directory layout with no way to be
-	// told otherwise.
-	SyncBase string `json:"sync_base,omitempty"`
-}
-
-// ErrNoSyncBase names the key to declare rather than the resolution that fails
-// underneath it. Somebody installing this against their own registry gets the
-// edit to make; a path error further down would only be the symptom.
-var ErrNoSyncBase = errors.New(
-	"no sync_base in the repo registry\n\n" +
-		"The synced-dirs die keeps each repo's declared synced_dirs under one base, so\n" +
-		"a file-sync tool can see them all. Declare where that is, as a top-level key\n" +
-		"beside the repo list:\n\n" +
-		`    "sync_base": "~/somewhere/synced"` + "\n\n" +
-		"The file to edit is the `repos file` row of `forge config show`",
-)
-
-// ResolvedSyncBase returns the sync base as an absolute path.
-func (c *SyncerConfig) ResolvedSyncBase() (string, error) {
-	if c.SyncBase == "" {
-		return "", ErrNoSyncBase
-	}
-	return ExpandTilde(c.SyncBase)
 }
 
 func LoadSyncerConfig(path string) (*SyncerConfig, error) {

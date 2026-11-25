@@ -21,7 +21,6 @@ import (
 func Builtin() []reconcile.Die {
 	return []reconcile.Die{
 		Gitignore{},
-		SyncedDirs{},
 		ClaudeMD{},
 		LargeFiles{},
 		ConflictMarkers{},

@@ -377,7 +377,7 @@ authority on where stamps live.
 ## The registry, and where forge writes
 
 The registry is JSON, shared with the other tools that read the portfolio. forge reads the
-top-level `owner`, and `sync_base`, where the `synced-dirs` die keeps each repo's directories.
+top-level `owner`.
 
 - `status` is `active`, `dormant` or `retired`, and it is required. An entry without one is left
   out of every bare sweep, because forge supplies no meaning for an absent status.
@@ -387,14 +387,12 @@ top-level `owner`, and `sync_base`, where the `synced-dirs` die keeps each repo'
 - `toolchain.components` is what the generators and `forge test` read. `toolchain` also takes
   `sql_dialect`, `shellcheck_disable`, `exclude`, and `compose_projects`: the compose files a
   repo's env file interpolates, merged as Compose merges them.
-- `synced_dirs` lists repo-relative directories the `synced-dirs` die links into the sync base.
 - `binary` names the command a repo installs, where `forge cli` cannot read it out of the repo.
 - `description` is what `fleet info --detailed` prints under the repo's name.
 
 ```json
 {
   "owner": "datapointchris",
-  "sync_base": "~/dev/repo-status-and-notes",
   "repos": [
     {
       "name": "forge",
