@@ -389,7 +389,7 @@ top-level `owner`, and `sync_base`, where the `synced-dirs` die keeps each repo'
   repo's env file interpolates, merged as Compose merges them.
 - `synced_dirs` lists repo-relative directories the `synced-dirs` die links into the sync base.
 - `binary` names the command a repo installs, where `forge cli` cannot read it out of the repo.
-- `description` is what `fleet status` shows.
+- `description` is what `fleet info --detailed` prints under the repo's name.
 
 ```json
 {

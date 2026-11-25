@@ -67,9 +67,9 @@ var rootCmd = &cobra.Command{
 		"When a plan row names a pinned version, `forge toolchain show` names the\n" +
 		"file every generated pin comes from.\n" +
 		"\n" +
-		"Questions about the portfolio as a whole belong to fleet: `fleet status`\n" +
-		"for what each repo's status says, `fleet info` for everything in\n" +
-		"flight on one page, `fleet stats` for the shape of the set.\n" +
+		"Questions about the portfolio as a whole belong to fleet: `fleet info`\n" +
+		"for everything in flight on one page, `fleet stats` for the shape of\n" +
+		"the set.\n" +
 		"\n" +
 		"`forge config show` prints the registry it resolved and which layer\n" +
 		"named it.",
