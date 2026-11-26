@@ -50,7 +50,7 @@ func jobSteps(workflow, job string) string {
 }
 
 // Every hook a standard block carries at the pre-commit stage, whatever its
-// stack, is one HooksToRun lists.
+// stack, is one HooksToRun lists, except a hook whose verdict depends on the box.
 func TestTheHooksJobRunsEveryHookAStandardBlockCarries(t *testing.T) {
 	entries, err := os.ReadDir("../pre-commit/blocks")
 	if err != nil {
@@ -65,8 +65,9 @@ func TestTheHooksJobRunsEveryHookAStandardBlockCarries(t *testing.T) {
 		got := HooksToRun(config)
 		for _, hook := range precommit.GeneratedHooks(config) {
 			atCommit := len(hook.Stages) == 0 || slices.Contains(hook.Stages, "pre-commit")
-			if atCommit != slices.Contains(got, hook.ID) {
-				t.Errorf("%s from %s: run = %v, at the pre-commit stage = %v", hook.ID, entry.Name(), !atCommit, atCommit)
+			want := atCommit && !slices.Contains(answersFromTheBox, hook.ID)
+			if want != slices.Contains(got, hook.ID) {
+				t.Errorf("%s from %s: run = %v, want %v", hook.ID, entry.Name(), !want, want)
 			}
 		}
 	}

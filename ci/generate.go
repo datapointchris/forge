@@ -723,20 +723,27 @@ const SetupSuffix = "-setup"
 // every test the go-test hook's -short run does.
 var runInFullByStackJob = map[string][]string{"go": {"go-test-repo-mod"}}
 
+// answersFromTheBox names the hooks whose verdict depends on what the box holds.
+// refcheck tests a `~` path against the filesystem. A desk installs other repos
+// under `~` and a runner does not. So when a line names such a path, the commit
+// hook passes it and CI fails it.
+var answersFromTheBox = []string{"refcheck"}
+
 // HooksToRun lists every hook a standard block put in the config, by id, at the
 // pre-commit stage. The hooks job runs these less runInFullByStackJob's.
 //
 // A hook in a custom section is the repo's own and stays out. Some need a
 // workstation, such as one that drives an editor or a local stack, and a repo
 // runs the rest in a custom step of its own. A hook off the pre-commit stage
-// grades something a pushed tree does not carry, such as a commit message.
+// grades something a pushed tree does not carry, such as a commit message. A
+// hook in answersFromTheBox runs only at commit.
 //
 // By id rather than by Selector, because `pre-commit run <id>` also runs every
 // hook carrying that id under an alias, and all of them are wanted.
 func HooksToRun(preCommitConfig string) []string {
 	var hooks []string
 	for _, hook := range precommit.GeneratedHooks(preCommitConfig) {
-		if len(hook.Stages) > 0 && !slices.Contains(hook.Stages, "pre-commit") {
+		if len(hook.Stages) > 0 && !slices.Contains(hook.Stages, "pre-commit") || slices.Contains(answersFromTheBox, hook.ID) {
 			continue
 		}
 		if !slices.Contains(hooks, hook.ID) {

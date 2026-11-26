@@ -4,7 +4,8 @@
       # install`, or a merge in the web UI, passes every hook by not running it,
       # and this is the gate that catches both. CI runs the hooks themselves
       # rather than copies of their checks, because a copy is a second spelling
-      # of the check that drifts from the first.
+      # of the check that drifts from the first. refcheck runs only at commit,
+      # because it tests `~` paths against a box, and a runner installs nothing.
       - name: Install uv
         uses: astral-sh/setup-uv@{{pin}}
         with:
@@ -173,8 +174,7 @@
       #
       # The checkout is one commit deep, and diffing needs one more. pre-commit
       # falls back to a two-dot diff where the two commits share no history on
-      # disk, and refcheck's --moves reads the range as a two-dot diff too, so
-      # the base commit alone is enough.
+      # disk, so the base commit alone is enough.
       #
       # The scope is chosen once, and written to a file beside the script every
       # hook's step runs, so each hook checks the same files.

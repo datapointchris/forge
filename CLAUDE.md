@@ -311,7 +311,10 @@ blocked or not yet applied. A list taken from the owed config would name hooks t
 repo declaring no components gets a workflow holding this job alone, wherever forge maintains its
 pre-commit config. The job runs hooks by id, so a custom alias sharing an id runs with it. It drops a
 hook off the `pre-commit` stage, and every hook in a custom section: several need a workstation, such
-as a running dev stack or a local editor install.
+as a running dev stack or a local editor install. It also drops refcheck, which runs only at commit.
+refcheck tests a `~` path against the box. A desk installs other repos under `~` and a runner does
+not, so CI fails a line that the commit hook passed. The hook runs on every commit, so CI's copy
+adds no check of its own.
 
 **Each hook is its own step, `pre-commit run <id>`.** The listing then names the hook that failed and
 how long each took, and so do the jobs API and the log archive. `applyHooks` repeats the block's step
