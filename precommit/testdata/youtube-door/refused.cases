@@ -20,3 +20,15 @@ resp = requests.get(f"https://www.youtube.com/api/timedtext?v={vid}")
 const feed = "https://www.youtube.com/feeds/videos.xml?channel_id="
 url := "https://www.googleapis.com/youtube/v3/videos?part=snippet"
 r = httpx.post("https://www.youtube.com/youtubei/v1/player", json=body)
+timeout 300 yt-dlp -J "$url"
+nice -n 10 yt-dlp -x "$url"
+PYTHONWARNINGS=ignore yt-dlp -J "$url"
+sudo -u media yt-dlp -x "$url"
+env -i yt-dlp -J "$url"
+xargs -n1 yt-dlp -x < urls.txt
+uv run yt-dlp -J "$url"
+python3 -m yt_dlp -J "$url"
+import ytapi "google.golang.org/api/youtube/v3"
+yt = build("youtube", "v3", developerKey=key)
+const yt = google.youtube({version: 'v3', auth: key});
+import "github.com/kkdai/youtube/v2"

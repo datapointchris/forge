@@ -158,10 +158,12 @@ Five categories are seeded by `Generate` rather than by a component:
 - `youtube-door` follows a versioned target whose registry entry does not set `youtube_door`. Only
   ypl's entry sets it. Every request to YouTube goes through ypl, and ypl paces them from one place.
   The hook refuses the shape of a call rather than the tool's name: a whole quoted package or binary
-  name, a dependency spec, an import line, the binary at a shell command's position, and an API
-  host's URL. Repos that read through ypl write about ypl's yt-dlp freely, so matching the bare name
-  would refuse their prose. The hook's tests read their cases from `precommit/testdata/youtube-door/`.
-  identify gives a `.cases` file no language tag, so the hook never reads the calls in those files.
+  name, a dependency spec, an import line or `python -m`, the binary at a shell command's position
+  behind any wrappers, an API host's URL, and a YouTube client library. Repos that read through ypl
+  write about ypl's yt-dlp freely, so matching the bare name would refuse their prose. Only a listed
+  wrapper may stand before the binary, for the same reason. The hook's tests read their cases from
+  `precommit/testdata/youtube-door/`. identify gives a `.cases` file no language tag, so the hook
+  never reads the calls in those files.
 
 **The shell block's bats hook is guarded both ways.** A repo with no `tests/*.bats` passes; a repo
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck

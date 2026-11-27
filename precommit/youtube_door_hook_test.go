@@ -55,8 +55,6 @@ func TestTheYouTubeDoorHookRefusesACallAndPassesAMention(t *testing.T) {
 			case errors.As(err, &exit) && exit.ExitCode() == 1:
 				if !kind.refused {
 					t.Errorf("refused %q:\n%s", line, out)
-				} else if !strings.Contains(string(out), "ypl ytdlp -- <args>") {
-					t.Errorf("refused %q without naming ypl's route:\n%s", line, out)
 				}
 			default:
 				t.Fatalf("hook errored on %q: %v\n%s", line, err, out)

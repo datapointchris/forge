@@ -13,3 +13,6 @@ if command -v yt-dlp >/dev/null 2>&1; then
 # yt-dlp pulls YouTube description; yt-dlp -x reads it
 // the door (yt-dlp on the server) paces reads; yt-dlp --flag stays there
 // a "yt-dlp" binary
+This replaces the old yt-dlp --write-subs path.
+    Run yt-dlp -J through ypl, as ypl ytdlp -- -J <link>.
+	return ypl.Transcript(ctx, id) // was yt-dlp --write-subs
