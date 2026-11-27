@@ -57,7 +57,7 @@ const wholeScope = "after:all"
 
 // categoryMap maps a block to the declared stack category that pulls it in.
 //
-// Six categories are gated by something other than a component, and Generate
+// These categories are gated by something other than a component, and Generate
 // seeds each one itself: sql by a declared dialect, compose-projects by a
 // declared compose project, git by the target being versioned, python-scripts
 // by the scan finding a file identify cannot tag in a repo declaring Python,

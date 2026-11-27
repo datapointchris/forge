@@ -129,9 +129,15 @@ never a filesystem probe. Stack blocks carry `{{dir}}` and `{{dirprefix}}`. Iden
 collapse; differing ones get their hook ids suffixed with the directory. A block must appear in
 `categoryMap` or `genericBlocks`, and one in neither is an error rather than a silent default.
 
-Five categories are seeded by `Generate` rather than by a component:
+These categories are seeded by `Generate` rather than by a component:
 
 - `sql` follows a declared `sql_dialect`, because nothing in a `.sql` file says which dialect it is.
+- `compose-projects` follows a declared `compose_projects` entry. Each project names its compose
+  files and an env file. The hook merges the files in order, interpolates them from the env file,
+  and runs `docker compose config` on the result. That catches an unset variable or a refused
+  override. A project needs an env file,
+  because without one the docker block's per-file parse already checks its files. It needs a docker
+  component, because CI installs docker compose only where one is declared.
 - `git` (conventional-commits and ci-skip-marker) follows whether the target is versioned. On an
   unversioned target each would be a hook that can never fire, and `uninstalledHooks` would not
   report it. ci-skip-marker refuses a message holding a CI skip marker in GitHub's or Bitbucket's
