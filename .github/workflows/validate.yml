@@ -428,6 +428,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash "$RUNNER_TEMP/run-hook" check-json5
 
+      - name: pre-commit run youtube-door
+        if: ${{ !cancelled() && steps.hook-scope.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash "$RUNNER_TEMP/run-hook" youtube-door
+
       - name: pre-commit run markdownlint
         if: ${{ !cancelled() && steps.hook-scope.outcome == 'success' }}
         env:
