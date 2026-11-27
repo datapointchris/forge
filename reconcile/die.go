@@ -149,6 +149,16 @@ type Die interface {
 	Perform(context.Context, Target, Change) (Outcome, error)
 }
 
+// ReadsOutput is implemented by a die whose Observe reads what other dies
+// write. A walk measures every die before any performs, so this die's first
+// measurement reads the file as it stood. apply measures it again on a target
+// where a named die wrote, and acts on that measurement. A walk's die order
+// puts each named die ahead of this one.
+type ReadsOutput interface {
+	// ReadsOutputOf names the dies whose writes this die's Observe reads.
+	ReadsOutputOf() []string
+}
+
 // ReportOnly is embedded by a die whose every change is ByHand, so Apply never
 // calls its Perform.
 type ReportOnly struct{}

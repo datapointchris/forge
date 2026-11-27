@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 )
 
@@ -11,7 +12,8 @@ import (
 // plan and check both fold this, and apply acts on it — the changes apply acts
 // on are the ones that were printed, not a second look that may have found
 // something different. Perform re-verifies live, which is what makes measuring
-// once safe.
+// once safe. The one second look is AppliedWrites.Remeasure, for a die that
+// reads what other dies write, once one of them has written.
 type Measurement struct {
 	Target  Target
 	Die     Die
@@ -82,9 +84,9 @@ type Watch struct {
 // repo-major in target order.
 //
 // Repo-major so that a walk over several dies reads as a report on each repo
-// rather than interleaving them. The die order is the caller's, and it is
-// presentation only — forge's dies are independent of each other, unlike a
-// resource order where each step depends on the one before.
+// rather than interleaving them. The die order is the caller's. Measuring needs
+// no order, because no die writes here. apply performs in this order, so a die
+// implementing ReadsOutput comes after each die it names.
 //
 // Up to workers targets are measured at once, because the dies spend most of a
 // walk waiting on gh, pre-commit and uv. One target's dies still run in turn.
@@ -167,6 +169,38 @@ func Apply(ctx context.Context, m Measurement) []Outcome {
 		outcomes = append(outcomes, perform(ctx, m.Target, m.Die, change))
 	}
 	return outcomes
+}
+
+// AppliedWrites holds which dies wrote to each target during one apply, keyed
+// by the target's name and then the die's.
+type AppliedWrites map[string]map[string]bool
+
+// Record notes that m's die wrote to m's target when any outcome is Done.
+func (w AppliedWrites) Record(m Measurement, outcomes []Outcome) {
+	if !slices.ContainsFunc(outcomes, func(o Outcome) bool { return o.Status == Done }) {
+		return
+	}
+	name := m.Target.Repo.Name
+	if w[name] == nil {
+		w[name] = map[string]bool{}
+	}
+	w[name][m.Die.Name()] = true
+}
+
+// Remeasure measures m's target with m's die again where m's die implements
+// ReadsOutput and a die it names wrote to that target during this apply. It
+// returns the new measurement and the die that wrote, or m and "".
+func (w AppliedWrites) Remeasure(ctx context.Context, m Measurement) (Measurement, string) {
+	reader, ok := m.Die.(ReadsOutput)
+	if !ok {
+		return m, ""
+	}
+	for _, upstream := range reader.ReadsOutputOf() {
+		if w[m.Target.Repo.Name][upstream] {
+			return Assess(ctx, m.Target, m.Die), upstream
+		}
+	}
+	return m, ""
 }
 
 func perform(ctx context.Context, t Target, d Die, change Change) (out Outcome) {

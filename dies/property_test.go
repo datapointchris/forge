@@ -202,6 +202,28 @@ func TestEveryDieIsAddressable(t *testing.T) {
 	}
 }
 
+// TestEveryDieSitsAfterTheDiesItReads holds the registry order apply performs
+// in. A reader placed ahead of a die it names would measure again before that
+// die writes, and act on the file as it stood.
+func TestEveryDieSitsAfterTheDiesItReads(t *testing.T) {
+	position := map[string]int{}
+	for i, die := range Builtin() {
+		position[die.Name()] = i
+	}
+	for i, die := range Builtin() {
+		reader, ok := die.(reconcile.ReadsOutput)
+		if !ok {
+			continue
+		}
+		for _, upstream := range reader.ReadsOutputOf() {
+			at, registered := position[upstream]
+			if !registered || at >= i {
+				t.Errorf("%s reads %s, which is not registered ahead of it", die.Name(), upstream)
+			}
+		}
+	}
+}
+
 func keysOf(tree map[string]string) []string {
 	names := make([]string, 0, len(tree))
 	for name := range tree {

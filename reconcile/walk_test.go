@@ -206,6 +206,38 @@ func TestApplyPerformsOnlyActionableChanges(t *testing.T) {
 	}
 }
 
+type readerDie struct {
+	fakeDie
+	reads []string
+}
+
+func (d *readerDie) ReadsOutputOf() []string { return d.reads }
+
+func TestAReaderIsMeasuredAgainOnlyWhereADieItReadsWrote(t *testing.T) {
+	ctx := t.Context()
+	writer := &fakeDie{name: "precommit", changes: []Change{
+		{Item: ".pre-commit-config.yaml", Verdict: Stale, Repair: Automatic},
+	}}
+	reader := &readerDie{fakeDie: fakeDie{name: "ci"}, reads: []string{"precommit"}}
+	alpha, beta := Target{Repo: repoNamed("alpha")}, Target{Repo: repoNamed("beta")}
+
+	planned := map[string]Measurement{"alpha": Assess(ctx, alpha, reader), "beta": Assess(ctx, beta, reader)}
+	writes := AppliedWrites{}
+	written := Assess(ctx, alpha, writer)
+	writes.Record(written, Apply(ctx, written))
+
+	// What the reader finds once it reads the file the writer wrote.
+	reader.changes = []Change{{Item: ".github/workflows/validate.yml", Verdict: Stale, Repair: Automatic}}
+
+	again, wrote := writes.Remeasure(ctx, planned["alpha"])
+	if wrote != "precommit" || len(again.Changes) != 1 {
+		t.Errorf("alpha: wrote %q with %d changes, want precommit with the reader's new change", wrote, len(again.Changes))
+	}
+	if same, wrote := writes.Remeasure(ctx, planned["beta"]); wrote != "" || len(same.Changes) != 0 {
+		t.Errorf("beta: wrote %q with %d changes, want its plan untouched where nothing wrote", wrote, len(same.Changes))
+	}
+}
+
 func TestApplyDoesNothingForARefusedMeasurement(t *testing.T) {
 	ctx := t.Context()
 	die := &fakeDie{name: "ci", observeErr: errors.New("unreadable")}

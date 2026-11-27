@@ -40,6 +40,11 @@ func (CI) Description() string {
 
 func (CI) Tags() []string { return []string{"ci", "actions", "standardization", "golden-path"} }
 
+// ReadsOutputOf names the precommit die. The hooks job takes its step list from
+// that die's config. apply measures this die again after that die writes, so
+// one apply lands a new block's hook and the step that runs it in CI.
+func (CI) ReadsOutputOf() []string { return []string{PreCommit{}.Name()} }
+
 type ciState struct {
 	applicable bool
 	reason     string

@@ -108,6 +108,14 @@ after the whole plan has printed.
 
 A die is a Go value implementing `reconcile.Die`: `Observe` reads, `Diff` is pure, `Perform` is the only writer. `plan` is a **prefix of apply's call graph** rather than apply with a flag off, so no die contains a branch asking whether it may write — there is no branch that can be wrong. `forge dies list` enumerates them; `dies/builtin.go` is the registry, and a die carries its own description and tags rather than having them in a side-file that can disagree.
 
+**One die reads another's output, so apply performs in registry order.** The ci die takes the hooks
+job's steps from the `.pre-commit-config.yaml` that the precommit die writes. The walk measures every
+die before any die performs. So ci's first measurement reads the config from before the apply. ci
+implements `reconcile.ReadsOutput`, naming precommit. Where precommit wrote to a repo, apply measures
+ci there again and acts on that measurement. It prints ci's row again when that row differs from the
+plan. `plan` and `check` still show ci against the config on disk.
+`TestEveryDieSitsAfterTheDiesItReads` holds each reader after the dies it names in `Builtin()`.
+
 **`Change` is the contract.** `Verdict` is matched/missing/stale/undeclared/**unknown**; `Repair` is automatic/by_hand/none.
 
 - **`plan` keeps `Automatic` repairs** — the repo differs from the standard, which is what apply is for.
@@ -322,7 +330,9 @@ line. So the hooks job exports `auto` before running anything.
 **One more job, `hooks`, runs every hook a standard block put in the repo's config.**
 `ci.HooksToRun` reads them from the committed `.pre-commit-config.yaml`, never from the config the
 precommit die would write. CI runs the committed file, and the two differ wherever that die is
-blocked or not yet applied. A list taken from the owed config would name hooks the file lacks. A
+blocked or not yet applied. A list taken from the owed config would name hooks the file lacks.
+`apply` measures the ci die again on a repo where the precommit die wrote, so one apply lands a new
+block's hook and the step that runs it. A
 repo declaring no components gets a workflow holding this job alone, wherever forge maintains its
 pre-commit config. The job runs hooks by id, so a custom alias sharing an id runs with it. It drops a
 hook off the `pre-commit` stage, and every hook in a custom section: several need a workstation, such

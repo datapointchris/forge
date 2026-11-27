@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 
@@ -114,6 +115,11 @@ Drift apply would repair is plan's answer, not this one.`,
 		Long: `Report every change apply would make, and write nothing. plan is apply's
 walk stopped before its last step, so what it prints is what apply acts on.
 
+One die reads another's output. precommit writes the pre-commit config. ci
+takes its workflow's hook steps from that config. plan measures ci against the
+config on disk. apply measures ci again where precommit wrote, so one apply adds
+a hook and the workflow step that runs it.
+
 Only rows with a pending change print. A row with several changes lists each
 beneath it, and --all prints the converged rows too.
 
@@ -132,6 +138,10 @@ Exits 1 when a change is pending, which is plan's answer rather than a failure.`
 		Use:   "apply [die]",
 		Short: "Make the pending changes",
 		Long: `Make the changes plan reported.
+
+Where precommit writes a repo's pre-commit config, ci is measured there again
+before it performs. Its row prints again when that measurement differs from the
+plan. So one apply lands a new hook and the workflow step that runs it.
 
 Naming a die applies that one. Omitting it applies them all, which is the other
 half of the terraform loop and is gated by a confirmation rather than by being
@@ -321,7 +331,9 @@ func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
 
 	// The plan is printed in full before anything is written, and what is acted
 	// on is what was printed — Perform re-verifies live rather than the walk
-	// taking a second look that may have found something different.
+	// taking a second look that may have found something different. A die that
+	// reads another die's output is the exception: once that die writes to a
+	// repo, the reader is measured there again and acts on what it finds.
 	measurements, planned := n.walk(cmd, walked, chosen, reconcile.LensPlan)
 	width := reconcile.LabelWidth(walked, chosen)
 
@@ -329,10 +341,22 @@ func (n *reconcileNoun) runApply(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	writes := reconcile.AppliedWrites{}
 	var results []reconcile.Result
 	for i, m := range measurements {
 		result := planned[i]
+		if again, wrote := writes.Remeasure(ctx, m); wrote != "" {
+			m = again
+			if remeasured := m.Fold(reconcile.LensPlan); !reflect.DeepEqual(remeasured, result) {
+				result = remeasured
+				if !n.asJSON {
+					render(cmd, result, width)
+					row(cmd.ErrOrStderr(), "  %s measured again after %s wrote\n", m.Die.Name(), wrote)
+				}
+			}
+		}
 		outcomes := reconcile.Apply(ctx, m)
+		writes.Record(m, outcomes)
 		if len(outcomes) > 0 {
 			result = reconcile.Applied(result, outcomes)
 			if !n.asJSON {

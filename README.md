@@ -126,6 +126,11 @@ reads, its `Diff` is pure, and its `Perform` is the only method that writes. `pl
 stop before `Perform`. No die holds a branch asking whether it may write, so there is no such branch
 to get wrong. That is why apply has no `--dry-run` to be the opposite of.
 
+One die reads another's output. The `precommit` die writes the pre-commit config. The `ci` die
+takes its workflow's hook steps from that config. `plan` shows `ci` against the config on disk.
+Where `precommit` wrote to a repo, `apply` measures `ci` there again. So one apply adds a hook and
+the workflow step that runs it.
+
 Each die returns `Change`s, and the verbs differ in which they keep. A `Change` carries a verdict
 (matched, missing, stale, undeclared or unknown) and a repair (automatic, by hand, or none).
 
