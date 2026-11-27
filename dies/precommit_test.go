@@ -58,6 +58,33 @@ func TestPreCommitDeploysTheConfigsItsDeclaredStacksNeed(t *testing.T) {
 	}
 }
 
+// The door is ypl, read from its registry entry rather than its toolchain, and
+// its code is the one place YouTube is called from. An unversioned target is a
+// directory forge maintains rather than a repo the standard governs.
+func TestPrecommitGivesTheYouTubeDoorHookToEveryVersionedRepoButTheDoor(t *testing.T) {
+	cases := []struct {
+		name   string
+		target func(*testing.T) reconcile.Target
+		door   bool
+		want   bool
+	}{
+		{"a versioned repo using the door", func(t *testing.T) reconcile.Target { return fixture(t, stacks("go"), nil) }, false, true},
+		{"the door", func(t *testing.T) reconcile.Target { return fixture(t, stacks("go"), nil) }, true, false},
+		{"an unversioned directory", func(t *testing.T) reconcile.Target { return unversionedFixture(t, stacks("go"), nil) }, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			target := tc.target(t)
+			target.Repo.YouTubeDoor = tc.door
+			applyAll(t, target, PreCommit{})
+			config := readFile(t, target.Path(precommit.ConfigPath))
+			if got := strings.Contains(config, "- id: youtube-door\n"); got != tc.want {
+				t.Errorf("youtube-door hook present = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPreCommitApplyThenPlanIsClean(t *testing.T) {
 	ctx := t.Context()
 	target := fixture(t, stacks("go"), nil)

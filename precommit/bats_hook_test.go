@@ -12,7 +12,7 @@ import (
 // batsEntry is the command the shipped shell block gives its bats hook.
 func batsEntry(t *testing.T) string {
 	t.Helper()
-	config, err := Generate(realBlocks(t), testToolchain(t), detected("shell"), nil, Observed{Versioning: Unversioned})
+	config, err := Generate(realBlocks(t), testToolchain(t), detected("shell"), nil, Observed{Versioning: Unversioned}, RegistryEntry{})
 	if err != nil {
 		t.Fatal(err)
 	}

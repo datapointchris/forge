@@ -129,9 +129,15 @@ never a filesystem probe. Stack blocks carry `{{dir}}` and `{{dirprefix}}`. Iden
 collapse; differing ones get their hook ids suffixed with the directory. A block must appear in
 `categoryMap` or `genericBlocks`, and one in neither is an error rather than a silent default.
 
-Four categories are seeded by `Generate` rather than by a component:
+These categories are seeded by `Generate` rather than by a component:
 
 - `sql` follows a declared `sql_dialect`, because nothing in a `.sql` file says which dialect it is.
+- `compose-projects` follows a declared `compose_projects` entry. Each project names its compose
+  files and an env file. The hook merges the files in order, interpolates them from the env file,
+  and runs `docker compose config` on the result. That catches an unset variable or a refused
+  override. A project needs an env file, because without one the docker block's per-file parse
+  already checks its files. It needs a docker component, because CI installs docker compose only
+  where one is declared.
 - `git` (conventional-commits and ci-skip-marker) follows whether the target is versioned. On an
   unversioned target each would be a hook that can never fire, and `uninstalledHooks` would not
   report it. ci-skip-marker refuses a message holding a CI skip marker in GitHub's or Bitbucket's
@@ -155,6 +161,15 @@ Four categories are seeded by `Generate` rather than by a component:
   with svu `--v0` or releasing through python-semantic-release gets no hook, since the marker cuts
   nothing there and the hook's remedy is wrong. An unreadable workflow answers yes: a spurious hook
   refuses a commit, a missing one ships the major.
+- `youtube-door` follows a versioned target whose registry entry does not set `youtube_door`. Only
+  ypl's entry sets it. Every request to YouTube goes through ypl, and ypl paces them from one place.
+  The hook refuses the shape of a call rather than the tool's name: a whole quoted package or binary
+  name, a dependency spec, an import line or `python -m`, the binary at a shell command's position
+  behind any wrappers, an API host's URL, and a YouTube client library. Repos that read through ypl
+  write about ypl's yt-dlp freely, so matching the bare name would refuse their prose. Only a listed
+  wrapper may stand before the binary, for the same reason. The hook's tests read their cases from
+  `precommit/testdata/youtube-door/`. identify gives a `.cases` file no language tag, so the hook
+  never reads the calls in those files.
 
 **The shell block's bats hook is guarded both ways.** A repo with no `tests/*.bats` passes; a repo
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck
@@ -335,7 +350,9 @@ else can recreate. `ci.OrphanedSections` names each, and the die reports it `ByH
 time, so a finding in a file nobody touched cannot fail a push. A change touching a hook or tool
 config, a manifest, a lockfile or a toolchain file is the exception, and the job checks every file.
 A new ruff rule or linter release matches no source file's type filter. Scoped to the change, it
-would grade nothing, and its findings would land on the next author to touch the code. The run
+would grade nothing, and its findings would land on the next author to touch the code. A change to
+`validate.yml` checks every file too. A new hook joins this job only in that change, one apply
+after the config that added it, so no other run would check a whole tree with it. The run
 script names each file that widens the scope. The checkout stays one commit deep and the job
 fetches only the base commit. pre-commit falls back to a two-dot diff where two commits share no
 history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit can be
