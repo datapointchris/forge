@@ -172,6 +172,10 @@
       # brought it, and its findings would land on the next author to touch the
       # code.
       #
+      # validate.yml is on the list too. A new hook joins this job through a
+      # change to validate.yml alone, one apply after the change to the hook
+      # config. Without it, no run would check a whole tree with the new hook.
+      #
       # The checkout is one commit deep, and diffing needs one more. pre-commit
       # falls back to a two-dot diff where the two commits share no history on
       # disk, so the base commit alone is enough.
@@ -206,7 +210,8 @@
                   .prettierignore | rustfmt.toml | .rustfmt.toml | \
                   eslint.config.* | tsconfig*.json | stylua.toml | .stylua.toml | \
                   pyproject.toml | uv.lock | go.mod | go.sum | Cargo.toml | Cargo.lock | \
-                  rust-toolchain.toml | package.json | package-lock.json | .nvmrc | .terraform.lock.hcl)
+                  rust-toolchain.toml | package.json | package-lock.json | .nvmrc | .terraform.lock.hcl | \
+                  validate.yml)
                   echo "::notice::$changed changed, so every file is checked"
                   scope=(--all-files)
                   reason="every file, because $changed changed"

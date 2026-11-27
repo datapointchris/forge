@@ -350,7 +350,9 @@ else can recreate. `ci.OrphanedSections` names each, and the die reports it `ByH
 time, so a finding in a file nobody touched cannot fail a push. A change touching a hook or tool
 config, a manifest, a lockfile or a toolchain file is the exception, and the job checks every file.
 A new ruff rule or linter release matches no source file's type filter. Scoped to the change, it
-would grade nothing, and its findings would land on the next author to touch the code. The run
+would grade nothing, and its findings would land on the next author to touch the code. A change to
+`validate.yml` checks every file too. A new hook joins this job only in that change, one apply
+after the config that added it, so no other run would check a whole tree with it. The run
 script names each file that widens the scope. The checkout stays one commit deep and the job
 fetches only the base commit. pre-commit falls back to a two-dot diff where two commits share no
 history on disk, and refcheck's `--moves` reads the range as one. Where no earlier commit can be
