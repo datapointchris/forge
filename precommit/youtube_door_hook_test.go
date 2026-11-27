@@ -15,7 +15,7 @@ import (
 // reads a file that identify gives no language.
 func TestTheYouTubeDoorHookRefusesACallAndPassesAMention(t *testing.T) {
 	ctx := t.Context()
-	config, err := Generate(realBlocks(t), testToolchain(t), detected(), nil, Observed{Versioning: Versioned}, UsesTheYouTubeDoor)
+	config, err := Generate(realBlocks(t), testToolchain(t), detected(), nil, Observed{Versioning: Versioned}, RegistryEntry{})
 	if err != nil {
 		t.Fatal(err)
 	}

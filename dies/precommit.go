@@ -407,7 +407,7 @@ type owedPreCommit struct {
 	basis          maintenance
 	customSections map[string]string
 	observed       precommit.Observed
-	door           precommit.YouTubeDoor
+	registered     precommit.RegistryEntry
 	// wanted is "" where the basis is not applicable.
 	wanted string
 }
@@ -433,8 +433,8 @@ func preCommitOwed(ctx context.Context, t reconcile.Target) (owedPreCommit, erro
 		Scripts:           shebangScripts(ctx, t),
 		GoSemanticRelease: ci.InvokesGoSemanticRelease(t.Repo.Path),
 	}
-	owed.door = precommit.YouTubeDoor(t.Repo.YouTubeDoor)
-	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, owed.observed, owed.door)
+	owed.registered = precommit.RegistryEntry{YouTubeDoor: t.Repo.YouTubeDoor}
+	owed.wanted, err = precommit.Generate(blocksFS, t.Assets.Manifest, owed.declared, owed.customSections, owed.observed, owed.registered)
 	if err != nil {
 		return owedPreCommit{}, err
 	}
@@ -472,7 +472,7 @@ func (PreCommit) Observe(ctx context.Context, t reconcile.Target) (reconcile.Obs
 	// Its own item, so the config is still regenerated: that keeps the
 	// override as it is, and only a person can say whether it should go.
 	if len(owed.customSections) > 0 {
-		standard, err := precommit.Generate(owed.blocksFS, t.Assets.Manifest, declared, nil, owed.observed, owed.door)
+		standard, err := precommit.Generate(owed.blocksFS, t.Assets.Manifest, declared, nil, owed.observed, owed.registered)
 		if err != nil {
 			return nil, err
 		}

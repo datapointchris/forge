@@ -17,7 +17,7 @@ func owedConfig(t *testing.T, components []config.Component, scripts ...string) 
 	t.Helper()
 	cfg, err := precommit.Generate(os.DirFS("../pre-commit/blocks"), testManifest(t),
 		&config.Toolchain{Components: components}, nil,
-		precommit.Observed{Versioning: precommit.Versioned, Scripts: scripts}, precommit.UsesTheYouTubeDoor)
+		precommit.Observed{Versioning: precommit.Versioned, Scripts: scripts}, precommit.RegistryEntry{})
 	if err != nil {
 		t.Fatalf("precommit.Generate: %v", err)
 	}

@@ -424,20 +424,14 @@ const goReleaseCategory = "go-release"
 // YouTube that goes around the door.
 const youtubeDoorCategory = "youtube-door"
 
-// YouTubeDoor says whether the target is the one repo that may call YouTube,
-// read from its registry entry rather than from the target.
-//
-// A named type so a call site says which, where a bare true reads as nothing.
-type YouTubeDoor bool
-
-const (
-	// IsTheYouTubeDoor is the repo every request to YouTube goes through, so
-	// it gets no youtube-door hook.
-	IsTheYouTubeDoor YouTubeDoor = true
-	// UsesTheYouTubeDoor is every other repo, whose youtube-door hook refuses a
-	// call to YouTube.
-	UsesTheYouTubeDoor YouTubeDoor = false
-)
+// RegistryEntry is what the target's registry entry declares outside its
+// toolchain, kept apart from Observed because the target itself holds none of
+// it. Each field's zero value is what an entry declaring nothing gets.
+type RegistryEntry struct {
+	// YouTubeDoor marks the one repo every request to YouTube goes through.
+	// It alone goes without the youtube-door hook.
+	YouTubeDoor bool
+}
 
 // Versioning says whether git versions the target, which decides whether the
 // commit-stage blocks are generated for it.
@@ -476,7 +470,7 @@ func Generate(
 	declared *config.Toolchain,
 	customSections map[string]string,
 	observed Observed,
-	door YouTubeDoor,
+	registered RegistryEntry,
 ) (string, error) {
 	dirs := dirsByCategory(declared.Components)
 	// The SQL block is gated by a declared dialect rather than by a component:
@@ -502,7 +496,7 @@ func Generate(
 		}
 		// The standard it enforces governs repos, and an unversioned target is
 		// a directory forge maintains rather than a repo.
-		if door == UsesTheYouTubeDoor {
+		if !registered.YouTubeDoor {
 			dirs[youtubeDoorCategory] = []string{"."}
 		}
 	}
