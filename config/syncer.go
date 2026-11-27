@@ -77,6 +77,10 @@ type Repo struct {
 	// same reason Toolchain is: a Go CLI has no standard place to state its
 	// binary name, and a reader of the registry should not have to find one.
 	Binary string `json:"binary,omitempty" yaml:"binary,omitempty"`
+	// YouTubeDoor marks the repo every request to YouTube goes through, which
+	// paces them from one place. Every other versioned repo gets the
+	// youtube-door hook, which refuses a call to YouTube in its code.
+	YouTubeDoor bool `json:"youtube_door,omitempty" yaml:"youtube_door,omitempty"`
 }
 
 // IsPrivate reports whether this repo may name a self-hosted runner.

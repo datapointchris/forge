@@ -1,0 +1,15 @@
+link = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+// ypl holds no yt-dlp, though ypl answers that with a 503.
+		{"a ypl with no yt-dlp", "youtube_reads_unavailable", func(s *standInYPL) { s.noYTDLP = true }},
+		refuse(w, http.StatusServiceUnavailable, "youtube_reads_unavailable", "this server reads no video through yt-dlp: it has no yt-dlp", 0)
+		refuse(w, http.StatusServiceUnavailable, "youtube_reads_busy", "the server's yt-dlp stayed busy with other reads; send the request again", 90*time.Second)
+raise ExtractionError(f'yt-dlp could not read the video: {e}') from e
+		return nil, fmt.Errorf("yt-dlp failed: %s: %w", said, err)
+	return errors.New("yt-dlp's arguments go after --, as in `ypl ytdlp -- --skip-download <link>`")
+  exec ypl ytdlp -- "$@"
+  candidate="$dir/yt-dlp"
+echo "yt-dlp: neither ypl nor another yt-dlp is on PATH" >&2
+if command -v yt-dlp >/dev/null 2>&1; then
+# yt-dlp pulls YouTube description; yt-dlp -x reads it
+// the door (yt-dlp on the server) paces reads; yt-dlp --flag stays there
+// a "yt-dlp" binary

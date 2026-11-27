@@ -13,7 +13,7 @@ import (
 // catches that.
 func TestTheSkipMarkerHookRefusesEachDocumentedSpelling(t *testing.T) {
 	ctx := t.Context()
-	config, err := Generate(realBlocks(t), testToolchain(t), detected(), nil, Observed{Versioning: Versioned})
+	config, err := Generate(realBlocks(t), testToolchain(t), detected(), nil, Observed{Versioning: Versioned}, UsesTheYouTubeDoor)
 	if err != nil {
 		t.Fatal(err)
 	}

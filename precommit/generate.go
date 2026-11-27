@@ -57,11 +57,12 @@ const wholeScope = "after:all"
 
 // categoryMap maps a block to the declared stack category that pulls it in.
 //
-// Five categories are gated by something other than a component, and Generate
+// Six categories are gated by something other than a component, and Generate
 // seeds each one itself: sql by a declared dialect, compose-projects by a
 // declared compose project, git by the target being versioned, python-scripts
 // by the scan finding a file identify cannot tag in a repo declaring Python,
-// and go-release by a Go component whose releases go-semantic-release cuts.
+// go-release by a Go component whose releases go-semantic-release cuts, and
+// youtube-door by a versioned target that is not the door to YouTube.
 //
 // git is gated that way because its blocks hook commit-msg, which only fires on
 // a commit. A target git does not version would carry hooks that can never run,
@@ -74,6 +75,7 @@ const wholeScope = "after:all"
 var categoryMap = map[string]string{
 	"conventional-commits":    "git",
 	"ci-skip-marker":          "git",
+	"youtube-door":            youtubeDoorCategory,
 	"python-format":           "python",
 	"python-lint":             "python",
 	"python-scripts":          ScriptCategory,
@@ -418,6 +420,25 @@ type block struct {
 // message that would major a Go module.
 const goReleaseCategory = "go-release"
 
+// youtubeDoorCategory is the seeded category of the block refusing a call to
+// YouTube that goes around the door.
+const youtubeDoorCategory = "youtube-door"
+
+// YouTubeDoor says whether the target is the one repo that may call YouTube,
+// read from its registry entry rather than from the target.
+//
+// A named type so a call site says which, where a bare true reads as nothing.
+type YouTubeDoor bool
+
+const (
+	// IsTheYouTubeDoor is the repo every request to YouTube goes through, so
+	// it gets no youtube-door hook.
+	IsTheYouTubeDoor YouTubeDoor = true
+	// UsesTheYouTubeDoor is every other repo, whose youtube-door hook refuses a
+	// call to YouTube.
+	UsesTheYouTubeDoor YouTubeDoor = false
+)
+
 // Versioning says whether git versions the target, which decides whether the
 // commit-stage blocks are generated for it.
 //
@@ -455,6 +476,7 @@ func Generate(
 	declared *config.Toolchain,
 	customSections map[string]string,
 	observed Observed,
+	door YouTubeDoor,
 ) (string, error) {
 	dirs := dirsByCategory(declared.Components)
 	// The SQL block is gated by a declared dialect rather than by a component:
@@ -477,6 +499,11 @@ func Generate(
 		dirs["git"] = []string{"."}
 		if _, goDeclared := dirs["go"]; goDeclared && observed.GoSemanticRelease {
 			dirs[goReleaseCategory] = []string{"."}
+		}
+		// The standard it enforces governs repos, and an unversioned target is
+		// a directory forge maintains rather than a repo.
+		if door == UsesTheYouTubeDoor {
+			dirs[youtubeDoorCategory] = []string{"."}
 		}
 	}
 	// Seeded from the scan for the same reason: an app identify cannot tag is

@@ -129,7 +129,7 @@ never a filesystem probe. Stack blocks carry `{{dir}}` and `{{dirprefix}}`. Iden
 collapse; differing ones get their hook ids suffixed with the directory. A block must appear in
 `categoryMap` or `genericBlocks`, and one in neither is an error rather than a silent default.
 
-Four categories are seeded by `Generate` rather than by a component:
+Five categories are seeded by `Generate` rather than by a component:
 
 - `sql` follows a declared `sql_dialect`, because nothing in a `.sql` file says which dialect it is.
 - `git` (conventional-commits and ci-skip-marker) follows whether the target is versioned. On an
@@ -155,6 +155,13 @@ Four categories are seeded by `Generate` rather than by a component:
   with svu `--v0` or releasing through python-semantic-release gets no hook, since the marker cuts
   nothing there and the hook's remedy is wrong. An unreadable workflow answers yes: a spurious hook
   refuses a commit, a missing one ships the major.
+- `youtube-door` follows a versioned target whose registry entry does not set `youtube_door`. Only
+  ypl's entry sets it. Every request to YouTube goes through ypl, and ypl paces them from one place.
+  The hook refuses the shape of a call rather than the tool's name: a whole quoted package or binary
+  name, a dependency spec, an import line, the binary at a shell command's position, and an API
+  host's URL. Repos that read through ypl write about ypl's yt-dlp freely, so matching the bare name
+  would refuse their prose. The hook's tests read their cases from `precommit/testdata/youtube-door/`.
+  identify gives a `.cases` file no language tag, so the hook never reads the calls in those files.
 
 **The shell block's bats hook is guarded both ways.** A repo with no `tests/*.bats` passes; a repo
 that has them and lacks bats fails at 127. A green `language: system` hook once hid seven shellcheck

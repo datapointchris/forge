@@ -1,0 +1,22 @@
+import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
+use yt_dlp::Youtube;
+  "yt-dlp>=2024.12.0",
+    "youtube-transcript-api>=0.6.2",
+    "youtube-transcript-api": "^1.0.0"
+	readers, err := sources.New(envOr("YTDLP_PATH", "yt-dlp"), sources.PublicClient())
+subprocess.run(["yt-dlp", "-J", url], check=True)
+cmd = ['yt-dlp', '-J', url]
+out, err := exec.Command(`yt-dlp`, "-J", url).Output()
+let out = Command::new("yt-dlp").arg(url).output()?;
+import { YoutubeTranscript } from 'youtube-transcript-api';
+subprocess.run(f"yt-dlp -J {url}", shell=True)
+os.system("yt-dlp " + url)
+local out = io.popen("yt-dlp --dump-json " .. url):read("*a")
+    yt-dlp --skip-download "$subflag" --sub-langs "$lang" --sub-format json3 \
+info=$(yt-dlp -J "$url")
+exec yt-dlp "$@"
+resp = requests.get(f"https://www.youtube.com/api/timedtext?v={vid}")
+const feed = "https://www.youtube.com/feeds/videos.xml?channel_id="
+url := "https://www.googleapis.com/youtube/v3/videos?part=snippet"
+r = httpx.post("https://www.youtube.com/youtubei/v1/player", json=body)
